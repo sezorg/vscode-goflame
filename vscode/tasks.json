@@ -1,0 +1,37 @@
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "launch-delve",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-delve.sh",
+            "echoCommand": false,
+            "hide": true
+        },
+        {
+            "label": "launch-deploy",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy.sh",
+            "echoCommand": false,
+            "hide": true
+        },
+        {
+            "label": "remote-delve",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/remote-delve.sh",
+            "echoCommand": false,
+            "hide": false,
+            "problemMatcher": [], 
+            "icon": {"color": "terminal.ansiBlue", "id": "terminal"}
+        },
+        {
+            "label": "load-ip-addr",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/load-ipaddr.sh",
+            "echoCommand": false,
+            "hide": true
+        },
+    ]
+}

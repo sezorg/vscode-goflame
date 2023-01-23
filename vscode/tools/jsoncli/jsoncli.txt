@@ -1,0 +1,42 @@
+
+./jsonrq.py '10.113.11.163/GetVideoSources'
+./jsonrq.py -v '10.113.11.163/GetImagingSettings{VideoSourceToken:"src"}'
+
+./jsonrq.py -v '10.113.11.219:8899/GetSystemDateAndTime'
+./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{}, Time:{}}}'
+./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{Year:2022,Month:12,Day:1}, Time:{}}}'
+./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"NTP", UTCDateTime:{Date:{Year:2022,Month:12,Day:1}, Time:{}}}'
+
+./jsonrq.py '10.113.11.163/GetSystemDateAndTime'
+./jsonrq.py '10.113.11.163/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{Year:2022,Month:12,Day:1},Time:{}}}'
+
+d.Year, d.Month, d.Day, t.Hour, t.Minute, t.Second
+
+
+
+./jsonrq.py '10.113.11.163/GetImagingSettings{VideoSourceToken:"src"}' -v
+./jsonrq.py '10.86.0.5/GetImagingSettings{VideoSourceToken:"src"}' -v
+./jsonrq.py '10.86.0.5/imaging/GetOptions{VideoSourceToken:"src"}' -v
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{VideoSourceToken:"src"}' -v
+
+
+
+
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"VideoSourceToken":"src", "ImagingSettings":{"IrCutFilter": "AUTO", "Extension": {"IrCutFilterAutoAdjustment": {}}}}' -v
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"VideoSourceToken":"src", "ImagingSettings":{"IrCutFilter": "AUTO", "Extension": { "Extension": {"IrCutFilterAutoAdjustment": {}}}}}' -v
+
+
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"XMLName":{"Space":"","Local":""},"VideoSourceToken":"src","ImagingSettings":{"BacklightCompensation":null,"Brightness":0,"ColorSaturation":0,"Contrast":0,"Exposure":null,"Focus":null,"IrCutFilter":"AUTO","Sharpness":0,"WideDynamicRange":null,"WhiteBalance":null,"Extension":{"ImageStabilization":null,"Extension":{"IrCutFilterAutoAdjustment":null,"Extension":null}}},"ForcePersistence":false}' -v
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"XMLName":{"Space":"","Local":""},"VideoSourceToken":"src","ImagingSettings":{"BacklightCompensation":null,"Brightness":0,"ColorSaturation":0,"Contrast":0,"Exposure":null,"Focus":null,"IrCutFilter":"AUTO","Sharpness":0,"WideDynamicRange":null,"WhiteBalance":null,"Extension":{"ImageStabilization":null,"Extension":{"IrCutFilterAutoAdjustment":[{"BoundaryType":"Common","BoundaryOffset":0,"ResponseTime":"PT5S","Extension":null}],"Extension":null}}},"ForcePersistence":false}' -v
+
+Activate:
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"XMLName":{"Space":"","Local":""},"VideoSourceToken":"src","ImagingSettings":{"BacklightCompensation":null,"Brightness":50,"ColorSaturation":50,"Contrast":60,"Exposure":null,"Focus":null,"IrCutFilter":"AUTO","Sharpness":0,"WideDynamicRange":null,"WhiteBalance":null,"Extension":{"ImageStabilization":null,"Extension":{"IrCutFilterAutoAdjustment":[{"BoundaryType":"Common","BoundaryOffset":0,"ResponseTime":"PT5S","Extension":null}],"Extension":null}}},"ForcePersistence":false}' -v
+
+
+Activate:
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"VideoSourceToken":"src","ImagingSettings":{"Brightness":50,"ColorSaturation":50,"Contrast":60,"IrCutFilter":"AUTO","Sharpness":0,"Extension":{"Extension":{"IrCutFilterAutoAdjustment":[{"BoundaryType":"Common","BoundaryOffset":0,"ResponseTime":"PT5S"}]}}},"ForcePersistence":false}' -v
+Deactivate:
+./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{"VideoSourceToken":"src","ImagingSettings":{"Brightness":50,"ColorSaturation":50,"Contrast":60,"IrCutFilter":"OFF","Sharpness":0,"Extension":{"Extension":{"IrCutFilterAutoAdjustment":[{"BoundaryType":"Common","BoundaryOffset":0,"ResponseTime":"PT5S"}]}}},"ForcePersistence":false}' -v
+
+Min: 28550
+Max: 9040
