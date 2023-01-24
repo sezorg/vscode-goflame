@@ -5,7 +5,6 @@
 
 set -euo pipefail
 
-
 IP_ADDR=""
 VIDEO_SOURCE="src"
 
