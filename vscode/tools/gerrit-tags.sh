@@ -10,7 +10,12 @@ set -euo pipefail
 # Serach filters described in:
 # https://gerrit-review.googlesource.com/Documentation/user-search.html
 gerrit_filter="status:open"
-gerrit_owner="" #rabramov"
+
+# "me" for current git user, "" or "all'" for all users
+gerrit_email="all"
+
+# include patchets yes/no
+gerrit_patchsets="no"
 
 function debug() {
     #echo "debug: $*"
@@ -18,7 +23,25 @@ function debug() {
 }
 
 nl=$'\n'
-prefix="G-"
+prefix="G/"
+
+conf_email=""
+conf_file="/var/tmp/gerrit-conf.txt"
+git config --list > "${conf_file}"
+conf_text=()
+readarray -t conf_text < "${conf_file}"
+debug "conf_text count:${#conf_text[@]}"
+for conf_line in "${conf_text[@]}"; do 
+    if [[ "${conf_line}" =~ ^"user.email="* ]]; then
+        conf_email="${conf_line:11}"
+    fi
+done
+if [[ "${gerrit_email}" == "me" ]]; then
+    gerrit_email="${conf_email}"
+fi
+if [[ "${gerrit_email}" == "all" ]]; then
+    gerrit_email=""
+fi
 
 tags_file="/var/tmp/gerrit-tags.txt"
 git fetch --all
@@ -42,23 +65,28 @@ mode=""
 change_id=""
 number=""
 subject=""
+email=""
 username=""
 url=""
-patch_set=""
+patch_num=""
+curr_num=""
 revision=""
 ref=""
 for changes_line in "${changes_text[@]}"; do 
     if [[ "${changes_line}" =~ ^"change "* ]]; then
-        mode="change"
         change_id="${changes_line:7}"
         number=""
         subject=""
+        email=""
         username=""
         url=""
-        patch_set=""
+        patch_num=""
+        curr_num=""
         revision=""
         ref=""
         debug "change: \"${change_id}\""
+        mode="change"
+        debug "mode: \"${mode}\""
     fi
 
     if [[ "${mode}" == "change" ]]; then 
@@ -70,6 +98,10 @@ for changes_line in "${changes_text[@]}"; do
             subject="${changes_line:11}"
             debug "subject: \"${subject}\""
         fi
+        if [[ "${changes_line}" =~ ^"    email: "* ]]; then
+            email="${changes_line:11}"
+            debug "email: \"${email}\""
+        fi
         if [[ "${changes_line}" =~ ^"    username: "* ]]; then
             username="${changes_line:14}"
             debug "username: \"${username}\""
@@ -79,14 +111,18 @@ for changes_line in "${changes_text[@]}"; do
             debug "url: \"${url}\""
         fi
         if [[ "${changes_line}" =~ ^"  currentPatchSet:"* ]]; then
-            debug "currentPatchSet"
             mode="currentPatchSet"
+            debug "mode: \"${mode}\""
         fi
     fi
-    if [[ "${mode}" == "currentPatchSet" ]]; then 
+
+    if [[ "${mode}" == "currentPatchSet" ]] || [[ "${mode}" == "patchSets" ]]; then 
         if [[ "${changes_line}" =~ ^"    number: "* ]]; then
-            patch_set="${changes_line:12}"
-            debug "patch_set: \"${patch_set}\""
+            patch_num="${changes_line:12}"
+            if [[ "${mode}" == "currentPatchSet" ]]; then
+                curr_num="${patch_num}"
+            fi
+            debug "patch_num: \"${patch_num}\" curr_num:\"${curr_num}\""
 
         fi
         if [[ "${changes_line}" =~ ^"    revision: "* ]]; then
@@ -96,38 +132,67 @@ for changes_line in "${changes_text[@]}"; do
         if [[ "${changes_line}" =~ ^"    ref: "* ]]; then
             ref="${changes_line:9}"
             debug "ref: \"${ref}\""
-            mode="addCurrentPatchSet"
+            mode="${mode}Add"
+            debug "mode: \"${mode}\""
         fi
     fi
 
-    if [[ "${mode}" == "addCurrentPatchSet" ]]; then 
-        mode=""
+    if [[ "${mode}" == "listPatchSets" ]]; then 
+        if [[ "${changes_line}" =~ ^"  patchSets:"$ ]]; then
+            patch_num=""
+            revision=""
+            ref=""
+            mode="patchSets"
+            debug "mode: \"${mode}\""
+        fi
+    fi
+
+    if [[ "${mode}" == "currentPatchSetAdd" ]] || [[ "${mode}" == "patchSetsAdd" ]]; then 
         if [[ "${change_id}" != "" ]] && \
             [[ "${number}" != "" ]] && \
             [[ "${subject}" != "" ]] && \
-            [[ "${username}" != "" ]] && \
+            [[ "${email}" != "" ]] && \
+            [[ "${email}" != "" ]] && \
             [[ "${url}" != "" ]] && \
-            [[ "${patch_set}" != "" ]] && \
+            [[ "${patch_num}" != "" ]] && \
+            [[ "${curr_num}" != "" ]] && \
             [[ "${revision}" != "" ]] && \
             [[ "${ref}" != "" ]]; then
 
-            if [[ "${gerrit_owner}" == "" ]] || \
-                [[ "${gerrit_owner}" == "${username}" ]]; then
-                #echo "Change id:${change_id} num:${number} sub:\"${subject}\" url:${url} rev:${revision}"
+            if [[ "${mode}" == "currentPatchSetAdd" ]] || \
+                [[ "${patch_num}" != "${curr_num}" ]]; then
 
-                tag_name="${prefix}${number}"
-                if [[ "${gerrit_owner}" == "" ]]; then
-                    tag_name="${tag_name}-${username}"
+                debug "gerrit_email: ${gerrit_email} email:${email}"
+                if [[ "${gerrit_email}" == "" ]] || \
+                    [[ "${gerrit_email}" == "${email}" ]]; then
+                    tag_name="${prefix}${number}"
+                    if [[ "${gerrit_patchsets}" == "yes" ]]; then
+                        tag_name="${tag_name}/${patch_num}"
+                        if [[ "${mode}" == "currentPatchSetAdd" ]]; then
+                            tag_name="${tag_name}/current"
+                        fi
+                    fi
+                    if [[ "${gerrit_email}" == "" ]]; then
+                        tag_name="${tag_name}-${username}"
+                    fi
+                    tag_mssg="${subject}${nl}Url:${url}${nl}Change-id: ${change_id}"
+                    tag_mssg="${subject}"
+
+                    git fetch origin "${ref}" > /dev/null 2>&1
+                    #git checkout FETCH_HEAD
+                    echo "adding tag ${tag_name}: ${subject}"
+                    debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
+                    git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
                 fi
-                tag_mssg="${subject}${nl}Url:${url}${nl}Change-id: ${change_id}"
-                tag_mssg="${subject}"
-
-                git fetch origin "${ref}" > /dev/null 2>&1
-                #git checkout FETCH_HEAD
-                debug "adding tag ${tag_name} to ${revision}"
-                debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
-                git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
             fi
+        fi
+
+        if [[ "${gerrit_patchsets}" == "yes" ]]; then
+            mode="listPatchSets"
+            debug "mode: \"${mode}\""
+        else
+            mode=""
+            debug "mode: \"${mode}\""
         fi
     fi
 done
