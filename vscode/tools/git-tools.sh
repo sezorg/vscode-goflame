@@ -15,7 +15,7 @@ function gh() {
     echo "gs: git status"
     echo "ga: git add -u"
     echo "gp: git push origin HEAD:refs/for/master"
-    echo "gt: gerrit-tags"
+    echo "gt: gerrit-tags [me/all/username/user@mail]"
     return 0
 }
 
@@ -40,7 +40,6 @@ function gp() {
 }
 
 function gt() {
-    echo "${SCRIPT_DIR}"
-    "gerrit-tags.sh"
+    "gerrit-tags.sh" "${1}"
 }
 

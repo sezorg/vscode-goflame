@@ -12,7 +12,7 @@ set -euo pipefail
 gerrit_filter="status:open"
 
 # "me" for current git user, "" or "all'" for all users
-gerrit_email="all"
+gerrit_email="me"
 
 # include patchets yes/no
 gerrit_patchsets="no"
@@ -36,11 +36,17 @@ for conf_line in "${conf_text[@]}"; do
         conf_email="${conf_line:11}"
     fi
 done
+set +u
+if [ "${1}" != "" ]; then
+    gerrit_email="${1}"
+fi
+set -u
 if [[ "${gerrit_email}" == "me" ]]; then
     gerrit_email="${conf_email}"
-fi
-if [[ "${gerrit_email}" == "all" ]]; then
+elif [[ "${gerrit_email}" == "all" ]] || [[ "${gerrit_email}" == "" ]]; then
     gerrit_email=""
+elif [[ "${gerrit_email##*@}" == "${gerrit_email}" ]]; then
+    gerrit_email="${gerrit_email}@${conf_email##*@}"
 fi
 
 tags_file="/var/tmp/gerrit-tags.txt"
@@ -61,6 +67,7 @@ changes_text=()
 readarray -t changes_text < "${changes_file}"
 debug "changes_text count:${#changes_text[@]}"
 
+count="0"
 mode=""
 change_id=""
 number=""
@@ -180,7 +187,9 @@ for changes_line in "${changes_text[@]}"; do
 
                     git fetch origin "${ref}" > /dev/null 2>&1
                     #git checkout FETCH_HEAD
-                    echo "adding tag ${revision:0:8} ${tag_name}: ${subject}"
+                    count=$((count+1))
+                    count_str=$(printf "%02d" "${count}")
+                    echo "${count_str} adding tag ${revision:0:8} ${tag_name}: ${subject}"
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
                 fi
