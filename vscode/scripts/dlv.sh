@@ -12,5 +12,5 @@ SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 source "${SCRIPT_DIR}/env.sh"
 xunreferenced_variables "${WRAPPER_TYPE}"
 
-xexec "${ORIGINAL_DLVBIN}" "$@"
+xexec "${LOCAL_DLVBIN}" "$@"
 xexit

@@ -32,6 +32,7 @@ TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
+RUN_STATICCHECK="no"
 
 source "${SCRIPT_DIR}/../config.ini"
 
@@ -67,7 +68,10 @@ if [ "$WRAPPER_TYPE" == "" ]; then
 fi
 
 ORIGINAL_GOBIN="${BUILDROOT_DIR}/output/host/bin/go"
-ORIGINAL_DLVBIN="$(which dlv)"
+
+LOCAL_GOPATH="$(go env GOPATH)"
+LOCAL_DLVBIN="$(which dlv)"
+LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
 
 xunreferenced_variables \
 	"${TARGET_BIN_SOURCE}" \
@@ -79,7 +83,7 @@ xunreferenced_variables \
 	"${DELVE_DAP_START}" \
 	"${WRAPPER_LOGFILE}" \
 	"${ORIGINAL_GOBIN}" \
-	"${ORIGINAL_DLVBIN}" \
+	"${LOCAL_DLVBIN}" \
 	"${GOLANG_EXPORTS[@]}"
 
 DLVBIN="${SCRIPT_DIR}/dlv.sh"
@@ -541,8 +545,23 @@ function xpstartv() {
 }
 
 function xbuild() {
-	xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
 	xexport "${GOLANG_EXPORTS[@]}"
+	if [ "${RUN_STATICCHECK}" == "yes" ]; then
+		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
+		#-checks=all 
+		xexec "go" "vet" "./..."
+		if [ "${EXEC_STDERR}" != "" ]; then
+			xecho "${EXEC_STDERR}"
+		fi
+		xecho "Go vet finished with status ${EXEC_STATUS}"
+		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
+		xexec "${LOCAL_STATICCHECK}" "./..."
+		if [ "${EXEC_STDOUT}" != "" ]; then
+			xecho "${EXEC_STDOUT}"
+		fi
+		xecho "Staticcheck finished with status ${EXEC_STATUS}"
+	fi
+	xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
 	xexec "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
 	if [ "${EXEC_STATUS}" != "0" ]; then
 		xexit

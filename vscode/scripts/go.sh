@@ -62,7 +62,7 @@ function xparseargs() {
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		item="${SRCIPT_ARGS[$i]}"
 		if [ "${item}" == "${DLVBIN}" ]; then
-			result+=("${ORIGINAL_DLVBIN}")
+			result+=("${LOCAL_DLVBIN}")
 			dirty="y"
 		elif [ "${item}" == "build" ]; then
 			xval XECHO_ENABLED=y

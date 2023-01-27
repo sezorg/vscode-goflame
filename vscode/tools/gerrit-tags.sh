@@ -180,7 +180,7 @@ for changes_line in "${changes_text[@]}"; do
 
                     git fetch origin "${ref}" > /dev/null 2>&1
                     #git checkout FETCH_HEAD
-                    echo "adding tag ${tag_name}: ${subject}"
+                    echo "adding tag ${revision:0:8} ${tag_name}: ${subject}"
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
                 fi

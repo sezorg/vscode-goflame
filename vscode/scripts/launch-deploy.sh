@@ -39,32 +39,3 @@ xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}
 xsstop
 xpstop
 xfcopy
-
-exit 0
-
-DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
-DLOOP_RESULT_FILE="/tmp/dlv-loop-current"
-
-if [ -f "${DLOOP_RESULT_FILE}" ]; then
-	rm -f "${DLOOP_RESULT_FILE}"
-fi
-
-xfcopy "[CANFAIL]" ":${DLOOP_STATUS_FILE}|${DLOOP_RESULT_FILE}"
-
-function nh { nohup "$@" &>/dev/null & }
-
-if [ ! -f "${DLOOP_RESULT_FILE}" ]; then
-	KDE_KONSOLE="$(which konsole)"
-	if [ "${KDE_KONSOLE}" != "" ]; then
-	xecho "Starting dloop"
-		set -x
-		#"${KDE_KONSOLE}" -e "$SHELL" --rcfile <(echo "sshpass -p \"${TARGET_PASS}\" ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} dloop ;ls;echo hi")
-		#"${KDE_KONSOLE}" -e "$SHELL" --rcfile <(echo "sshpass -p \"${TARGET_PASS}\" ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} dloop ;ls;echo hi") &>/dev/null 
-		"${KDE_KONSOLE}" -e "$SHELL" --rcfile <(echo "cd /;ls;echo hi") &>/dev/null &
-		#nohup "${KDE_KONSOLE}" -e "$SHELL" --rcfile <(echo "cd /;ls;echo hi") &>/dev/null &
-		#nohup "${KDE_KONSOLE}" -e "$SHELL" --rcfile <(sshpass -p "${TARGET_PASS}" ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR}; echo "cd /;ls;echo hi") &> /dev/null
-		#nohup "\"${KDE_KONSOLE}\" -e \"$SHELL\" --rcfile <(echo \"cd /;ls;echo hi\")" &>/dev/null &
-	fi
-fi
-
-#xssh "if [ -f \"${DLOOP_STATUS_FILE}\" ]; then echo 1; else echo 
