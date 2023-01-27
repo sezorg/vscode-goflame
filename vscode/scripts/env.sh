@@ -32,7 +32,9 @@ TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-RUN_STATICCHECK="no"
+RUN_GO_VET=""
+RUN_STATICCHECK=""
+RUN_STATICCHECK_ALL=""
 
 source "${SCRIPT_DIR}/../config.ini"
 
@@ -546,7 +548,7 @@ function xpstartv() {
 
 function xbuild() {
 	xexport "${GOLANG_EXPORTS[@]}"
-	if [ "${RUN_STATICCHECK}" == "yes" ]; then
+	if [ "${RUN_GO_VET}" == "yes" ]; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
 		#-checks=all 
 		xexec "go" "vet" "./..."
@@ -554,8 +556,14 @@ function xbuild() {
 			xecho "${EXEC_STDERR}"
 		fi
 		xecho "Go vet finished with status ${EXEC_STATUS}"
+	fi
+	if [ "${RUN_STATICCHECK}" == "yes" ]; then
+		local flags=""
+		if [ "${RUN_STATICCHECK_ALL}" == "yes" ]; then
+			flags="-checks=all"
+		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${LOCAL_STATICCHECK}" "./..."
+		xexec "${LOCAL_STATICCHECK}" "${flags}" "./..."
 		if [ "${EXEC_STDOUT}" != "" ]; then
 			xecho "${EXEC_STDOUT}"
 		fi
