@@ -18,7 +18,7 @@ gerrit_email="me"
 gerrit_patchsets="no"
 
 function debug() {
-    #echo "debug: $*"
+    #echo "dd debug: $*"
     return 0
 }
 
@@ -36,30 +36,45 @@ for conf_line in "${conf_text[@]}"; do
         conf_email="${conf_line:11}"
     fi
 done
-set +u
-if [ "${1}" != "" ]; then
-    gerrit_email="${1}"
-fi
-set -u
-if [[ "${gerrit_email}" == "me" ]]; then
-    gerrit_email="${conf_email}"
-elif [[ "${gerrit_email}" == "all" ]] || [[ "${gerrit_email}" == "" ]]; then
-    gerrit_email=""
-elif [[ "${gerrit_email##*@}" == "${gerrit_email}" ]]; then
-    gerrit_email="${gerrit_email}@${conf_email##*@}"
-fi
 
 tags_file="/var/tmp/gerrit-tags.txt"
 git fetch --all
 git tag > "${tags_file}"
 tags_text=()
 readarray -t tags_text < "${tags_file}"
-debug "tags_text count:${#tags_text[@]}"
-for tags_line in "${tags_text[@]}"; do 
+debug "-- removing ${#tags_text[@]} tags"
+for tags_line in "${tags_text[@]}"; do
     if [[ "${tags_line}" =~ ^"${prefix}"* ]]; then
         git tag -d "${tags_line}" > /dev/null
     fi
 done
+
+branches_file="/var/tmp/gerrit-branches.txt"
+git fetch --all
+git branch --format "%(refname:short)" > "${branches_file}"
+branches_text=()
+readarray -t branches_text < "${branches_file}"
+debug "-- removing ${#branches_text[@]} branches"
+for branches_line in "${branches_text[@]}"; do
+    if [[ "${branches_line}" =~ ^"${prefix}"* ]]; then
+        git branch -D "${branches_line}" > /dev/null
+    fi
+done
+
+set +u
+if [ "${1}" != "" ]; then
+    gerrit_email="${1}"
+fi
+set -u
+if [[ "${gerrit_email}" == "del" ]]; then
+    exit 0
+elif [[ "${gerrit_email}" == "me" ]]; then
+    gerrit_email="${conf_email}"
+elif [[ "${gerrit_email}" == "all" ]] || [[ "${gerrit_email}" == "" ]]; then
+    gerrit_email=""
+elif [[ "${gerrit_email##*@}" == "${gerrit_email}" ]]; then
+    gerrit_email="${gerrit_email}@${conf_email##*@}"
+fi
 
 changes_file="/var/tmp/gerrit-changes.txt"
 git gerrit changes "${gerrit_filter}" > "${changes_file}"
@@ -192,6 +207,7 @@ for changes_line in "${changes_text[@]}"; do
                     echo "${count_str} adding tag ${revision:0:8} ${tag_name}: ${subject}"
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
+                    #git branch "${tag_name}" "${tag_name}"
                 fi
             fi
         fi
