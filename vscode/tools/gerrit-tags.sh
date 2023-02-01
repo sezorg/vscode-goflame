@@ -40,9 +40,30 @@ for conf_line in "${conf_text[@]}"; do
     fi
 done
 
-echo "-- fetching & checkingout to master"
+red=$(printf "\e[31m")
+green=$(printf "\e[32m")
+yellow=$(printf "\e[33m")
+blue=$(printf "\e[34m")
+nc=$(printf "\e[0m")
+cregexp="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
+
+table_line_filld="-----------------------------------------------------------------------------------------------"
+table_line_blank="                                                                                              -"
+
+function mssg() {
+    plain=$(echo "${1}" | sed -r "${cregexp}")
+    echo "${1}${table_line_blank:${#plain}}"
+}
+
+function mssg_fill() {
+    plain=$(echo "${1}" | sed -r "${cregexp}")
+    echo "${1}${table_line_filld:${#plain}}"
+}
+
+current_revision=$(git rev-parse HEAD)
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 restore_branch=""
+mssg "-- fetch and pull from ${blue}${current_branch}${nc} to ${blue}origin/master${nc} "
 git fetch --all --quiet
 git checkout master --quiet
 
@@ -101,6 +122,7 @@ patch_num=""
 curr_num=""
 revision=""
 ref=""
+header_emit=""
 
 for changes_line in "${changes_text[@]}"; do 
     if [[ "${changes_line}" =~ ^"change "* ]]; then
@@ -215,12 +237,17 @@ for changes_line in "${changes_text[@]}"; do
                     #git checkout FETCH_HEAD
                     count=$((count+1))
                     count_str=$(printf "%02d" "${count}")
-                    echo "${count_str} adding tag ${revision:0:8} ${tag_name}: ${subject}"
+                    if [[ "${header_emit}" == "" ]]; then
+                        header_emit="1"
+                        mssg_fill "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} --description----------"
+                    fi
+                    mssg "${count_str} adding tag ${green}${revision:0:8} ${blue}${tag_name}${nc} ${subject} "
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
                     git branch "${branch_name}" "${tag_name}"
 
-                    if [[ "${current_branch}" == "${branch_name}" ]]; then
+                    if [[ "${current_branch}" == "${branch_name}" ]] || \
+                        [[ "${current_revision}" == "${revision}" ]]; then
                         restore_branch="${branch_name}"
                     fi
                 fi
@@ -238,6 +265,6 @@ for changes_line in "${changes_text[@]}"; do
 done
 
 if [[ "${restore_branch}" != "" ]]; then
-    echo "-- checkingout back to ${restore_branch}"
+    mssg "-- checkout to restore ${blue}${restore_branch}${nc} branch "
     git checkout "${restore_branch}" --quiet
 fi
