@@ -23,7 +23,10 @@ function debug() {
 }
 
 nl=$'\n'
-prefix="G/"
+tag_prefix="T/"
+tag_postfix=""
+branch_prefix="B/"
+branch_postfix=""
 
 conf_email=""
 conf_file="/var/tmp/gerrit-conf.txt"
@@ -37,26 +40,30 @@ for conf_line in "${conf_text[@]}"; do
     fi
 done
 
+echo "-- fetching & checkingout to master"
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+restore_branch=""
+git fetch --all --quiet
+git checkout master --quiet
+
 tags_file="/var/tmp/gerrit-tags.txt"
-git fetch --all
 git tag > "${tags_file}"
 tags_text=()
 readarray -t tags_text < "${tags_file}"
 debug "-- removing ${#tags_text[@]} tags"
 for tags_line in "${tags_text[@]}"; do
-    if [[ "${tags_line}" =~ ^"${prefix}"* ]]; then
+    if [[ "${tags_line}" =~ ^"${tag_prefix}"[[:digit:]]+.*"${tag_postfix}"$ ]]; then
         git tag -d "${tags_line}" > /dev/null
     fi
 done
 
 branches_file="/var/tmp/gerrit-branches.txt"
-git fetch --all
 git branch --format "%(refname:short)" > "${branches_file}"
 branches_text=()
 readarray -t branches_text < "${branches_file}"
 debug "-- removing ${#branches_text[@]} branches"
 for branches_line in "${branches_text[@]}"; do
-    if [[ "${branches_line}" =~ ^"${prefix}"* ]]; then
+    if [[ "${branches_line}" =~ ^"${branch_prefix}"[[:digit:]]+.*"${branch_postfix}"$ ]]; then
         git branch -D "${branches_line}" > /dev/null
     fi
 done
@@ -94,6 +101,7 @@ patch_num=""
 curr_num=""
 revision=""
 ref=""
+
 for changes_line in "${changes_text[@]}"; do 
     if [[ "${changes_line}" =~ ^"change "* ]]; then
         change_id="${changes_line:7}"
@@ -187,16 +195,19 @@ for changes_line in "${changes_text[@]}"; do
                 debug "gerrit_email: ${gerrit_email} email:${email}"
                 if [[ "${gerrit_email}" == "" ]] || \
                     [[ "${gerrit_email}" == "${email}" ]]; then
-                    tag_name="${prefix}${number}"
+                    entry_name="${number}"
                     if [[ "${gerrit_patchsets}" == "yes" ]]; then
-                        tag_name="${tag_name}/${patch_num}"
+                        entry_name="${entry_name}/${patch_num}"
                         if [[ "${mode}" == "currentPatchSetAdd" ]]; then
-                            tag_name="${tag_name}/current"
+                            entry_name="${entry_name}/current"
                         fi
                     fi
                     if [[ "${gerrit_email}" == "" ]]; then
-                        tag_name="${tag_name}-${username}"
+                        entry_name="${entry_name}-${username}"
                     fi
+                    tag_name="${tag_prefix}${entry_name}${tag_postfix}"
+                    branch_name="${branch_prefix}${entry_name}${branch_postfix}"
+
                     tag_mssg="${subject}${nl}Url:${url}${nl}Change-id: ${change_id}"
                     tag_mssg="${subject}"
 
@@ -207,7 +218,11 @@ for changes_line in "${changes_text[@]}"; do
                     echo "${count_str} adding tag ${revision:0:8} ${tag_name}: ${subject}"
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
-                    #git branch "${tag_name}" "${tag_name}"
+                    git branch "${branch_name}" "${tag_name}"
+
+                    if [[ "${current_branch}" == "${branch_name}" ]]; then
+                        restore_branch="${branch_name}"
+                    fi
                 fi
             fi
         fi
@@ -222,3 +237,7 @@ for changes_line in "${changes_text[@]}"; do
     fi
 done
 
+if [[ "${restore_branch}" != "" ]]; then
+    echo "-- checkingout back to ${restore_branch}"
+    git checkout "${restore_branch}" --quiet
+fi
