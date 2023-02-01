@@ -85,6 +85,24 @@ function _resolve_variable() {
 	echo "${actual_value}"
 }
 
+function _set_konsole_tab_title_type() {
+	local title="$1"
+	local type=${2:-0}
+	if [[ -z "${title}" ]] || \
+		[[ -z "${KONSOLE_DBUS_SERVICE}" ]]  || \
+		[[ -z "${KONSOLE_DBUS_SESSION}" ]]; then 
+		return 0
+	fi
+	qdbus >/dev/null "${KONSOLE_DBUS_SERVICE}" "${KONSOLE_DBUS_SESSION}" setTabTitleFormat "${type}" "${title}"
+}
+
+function _set_konsole_title() {
+	local titleLocal=${1:-%d : %n}
+	local titleRemote=${2:-(%u) %H}
+	_set_konsole_tab_title_type "$titleLocal" && \
+		_set_konsole_tab_title_type "$titleRemote" 1
+}
+
 function s() {
 	local ip_address
 	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address expected"); then
@@ -93,7 +111,9 @@ function s() {
 	if [[ "${1}" == "" ]]; then
 		echo "Connecting to ${ip_address}"
 	fi
+	_set_konsole_title "SSH on root@${ip_address}" "SSH on root@${ip_address}"
 	sshpass -p "root" ssh -o StrictHostKeyChecking=no "root@${ip_address}"
+	_set_konsole_title
 }
 
 function pi() {
@@ -105,5 +125,7 @@ function pi() {
 		_error "TTY device ${device_path} is not avaliable"
 		return 1
 	fi
+	_set_konsole_title "picocom on ${device_path}" "picocom on ${device_path}"
 	picocom -b 115200 "${device_path}"
+	_set_konsole_title
 }
