@@ -10,36 +10,100 @@
 SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 
 function gh() {
-    echo "gr: git rebase -i HEAD~\${1}"
-    echo "gc: git rebase --continue"
-    echo "gs: git status"
-    echo "ga: git add -u"
-    echo "gp: git push origin HEAD:refs/for/master"
-    echo "gt: gerrit-tags [me/all/username/user@mail]"
-    return 0
+	echo "gr: git rebase -i HEAD~\${1}"
+	echo "gc: git rebase --continue"
+	echo "gs: git status"
+	echo "ga: git add -u"
+	echo "gp: git push origin HEAD:refs/for/master"
+	echo "gt: gerrit-tags [me/all/username/user@mail]"
+	echo "s: ssh [ip_address]"
+	echo "pi: picocom -b 115200 /dev/ttyUSB0"
+	return 0
 }
 
 function gr() {
-    git rebase -i "HEAD~${1}"
+	git rebase -i "HEAD~${1}"
 }
 
 function gc() {
-    git rebase --continue
+	git rebase --continue
 }
 
 function gs() {
-    git status
+	git status
 }
 
 function ga() {
-    git add -u
+	git add -u
 }
 
 function gp() {
-    git push origin HEAD:refs/for/master
+	git push origin HEAD:refs/for/master
 }
 
 function gt() {
-    "gerrit-tags.sh" "${1}"
+	"gerrit-tags.sh" "${1}"
 }
 
+function _error() {
+	if [[ "${1}" != "" ]]; then
+		>&2 echo "ERROR: ${1}"
+	fi
+	return 1
+}
+
+function _warning() {
+	if [[ "${1}" != "" ]]; then
+		>&2 echo "WARNING: ${1}"
+	fi
+	return 0
+}
+
+function _resolve_variable() {
+	local actual_value="${1}"
+	local default_value="${2}"
+	local value_name="${3}"
+	local error_message="${4}"
+	local value_path="${HOME}/.config/sshcache"
+	if [[ "${actual_value}" == "" ]]; then
+		if [[ -f "${value_path}/${value_name}" ]]; then
+			actual_value=$(cat "${value_path}/${value_name}")
+		fi
+	else
+		mkdir -p "${value_path}" > /dev/null >&2
+		echo "${actual_value}" > "${value_path}/${value_name}"
+	fi
+	if [[ "${actual_value}" == "" ]]; then
+		if [[ "${default_value}" != "" ]]; then
+			_warning "${error_message}"
+			actual_value="${default_value}"
+		else
+			_error  "${error_message}"
+			return 1
+		fi
+	fi
+	echo "${actual_value}"
+}
+
+function s() {
+	local ip_address
+	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address expected"); then
+		return 1
+	fi
+	if [[ "${1}" == "" ]]; then
+		echo "Connecting to ${ip_address}"
+	fi
+	sshpass -p "root" ssh -o StrictHostKeyChecking=no "root@${ip_address}"
+}
+
+function pi() {
+	local device_path
+	if ! device_path=$(_resolve_variable "${1}" "/dev/ttyUSB0" "tty_device" "TTY device path expected"); then
+		return 1
+	fi
+	if [[ ! -f "${device_path}" ]]; then
+		_error "TTY device ${device_path} is not avaliable"
+		return 1
+	fi
+	picocom -b 115200 "${device_path}"
+}
