@@ -7,26 +7,29 @@
 
 #set -euo pipefail
 
-SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
-
 function gh() {
-	echo "gr: git rebase -i HEAD~\${1}"
+	echo "gr: git rebase --interactive HEAD~\${1}"
 	echo "gc: git rebase --continue"
+	echo "gx: git rebase --abort"
 	echo "gs: git status"
 	echo "ga: git add -u"
-	echo "gp: git push origin HEAD:refs/for/master"
+	echo "gp: git push origin [HEAD:refs/for/master]"
 	echo "gt: gerrit-tags [me/all/username/user@mail]"
-	echo "s: ssh [ip_address]"
-	echo "pi: picocom -b 115200 /dev/ttyUSB0"
+	echo "ss: ssh root-user@[ip_address]"
+	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	return 0
 }
 
 function gr() {
-	git rebase -i "HEAD~${1}"
+	git rebase --interactive "HEAD~${1}"
 }
 
 function gc() {
 	git rebase --continue
+}
+
+function gx() {
+	git rebase --abort
 }
 
 function gs() {
@@ -38,7 +41,11 @@ function ga() {
 }
 
 function gp() {
-	git push origin HEAD:refs/for/master
+	local target="${1}"
+	if [[ "${target}" == "" ]]; then
+		target="HEAD:refs/for/master"
+	fi
+	git push origin "${target}"
 }
 
 function gt() {
@@ -103,22 +110,24 @@ function _set_konsole_title() {
 		_set_konsole_tab_title_type "$titleRemote" 1
 }
 
-function s() {
+function ss() {
+	local user="root"
+	local pass="root"
 	local ip_address
-	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address expected"); then
+	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address parameter expected"); then
 		return 1
 	fi
 	if [[ "${1}" == "" ]]; then
 		echo "Connecting to ${ip_address}"
 	fi
-	_set_konsole_title "SSH on root@${ip_address}" "SSH on root@${ip_address}"
-	sshpass -p "root" ssh -o StrictHostKeyChecking=no "root@${ip_address}"
+	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
+	sshpass -p "${pass}" ssh -o StrictHostKeyChecking=no "${user}@${ip_address}"
 	_set_konsole_title
 }
 
 function pi() {
 	local device_path
-	if ! device_path=$(_resolve_variable "${1}" "/dev/ttyUSB0" "tty_device" "TTY device path expected"); then
+	if ! device_path=$(_resolve_variable "${1}" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"); then
 		return 1
 	fi
 	if [[ ! -f "${device_path}" ]]; then
