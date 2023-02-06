@@ -60,6 +60,13 @@ function mssg_fill() {
     echo "${1}${table_line_filld:${#plain}}"
 }
 
+if ! which "git-gerrit" &> /dev/null; then
+    echo "${red}ERROR:${nc} Seems to be there is no ${blue}git-gerrit${nc} installed."
+    echo "${red}ERROR:${nc} Installation instructions can be found at:"
+    echo "${red}ERROR:${nc}     ${yellow}https://github.com/fbzhong/git-gerrit${nc}"
+    exit 1
+fi
+
 current_revision=$(git rev-parse HEAD)
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 restore_branch=""
