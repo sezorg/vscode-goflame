@@ -16,7 +16,7 @@ xunreferenced_variables "${WRAPPER_TYPE}"
 SERVICES_STOP=("onvifd" "onvifd-debug")
 
 # List of services to be started
-SERVICES_START=()
+SERVICES_START=("nginx")
 
 # List of process names to be stopped
 PROCESSES_STOP=("dlv" "${TARGET_BIN_SOURCE}" "${TARGET_BIN_NAME}")
@@ -25,6 +25,8 @@ PROCESSES_STOP=("dlv" "${TARGET_BIN_SOURCE}" "${TARGET_BIN_NAME}")
 PROCESSES_START=(
 	#"nohup dlv exec ${TARGET_BIN_DESTIN} --listen=:2345 --headless=true --log=true --allow-non-terminal-interactive --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc --accept-multiclient --api-version=2 -- ${TARGET_EXEC_ARGS} >${DELVE_LOGFILE} 2>&1 &"
 )
+
+DIRECTORIES_CREATE=("/tmp/nginx/")
 
 # List of files to be deleted
 DELETE_FILES=(
@@ -123,6 +125,7 @@ if [ "${HAVE_BUILD}" != "" ]; then
 			xpstop
 			xfdel
 			xfcopy
+			xmkdirs
 			xsstart
 			xpstart
 			xflash

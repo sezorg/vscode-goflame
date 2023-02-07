@@ -495,7 +495,7 @@ function xfcopy() {
 		if [ "${uploading}" != "" ]; then
 			xecho "Uploading ${#list[@]} files: ${elements:2}"
 			SSH_HOST_STDIO="tar -cf - -C \"${backup_prefix}\" --dereference \".\" | gzip -7 - | "
-			SSH_TARGET_STDIO="tar -xzf - -C \"/\""
+			SSH_TARGET_STDIO="tar -xzf - -C \"/\"; "
 			#tar -cf - -C "${backup_prefix}" --dereference . | gzip -7 - | \
 			#	sshpass -p "${TARGET_PASS}" \
 			#	ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} \
@@ -561,7 +561,7 @@ function xsstartv() {
 		for service in "${list[@]}"; do
 			elements="${elements}, ${service}"
 			#SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl unmask \"${service}\"; "
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl start \"${service}\"; "
+			SSH_TARGET_POST="${SSH_TARGET_POST}systemctl start \"${service}\"; "
 		done
 		xecho "Starting ${#list[@]} services: ${elements:2}"
 	fi
@@ -582,9 +582,9 @@ function xpstopv() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}(if pgrep ${procname} > /dev/null; then pkill ${procname}; fi); "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
-		xkill "[CANFAIL]" "${list[@]}"
 	fi
 }
 
@@ -603,9 +603,30 @@ function xpstartv() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}${procname}; "
+			SSH_TARGET_POST="${SSH_TARGET_POST}${procname}; "
 		done
 		xecho "Starting ${#list[@]} processes: ${elements:2}"
+	fi
+}
+
+# List of directories to be created
+DIRECTORIES_CREATE=()
+
+function xmkdirs() {
+	# Create directories from DIRECTORIES_CREATE
+	xmkdirsv "${DIRECTORIES_CREATE[@]}"
+}
+
+# shellcheck disable=SC2120
+function xmkdirsv() {
+	local list=("$@")
+	if [ "${#list[@]}" != "0" ]; then
+		local elements=""
+		for dirname in "${list[@]}"; do
+			elements="${elements}, ${dirname}"
+			SSH_TARGET_POST="${SSH_TARGET_POST}mkdir -p \"${dirname}\"; "
+		done
+		xecho "Creating ${#list[@]} directories: ${elements:2}"
 	fi
 }
 

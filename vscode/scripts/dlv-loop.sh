@@ -62,13 +62,13 @@ while :; do
 	wait "${dlv_pid}" >/dev/null 2>&1
 	unset dlv_pid
 
-	count="10"
+	count="5"
 	while [ "${count}" != "0" ]; do
 		count=$((count - 1))
 		if [ ! -f "${DLOOP_STATUS_FILE}" ]; then
 			exit 0
 		fi
-		sleep 0.5
+		sleep 0.2
 	done
 	unset count
 
