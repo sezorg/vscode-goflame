@@ -47,8 +47,9 @@ blue=$(printf "\e[34m")
 nc=$(printf "\e[0m")
 cregexp="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
 
-table_line_filld="-----------------------------------------------------------------------------------------------"
-table_line_blank="                                                                                              -"
+#                 -- ---------- --sha1-- --tag-- 01234567890123456789012345678901234567890123456789 -"
+table_line_filld="-----------------------------------------------------------------------------------"
+table_line_blank="                                                                                  -"
 
 function mssg() {
     plain=$(echo "${1}" | sed -r "${cregexp}")
@@ -58,6 +59,11 @@ function mssg() {
 function mssg_fill() {
     plain=$(echo "${1}" | sed -r "${cregexp}")
     echo "${1}${table_line_filld:${#plain}}"
+}
+
+function mssg_head() {
+    #mssg_fill "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} --description--"
+    mssg      "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} 01234567890123456789012345678901234567890123456789"
 }
 
 if ! which "git-gerrit" &> /dev/null; then
@@ -70,6 +76,7 @@ fi
 current_revision=$(git rev-parse HEAD)
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 restore_branch=""
+restore_message=""
 mssg "-- fetch and pull from ${blue}${current_branch}${nc} to ${blue}origin/master${nc} "
 git fetch --all --quiet
 git checkout master --quiet
@@ -246,7 +253,7 @@ for changes_line in "${changes_text[@]}"; do
                     count_str=$(printf "%02d" "${count}")
                     if [[ "${header_emit}" == "" ]]; then
                         header_emit="1"
-                        mssg_fill "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} --description----------"
+                        mssg_head
                     fi
                     mssg "${count_str} adding tag ${green}${revision:0:8} ${blue}${tag_name}${nc} ${subject} "
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
@@ -256,6 +263,7 @@ for changes_line in "${changes_text[@]}"; do
                     if [[ "${current_branch}" == "${branch_name}" ]] || \
                         [[ "${current_revision}" == "${revision}" ]]; then
                         restore_branch="${branch_name}"
+                        restore_message="${subject}"
                     fi
                 fi
             fi
@@ -272,6 +280,7 @@ for changes_line in "${changes_text[@]}"; do
 done
 
 if [[ "${restore_branch}" != "" ]]; then
-    mssg "-- checkout to restore ${blue}${restore_branch}${nc} branch "
+    mssg_head
+    mssg "-- checkout to restore ${blue}${restore_branch}${nc} ${restore_message} "
     git checkout "${restore_branch}" --quiet
 fi
