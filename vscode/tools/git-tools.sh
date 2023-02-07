@@ -17,6 +17,7 @@ function gh() {
 	echo "gt: gerrit-tags [me/all/username/user@mail]"
 	echo "ss: ssh root-user@[ip_address]"
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
+	echo "jc: jsoncli.py ...arguments"
 	return 0
 }
 
@@ -137,4 +138,8 @@ function pi() {
 	_set_konsole_title "picocom on ${device_path}" "picocom on ${device_path}"
 	picocom -b 115200 "${device_path}"
 	_set_konsole_title
+}
+
+function jc() {
+	"jsoncli/jsoncli.sh" $@
 }
