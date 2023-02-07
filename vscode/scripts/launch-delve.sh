@@ -38,3 +38,4 @@ xpstop
 xfcopy
 xecho "Starting Delve on remote host..."
 xpstart
+xflash

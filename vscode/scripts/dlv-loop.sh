@@ -7,18 +7,17 @@
 set -euo pipefail
 #set "-x"
 
-IGNORE_LIST=(
-	# -- Application startup messages
-	"warning layer=rpc Listening for remote connections"
-	#"concrete subprogram without address range at"
-	#"inlined call without address range at"
-	" without address range at "
-	"debug layer=debugger"
-	"info layer=debugger created breakpoint:"
-	"info layer=debugger cleared breakpoint:"
-	# -- Interactive debuger related messages
-	"Failed to execute cursor closing: ERROR: cursor"
-)
+IGNORE_LIST=()
+# -- Application startup messages
+IGNORE_LIST+=("warning layer=rpc Listening for remote connections")
+#IGNORE_LIST+=("concrete subprogram without address range at")
+#IGNORE_LIST+=("inlined call without address range at")
+IGNORE_LIST+=(" without address range at ")
+IGNORE_LIST+=("debug layer=debugger")
+IGNORE_LIST+=("info layer=debugger created breakpoint:")
+IGNORE_LIST+=("info layer=debugger cleared breakpoint:")
+# -- Interactive debuger related messages
+IGNORE_LIST+=("Failed to execute cursor closing: ERROR: cursor")
 
 IGNORE_PATTERN="$(printf "\n%s" "${IGNORE_LIST[@]}")"
 IGNORE_PATTERN="${IGNORE_PATTERN:1}"
@@ -27,7 +26,9 @@ PRINT_PATTERNS="${PRINT_PATTERNS:1}"
 
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 function cleanup() {
-	rm -f "${DLOOP_STATUS_FILE}"
+	if [[ -f "${DLOOP_STATUS_FILE}" ]]; then
+		rm -f "${DLOOP_STATUS_FILE}"
+	fi
 }
 trap cleanup EXIT
 
@@ -44,8 +45,19 @@ while :; do
 	echo "Starting Delve headless server loop in DAP mode. To stop use: \$ dstop"
 	#echo "Ignore pattern: ${PRINT_PATTERNS}"
 
-	sh -c "dlv dap --listen=:2345 --api-version=2 --log 2>&1 | grep -v \"${IGNORE_PATTERN}\"" &
+	dlv_binary=$(which dlv)
+	if [[ "${dlv_binary}" == "" ]]; then
+		echo "Unable to locate Delve/DLV binary. Waiting for deploy."
+		while [ "${dlv_binary}" == "" ]; do
+			sleep 1
+			dlv_binary=$(which dlv)
+		done
+	fi
+
+	sh -c "${dlv_binary} dap --listen=:2345 --api-version=2 --log 2>&1 | grep -v \"${IGNORE_PATTERN}\"" &
 	dlv_pid="$!"
+	unset dlv_binary
+
 	echo "${dlv_pid}" >"${DLOOP_STATUS_FILE}"
 	wait "${dlv_pid}" >/dev/null 2>&1
 	unset dlv_pid
@@ -56,7 +68,7 @@ while :; do
 		if [ ! -f "${DLOOP_STATUS_FILE}" ]; then
 			exit 0
 		fi
-		sleep 0.1
+		sleep 0.5
 	done
 	unset count
 

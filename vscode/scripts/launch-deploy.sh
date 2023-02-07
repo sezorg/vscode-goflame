@@ -25,7 +25,9 @@ PROCESSES_STOP=("${TARGET_BIN_SOURCE}" "${TARGET_BIN_NAME}")
 COPY_FILES=(
 	".vscode/scripts/dlv-loop.sh|:/usr/bin/dloop"
 	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
-	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}")
+	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
+	"init/onvifd.conf|:/etc/onvifd.conf"
+	)
 
 xunreferenced_variables \
 	"${SERVICES_STOP[@]}" \
@@ -39,3 +41,4 @@ xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}
 xsstop
 xpstop
 xfcopy
+xflash

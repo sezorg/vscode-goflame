@@ -21,7 +21,9 @@ PROCESSES_START=("2>&1 dloop")
 # List of files to be copied, "source|target"
 COPY_FILES=(
 	".vscode/scripts/dlv-loop.sh|:/usr/bin/dloop"
-	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop")
+	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
+	"init/onvifd.conf|:/etc/onvifd.conf"
+	)
 
 xunreferenced_variables \
 	"${PROCESSES_STOP[@]}" \
@@ -33,3 +35,4 @@ xpstop
 xfcopy
 xecho "Starting Delve loop on remote host..."
 xpstart
+xflash

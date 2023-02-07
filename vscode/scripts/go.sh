@@ -43,13 +43,13 @@ COPY_FILES=(
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	"init/users.toml|:/var/lib/onvifd/users.toml")
 
-#xunreferenced_variables \
-#	"${SERVICES_STOP[@]}" \
-#	"${SERVICES_START[@]}" \
-#	"${PROCESSES_STOP[@]}" \
-#	"${PROCESSES_START[@]}" \
-#	"${DELETE_FILES[@]}" \
-#	"${COPY_FILES[@]}"
+xunreferenced_variables \
+	"${SERVICES_STOP[@]}" \
+	"${SERVICES_START[@]}" \
+	"${PROCESSES_STOP[@]}" \
+	"${PROCESSES_START[@]}" \
+	"${DELETE_FILES[@]}" \
+	"${COPY_FILES[@]}"
 
 SRCIPT_ARGS=("$@")
 HAVE_BUILD=
@@ -119,13 +119,14 @@ if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
 		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
-			xconn
 			xsstop
 			xpstop
 			xfdel
 			xfcopy
 			xsstart
 			xpstart
+			xflash
+			exit "1"
 		else
 			xecho "ERROR: Main executable ${PI}${TARGET_BIN_SOURCE}${PO} does not exist"
 			exit "1"

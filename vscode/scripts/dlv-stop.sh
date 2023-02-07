@@ -1,4 +1,4 @@
-#!/usr/bin/env bash/c/tools/onvifd/+/34834/12/pkg/configuration/configuration.go
+#!/usr/bin/env bash
 # Copyright 2022 RnD RnD Center "ELVEES", JSC
 #
 # Stop Delve loop started with `dstart'

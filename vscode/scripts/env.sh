@@ -5,6 +5,44 @@
 
 set -euo pipefail
 
+function xtime() {
+	date +%s.%N
+}
+
+function xelapsed() {
+	local dt
+	local dd
+	local dt2
+	local dh
+	local dt3
+	local dm
+	local ds
+	dt=$(echo "$(date +%s.%N) - $1" | bc)
+	dd=$(echo "$dt/86400" | bc)
+	dt2=$(echo "$dt-86400*$dd" | bc)
+	dh=$(echo "$dt2/3600" | bc)
+	dt3=$(echo "$dt2-3600*$dh" | bc)
+	dm=$(echo "$dt3/60" | bc)
+	ds=$(echo "$dt3-60*$dm" | bc)
+	if [[ "$dd" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dd %02dh %02dm %02.4fs\n" "$dd" "$dh" "$dm" "$ds")"
+	elif [[ "$dh" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dh %02dm %02.4fs\n" "$dh" "$dm" "$ds")"
+	elif [[ "$dm" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dm %02.4f\n" "$dm" "$ds")"
+	else
+		xecho "$(printf "Total runtime: %02.4fs\n" "$ds")"
+	fi
+}
+
+xstart="$(xtime)"
+trap at_exit EXIT
+
+function at_exit() {
+	xelapsed "${xstart}"
+	return 0
+}
+
 if [ ! -f "${HOME}/.shellcheckrc" ]; then
 	echo "external-sources=true" >"${HOME}/.shellcheckrc"
 fi
@@ -39,13 +77,10 @@ RUN_STATICCHECK_ALL=""
 source "${SCRIPT_DIR}/../config.ini"
 
 TARGET_BUILD_LAUNCHER="cmd/onvifd/onvifd.go"
-TARGET_BUILD_GOFLAGS=(
-	"-gcflags=-N"
-	"-gcflags=-l")
-TARGET_BUILD_LDFLAGS=(
-	"-X main.currentVersion=custom"
-	"-X main.sysConfDir=/etc"
-	"-X main.localStateDir=/var")
+TARGET_BUILD_GOFLAGS=("-gcflags=-N" "-gcflags=-l")
+TARGET_BUILD_LDFLAGS=("-X main.currentVersion=custom")
+TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
+TARGET_BUILD_LDFLAGS+=("-X main.localStateDir=/var")
 
 TARGET_BUILD_FLAGS=("${TARGET_BUILD_GOFLAGS[@]}")
 if [ "${#TARGET_BUILD_LDFLAGS[@]}" != "0" ]; then
@@ -56,7 +91,7 @@ if [ "${TARGET_BUILD_LAUNCHER}" != "" ]; then
 fi
 
 TARGET_BIN_SOURCE="onvifd"
-TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
+TARGET_BIN_DESTIN="/var/tmp/onvifd_debug"
 TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
 TARGET_EXEC_ARGS="-settings /root/onvifd.settings"
 TARGET_LOGFILE="/var/tmp/${TARGET_BIN_NAME}.log"
@@ -175,7 +210,8 @@ FIRST_ECHO=y
 function xemit() {
 	local echo_flag="$1"
 	shift
-	local message="${DT}[${WRAPPER_TYPE}] $*"
+	local message
+	message="$(date '+%d/%m/%Y %H:%M:%S') [${WRAPPER_TYPE}] $*"
 	if [ "${FIRST_ECHO}" == "" ]; then
 		if [ "${echo_flag}" != "" ]; then
 			echo >&2 "${EP}${message}"
@@ -302,7 +338,8 @@ function xfunset() {
 	unset "OPTIONS_STACK[-1]"
 }
 
-function xsshexec() {
+function xssh() {
+	xdebug "Target exec: $*"
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
 		canfail="$1"
@@ -317,9 +354,28 @@ function xsshexec() {
 	fi
 }
 
-function xssh() {
-	xdebug "Target exec: $*"
-	xsshexec "$@"
+SSH_HOST_STDIO=""
+SSH_TARGET_STDIO=""
+SSH_TARGET_PREF=""
+SSH_TARGET_POST=""
+
+function xflash() {
+	if [[ "${SSH_HOST_STDIO}" != "" ]] || \
+		[[ "${SSH_TARGET_PREF}" != "" ]] || \
+		[[ "${SSH_TARGET_STDIO}" != "" ]] || \
+		[[ "${SSH_TARGET_POST}" != "" ]]; then
+
+		local code="${SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
+		local code="${code}ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} "
+		local code="${code}\"${SSH_TARGET_PREF}${SSH_TARGET_STDIO}${SSH_TARGET_POST}\""
+
+		xrun "${code}"
+
+		SSH_HOST_STDIO=""
+		SSH_TARGET_STDIO=""
+		SSH_TARGET_PREF=""
+		SSH_TARGET_POST=""
+	fi
 }
 
 function xkill() {
@@ -328,13 +384,9 @@ function xkill() {
 		canfail="$1"
 		shift
 	fi
-
-	local command=""
 	for procname in "$@"; do
-		command="${command} && (if pgrep ${procname} > /dev/null; then pkill ${procname}; fi)"
+		SSH_TARGET_PREF="${SSH_TARGET_PREF}(if pgrep ${procname} > /dev/null; then pkill ${procname}; fi); "
 	done
-	xdebug "Target kill: ${canfail} ${command:4}"
-	xsshexec "${canfail}" "${command:4}"
 }
 
 function xscp() {
@@ -365,13 +417,8 @@ function xscp() {
 
 	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
 		xecho "Failed. Terminating with status ${RUN_STATUS}"
-		exit ${RUN_STATUS}
+		exit "${RUN_STATUS}"
 	fi
-}
-
-function xconn() {
-	xdebug "Checking connectivity..."
-	xssh uname -a
 }
 
 # List of files to be deleted
@@ -386,14 +433,12 @@ function xfdel() {
 function xfdelv() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
-		local command=""
-		local cmdList=""
+		local elements=""
 		for filename in "${list[@]}"; do
-			command="${command} || (if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi)"
-			cmdList="${cmdList}, $(basename -- "$filename")" 
+			elements="${elements}, $(basename -- "$filename")" 
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi); "
 		done
-		xecho "Removing ${#list[@]} files: ${cmdList:2}"
-		xssh "${command:4}"
+		xecho "Removing ${#list[@]} files: ${elements:2}"
 	fi
 }
 
@@ -414,8 +459,15 @@ function xfcopy() {
 		list=("${COPY_FILES[@]}")
 	fi
 	if [ "${#list[@]}" != "0" ]; then
-		local command=""
-		local cmdList=""
+		local backup_prefix="/var/tmp/delve_scp_backup"
+		local backup_archive="/var/tmp/delve_scp_backup.tgz"
+		local backup_rname=""
+		local backup_subdir=""
+		rm -r "${backup_prefix}"
+		rm -rf "${backup_archive}"
+
+		local elements=""
+		local uploading=""
 		for pair in "${list[@]}"; do
 			IFS='|'
 			# shellcheck disable=SC2206
@@ -423,16 +475,33 @@ function xfcopy() {
 			unset IFS
 			local fileA="${files[0]}"
 			local fileB="${files[1]}"
+			elements="${elements}, $(basename -- "$fileB")"
 			if [[ "$fileB" =~ ^\:.* ]]; then
-				command="${command} || (if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi)"
+				SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
+				backup_rname="${fileB:1}"
+				backup_subdir=$(dirname "${backup_rname}")
+				mkdir -p "${backup_prefix}/${backup_subdir}"
+				if [[ -f "${PWD}/${fileA}" ]]; then
+					ln -s "${PWD}/${fileA}" "${backup_prefix}/${backup_rname}"
+				elif [[ -f "${fileA}" ]]; then
+					ln -s "${fileA}" "${backup_prefix}/${backup_rname}"
+				else
+					xecho "ERROR: Unable to find \"${fileA}\" for upload"
+					exit 1
+				fi
+				uploading="1"
 			fi
-			cmdList="${cmdList}, $(basename -- "$fileB")"
 		done
-		if [ "${command}" != "" ]; then
-			xecho "Uploading ${#list[@]} files: ${cmdList:2}"
-			xssh "${command:4}" # remove files before upload
+		if [ "${uploading}" != "" ]; then
+			xecho "Uploading ${#list[@]} files: ${elements:2}"
+			SSH_HOST_STDIO="tar -cf - -C \"${backup_prefix}\" --dereference \".\" | gzip -7 - | "
+			SSH_TARGET_STDIO="tar -xzf - -C \"/\""
+			#tar -cf - -C "${backup_prefix}" --dereference . | gzip -7 - | \
+			#	sshpass -p "${TARGET_PASS}" \
+			#	ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} \
+			#	"${command}tar -xzf - -C \"/\""
 		else
-			xecho "Downloading ${#list[@]} files: ${cmdList:2}"
+			xecho "Downloading ${#list[@]} files: ${elements:2}"
 		fi
 
 		for pair in "${list[@]}"; do
@@ -442,11 +511,13 @@ function xfcopy() {
 			unset IFS
 			local fileA="${files[0]}"
 			local fileB="${files[1]}"
-			xdebug "    ${fileB#":"}"
-			if [ "${canfail}" != "" ]; then
-				xscp "${CANFAIL}" "${fileA}" "${fileB}"
-			else
-				xscp "${fileA}" "${fileB}"
+			if [[ ! "$fileB" =~ ^\:.* ]]; then
+				xdebug "    ${fileB#":"}"
+				if [ "${canfail}" != "" ]; then
+					xscp "${CANFAIL}" "${fileA}" "${fileB}"
+				else
+					xscp "${fileA}" "${fileB}"
+				fi
 			fi
 		done
 	fi
@@ -464,16 +535,13 @@ function xsstop() {
 function xsstopv() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
-		local command=""
-		local cmdList=""
+		local elements=""
 		for service in "${list[@]}"; do
-			#command="${command} && systemctl mask \"${service}\" && systemctl stop \"${service}\""
-			command="${command} && systemctl stop \"${service}\""
-			cmdList="${cmdList}, ${service}"
+			elements="${elements}, ${service}"
+			#SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl mask \"${service}\"; "
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl stop \"${service}\"; "
 		done
-		xecho "Stopping ${#list[@]} services: ${cmdList:2}"
-		xdebug "Service stop: [CANFAIL] ${command:4}"
-		xssh "[CANFAIL]" "${command:4}"
+		xecho "Stopping ${#list[@]} services: ${elements:2}"
 	fi
 }
 
@@ -489,16 +557,13 @@ function xsstart() {
 function xsstartv() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
-		local command="systemctl daemon-reload"
-		local cmdList=""
+		local elements=""
 		for service in "${list[@]}"; do
-			#command="${command} && systemctl unmask \"${service}\" && systemctl start \"${service}\""
-			command="${command} && systemctl start \"${service}\""
-			cmdList="${cmdList}, ${service}"
+			elements="${elements}, ${service}"
+			#SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl unmask \"${service}\"; "
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl start \"${service}\"; "
 		done
-		xecho "Starting ${#list[@]} services: ${cmdList:2}"
-		xdebug "Service start: ${command}"
-		xssh "${command}"
+		xecho "Starting ${#list[@]} services: ${elements:2}"
 	fi
 }
 
@@ -514,11 +579,11 @@ function xpstop() {
 function xpstopv() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
-		local cmdList=""
+		local elements=""
 		for procname in "${list[@]}"; do
-			cmdList="${cmdList}, ${procname}"
+			elements="${elements}, ${procname}"
 		done
-		xecho "Terminating ${#list[@]} processes: ${cmdList:2}"
+		xecho "Terminating ${#list[@]} processes: ${elements:2}"
 		xkill "[CANFAIL]" "${list[@]}"
 	fi
 }
@@ -535,14 +600,12 @@ function xpstart() {
 function xpstartv() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
-		local cmdList=""
+		local elements=""
 		for procname in "${list[@]}"; do
-			cmdList="${cmdList}, ${procname}"
+			elements="${elements}, ${procname}"
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}${procname}; "
 		done
-		xecho "Starting ${#list[@]} processes: ${cmdList:2}"
-		for process in "${list[@]}"; do
-			xssh "${process}"
-		done
+		xecho "Starting ${#list[@]} processes: ${elements:2}"
 	fi
 }
 
