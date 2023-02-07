@@ -145,8 +145,8 @@ def performRequest():
 	except requests.exceptions.RequestException as e:
 		raise SystemExit(e)
 
-	print(f'--- status_code: {response.status_code}; text: {response.text}')
-	if response.ok:
+	print(f'--- status_code: {response.status_code}; text: \'{response.text}\'')
+	if response.ok and response.text != '':
 		response_json = json.loads(response.text)
 		print(f'--- id: {request_id}; method: {json_method}; response: {json.dumps(response_json, indent=4)}')
 
