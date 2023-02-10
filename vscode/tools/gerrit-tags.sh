@@ -17,16 +17,24 @@ gerrit_email="me"
 # include patchets yes/no
 gerrit_patchsets="no"
 
-function debug() {
-    #echo "dd debug: $*"
-    return 0
-}
-
 nl=$'\n'
 tag_prefix="T/"
 tag_postfix=""
 branch_prefix="B/"
 branch_postfix=""
+
+red=$(printf "\e[31m")
+green=$(printf "\e[32m")
+yellow=$(printf "\e[33m")
+blue=$(printf "\e[34m")
+gray=$(printf "\e[90m")
+nc=$(printf "\e[0m")
+cregexp="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
+
+function debug() {
+    #echo "${green}debug:${nc} ${*}"
+    return 0
+}
 
 conf_email=""
 conf_file="/var/tmp/gerrit-conf.txt"
@@ -40,16 +48,32 @@ for conf_line in "${conf_text[@]}"; do
     fi
 done
 
-red=$(printf "\e[31m")
-green=$(printf "\e[32m")
-yellow=$(printf "\e[33m")
-blue=$(printf "\e[34m")
-nc=$(printf "\e[0m")
-cregexp="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
+message_width="65"
+message_ruler=""
 
-#                 -- ---------- --sha1-- --tag-- 01234567890123456789012345678901234567890123456789 -"
-table_line_filld="-----------------------------------------------------------------------------------"
-table_line_blank="                                                                                  -"
+count="0"
+while [ "${count}" -lt "${message_width}" ]; do
+    digit=$((count % 10))
+    count=$((count + 1))
+    message_ruler="${message_ruler}$(printf "%d" "${digit}")"
+done
+
+message_head_prefix="${gray}--${nc} ---------- ${green}--sha1-- ${blue}--tag--${nc} ${message_ruler}"
+
+message_head_size=$(echo "${message_head_prefix}" | sed -r "${cregexp}")
+message_head_size="${#message_head_size}"
+table_line_xfill=""
+table_line_blank=""
+count="0"
+while [ "${count}" -lt "${message_head_size}" ]; do
+    count=$((count + 1))
+    table_line_xfill="${table_line_xfill}-"
+    table_line_blank="${table_line_blank} "
+done
+
+message_head="${message_head_prefix} -"
+table_line_xfill="${table_line_xfill}--"
+table_line_blank="${table_line_blank} -"
 
 function mssg() {
     plain=$(echo "${1}" | sed -r "${cregexp}")
@@ -58,12 +82,11 @@ function mssg() {
 
 function mssg_fill() {
     plain=$(echo "${1}" | sed -r "${cregexp}")
-    echo "${1}${table_line_filld:${#plain}}"
+    echo "${1}${table_line_xfill:${#plain}}"
 }
 
 function mssg_head() {
-    #mssg_fill "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} --description--"
-    mssg      "-- ---------- ${green}--sha1-- ${blue}--tag--${nc} 01234567890123456789012345678901234567890123456789"
+    mssg "${message_head}"
 }
 
 if ! which "git-gerrit" &> /dev/null; then
@@ -77,7 +100,7 @@ current_revision=$(git rev-parse HEAD)
 current_branch=$(git rev-parse --abbrev-ref HEAD)
 restore_branch=""
 restore_message=""
-mssg "-- fetch and pull from ${blue}${current_branch}${nc} to ${blue}origin/master${nc} "
+mssg_fill "${gray}--${nc} fetch and pull from ${blue}${current_branch}${nc} to ${blue}origin/master${nc} "
 git fetch --all --quiet
 git checkout master --quiet
 
@@ -85,7 +108,7 @@ tags_file="/var/tmp/gerrit-tags.txt"
 git tag > "${tags_file}"
 tags_text=()
 readarray -t tags_text < "${tags_file}"
-debug "-- removing ${#tags_text[@]} tags"
+debug "removing ${#tags_text[@]} tags"
 for tags_line in "${tags_text[@]}"; do
     if [[ "${tags_line}" =~ ^"${tag_prefix}"[[:digit:]]+.*"${tag_postfix}"$ ]]; then
         git tag -d "${tags_line}" > /dev/null
@@ -96,7 +119,7 @@ branches_file="/var/tmp/gerrit-branches.txt"
 git branch --format "%(refname:short)" > "${branches_file}"
 branches_text=()
 readarray -t branches_text < "${branches_file}"
-debug "-- removing ${#branches_text[@]} branches"
+debug "removing ${#branches_text[@]} branches"
 for branches_line in "${branches_text[@]}"; do
     if [[ "${branches_line}" =~ ^"${branch_prefix}"[[:digit:]]+.*"${branch_postfix}"$ ]]; then
         git branch -D "${branches_line}" > /dev/null
@@ -118,8 +141,15 @@ elif [[ "${gerrit_email##*@}" == "${gerrit_email}" ]]; then
     gerrit_email="${gerrit_email}@${conf_email##*@}"
 fi
 
+gerrit_email_filter=""
+if [[ "${gerrit_email}" != "" ]]; then
+    gerrit_email_filter="author:'${gerrit_email}'"
+fi
+
+
 changes_file="/var/tmp/gerrit-changes.txt"
-git gerrit changes "${gerrit_filter}" > "${changes_file}"
+debug "run: git gerrit changes \"${gerrit_filter} ${gerrit_email_filter}\" > \"${changes_file}\""
+git gerrit changes "${gerrit_filter} ${gerrit_email_filter}" > "${changes_file}"
 changes_text=()
 readarray -t changes_text < "${changes_file}"
 debug "changes_text count:${#changes_text[@]}"
@@ -255,7 +285,12 @@ for changes_line in "${changes_text[@]}"; do
                         header_emit="1"
                         mssg_head
                     fi
-                    mssg "${count_str} adding tag ${green}${revision:0:8} ${blue}${tag_name}${nc} ${subject} "
+                    subject_text="${subject}"
+                    subject_size="${#subject}"
+                    if [[ "${subject_size}" -gt "${message_width}" ]]; then
+                        subject_text="${red}${subject}${nc} (${subject_size}/${message_width})"
+                    fi
+                    mssg "${gray}${count_str}${nc} adding tag ${green}${revision:0:8} ${blue}${tag_name}${nc} ${subject_text} "
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
                     git branch "${branch_name}" "${tag_name}"
@@ -263,7 +298,7 @@ for changes_line in "${changes_text[@]}"; do
                     if [[ "${current_branch}" == "${branch_name}" ]] || \
                         [[ "${current_revision}" == "${revision}" ]]; then
                         restore_branch="${branch_name}"
-                        restore_message="${subject}"
+                        restore_message="${subject_text}"
                     fi
                 fi
             fi
@@ -281,6 +316,6 @@ done
 
 if [[ "${restore_branch}" != "" ]]; then
     mssg_head
-    mssg "-- checkout to restore ${blue}${restore_branch}${nc} ${restore_message} "
+    mssg_fill "${gray}--${nc} checkout to restore ${blue}${restore_branch}${nc} ${restore_message} "
     git checkout "${restore_branch}" --quiet
 fi
