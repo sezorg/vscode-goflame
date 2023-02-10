@@ -91,7 +91,7 @@ if [ "${TARGET_BUILD_LAUNCHER}" != "" ]; then
 fi
 
 TARGET_BIN_SOURCE="onvifd"
-TARGET_BIN_DESTIN="/var/tmp/onvifd_debug"
+TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
 TARGET_EXEC_ARGS="-settings /root/onvifd.settings"
 TARGET_LOGFILE="/var/tmp/${TARGET_BIN_NAME}.log"

@@ -45,12 +45,19 @@ while :; do
 	echo "Starting Delve headless server loop in DAP mode. To stop use: \$ dstop"
 	#echo "Ignore pattern: ${PRINT_PATTERNS}"
 
-	dlv_binary=$(which dlv)
+	function safe() {
+		set +e
+		eval "$1"
+		set -e
+	}
+
+	dlv_binary=""
+	safe dlv_binary="$(which dlv)"
 	if [[ "${dlv_binary}" == "" ]]; then
-		echo "Unable to locate Delve/DLV binary. Waiting for deploy."
+		echo "Unable to locate Delve/DLV binary. Waiting for deploy..."
 		while [ "${dlv_binary}" == "" ]; do
 			sleep 1
-			dlv_binary=$(which dlv)
+			safe dlv_binary="$(which dlv)"
 		done
 	fi
 

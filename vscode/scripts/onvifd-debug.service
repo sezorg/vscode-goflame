@@ -4,7 +4,7 @@ After=postgresql.service network-online.target mediad.service
 Wants=network-online.target
 
 [Service]
-ExecStart=/var/tmp/onvifd_debug -settings "/root/onvifd.settings"
+ExecStart=/usr/bin/onvifd_debug -settings "/root/onvifd.settings"
 Restart=always
 
 [Install]

@@ -36,7 +36,7 @@
             "port": "${input:TARGET_IPPORT}",
             "host": "${input:TARGET_IPADDR}", 
             "mode": "exec",
-            "program": "/var/tmp/onvifd_debug",
+            "program": "/usr/bin/onvifd_debug",
             "args": [
                 "-settings",
                 "/root/onvifd.settings"
@@ -53,7 +53,7 @@
             "port": "${input:TARGET_IPPORT}",
             "host": "${input:TARGET_IPADDR}",
             "mode": "exec",
-            "program": "/var/tmp/onvifd_debug",
+            "program": "/usr/bin/onvifd_debug",
             "args": [
                 "-settings",
                 "/root/onvifd.settings"
