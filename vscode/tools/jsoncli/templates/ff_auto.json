@@ -1,0 +1,18 @@
+imaging/SetImagingSettings
+{
+	"VideoSourceToken":"src",
+	"ImagingSettings": {
+		"WhiteBalance": {
+			"Mode": "AUTO",
+		},
+		"Extension": {
+			"Extension": {
+				"Extension": {
+					"Extension": {
+						"FlickerFreeMode": "AUTO"
+					}
+				}
+			}
+		}
+	}
+}
