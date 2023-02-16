@@ -126,6 +126,23 @@ function ss() {
 	_set_konsole_title
 }
 
+function sf() {
+	local user="root"
+	local pass="root"
+	local ip_address
+	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address parameter expected"); then
+		return 1
+	fi
+	if [[ "${1}" == "" ]]; then
+		echo "Mounting FS of ${ip_address}"
+	fi
+	local mount_point="${HOME}/Devices/${ip_address}"
+	mkdir -p "${mount_point}"
+	fusermount -u "${mount_point}"
+	sshfs "${user}@${ip_address}:/" "$mount_point" -o ssh_command="sshpass -p "$pass" ssh"
+	echo "Done. Mounted to: ${mount_point}"
+}
+
 function pi() {
 	local device_path
 	if ! device_path=$(_resolve_variable "${1}" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"); then
