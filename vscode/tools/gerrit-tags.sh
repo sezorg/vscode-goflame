@@ -162,6 +162,7 @@ subject=""
 email=""
 username=""
 url=""
+wip=""
 patch_num=""
 curr_num=""
 revision=""
@@ -176,6 +177,7 @@ for changes_line in "${changes_text[@]}"; do
         email=""
         username=""
         url=""
+        wip=""
         patch_num=""
         curr_num=""
         revision=""
@@ -203,8 +205,12 @@ for changes_line in "${changes_text[@]}"; do
             debug "username: \"${username}\""
         fi
         if [[ "${changes_line}" =~ ^"  url: "* ]]; then
-            url="${changes_line:14}"
+            url="${changes_line:7}"
             debug "url: \"${url}\""
+        fi
+        if [[ "${changes_line}" =~ ^"  wip: "* ]]; then
+            wip="${changes_line:7}"
+            debug "wip: \"${wip}\""
         fi
         if [[ "${changes_line}" =~ ^"  currentPatchSet:"* ]]; then
             mode="currentPatchSet"
@@ -287,9 +293,19 @@ for changes_line in "${changes_text[@]}"; do
                     fi
                     subject_text="${subject}"
                     subject_size="${#subject}"
-                    if [[ "${subject_size}" -gt "${message_width}" ]]; then
-                        subject_text="${red}${subject}${nc} (${subject_size}/${message_width})"
+                    subject_wip=""
+                    subject_lim=""
+                    subject_color=""
+                    if [[ "${wip}" == "true" ]]; then
+                        subject_color="${yellow}"
+                        subject_wip=" [WIP]"
                     fi
+                    if [[ "${subject_size}" -gt "${message_width}" ]]; then
+                        subject_lim=" (${subject_size}/${message_width})"
+                        subject_color="${red}"
+
+                    fi
+                    subject_text="${subject_color}${subject_text}${nc}${subject_wip}${subject_lim}"
                     mssg "${gray}${count_str}${nc} adding tag ${green}${revision:0:8} ${blue}${tag_name}${nc} ${subject_text} "
                     debug "git tag \"${tag_name}\" \"${revision}\" -m \"${tag_mssg}\""
                     git tag "${tag_name}" "${revision}" -m "${tag_mssg}" > /dev/null 2>&1
