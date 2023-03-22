@@ -137,7 +137,7 @@ GO111MODULE="on"
 GOWORK="off"
 GOVCS="*:all"
 GOARCH="arm64"
-GOFLAGS="-mod=vendor"
+#GOFLAGS="-mod=vendor"
 GOFLAGS="-mod=mod"
 
 CGO_ENABLED="1"
@@ -475,27 +475,34 @@ function xfcopy() {
 			unset IFS
 			local fileA="${files[0]}"
 			local fileB="${files[1]}"
-			elements="${elements}, $(basename -- "$fileB")"
 			if [[ "$fileB" =~ ^\:.* ]]; then
+				uploading="1"
 				SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
 				backup_rname="${fileB:1}"
 				backup_subdir=$(dirname "${backup_rname}")
 				mkdir -p "${backup_prefix}/${backup_subdir}"
+				local prefA="${fileA:0:1}"
+				if [[ "${prefA}" == "?" ]]; then
+					fileA="${fileA:1}"
+				fi
 				if [[ -f "${PWD}/${fileA}" ]]; then
 					ln -s "${PWD}/${fileA}" "${backup_prefix}/${backup_rname}"
 				elif [[ -f "${fileA}" ]]; then
 					ln -s "${fileA}" "${backup_prefix}/${backup_rname}"
+				elif [[ "${prefA}" == "?" ]]; then
+					xecho "File \"${fileA}\" does not exists, skipping"
+					continue
 				else
 					xecho "ERROR: Unable to find \"${fileA}\" for upload"
 					exit 1
 				fi
-				uploading="1"
 			fi
+			elements="${elements}, $(basename -- "$fileB")"
 		done
 		if [ "${uploading}" != "" ]; then
 			xecho "Uploading ${#list[@]} files: ${elements:2}"
 			SSH_HOST_STDIO="tar -cf - -C \"${backup_prefix}\" --dereference \".\" | gzip -7 - | "
-			SSH_TARGET_STDIO="tar -xzf - -C \"/\"; "
+			SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
 			#tar -cf - -C "${backup_prefix}" --dereference . | gzip -7 - | \
 			#	sshpass -p "${TARGET_PASS}" \
 			#	ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} \
@@ -654,6 +661,12 @@ function xbuild() {
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
 	xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
+	
+	#env
+	#xecho "BUILDROOT_DIR=$BUILDROOT_DIR"
+	#xecho "GOPATH=$GOPATH"
+	#xecho "GOROOT=$GOROOT"
+	#xecho "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
 	xexec "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
 	if [ "${EXEC_STATUS}" != "0" ]; then
 		xexit

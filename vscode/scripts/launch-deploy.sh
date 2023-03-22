@@ -38,12 +38,10 @@ COPY_FILES=(
 	".vscode/scripts/dlv-loop.sh|:/usr/bin/dloop"
 	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
-	"init/onvifd.conf|:/etc/onvifd.conf"
-	"${BUILDROOT_DIR}/output/target/usr/sbin/nginx|:/usr/sbin/nginx"
-	"init/ipcam.tmpl|:/var/lib/onvifd/ipcam.tmpl"
-	"init/users.digest|:/var/lib/onvifd/users.digest"
-
-
+#	"init/onvifd.conf|:/etc/onvifd.conf"
+#	"${BUILDROOT_DIR}/output/target/usr/sbin/nginx|:/usr/sbin/nginx"
+#	"init/ipcam.tmpl|:/var/lib/onvifd/ipcam.tmpl"
+	"?init/users.digest|:/var/lib/onvifd/users.digest"
 )
 
 xunreferenced_variables \

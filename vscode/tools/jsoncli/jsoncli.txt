@@ -1,20 +1,20 @@
 
-./jsonrq.py '10.113.11.163/GetVideoSources'
-./jsonrq.py -v '10.113.11.163/GetImagingSettings{VideoSourceToken:"src"}'
+./jsonrq.py '10.86.0.5/GetVideoSources'
+./jsonrq.py -v '10.86.0.5/GetImagingSettings{VideoSourceToken:"src"}'
 
 ./jsonrq.py -v '10.113.11.219:8899/GetSystemDateAndTime'
 ./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{}, Time:{}}}'
 ./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{Year:2022,Month:12,Day:1}, Time:{}}}'
 ./jsonrq.py -v '10.113.11.219:8899/SetSystemDateAndTime{DateTimeType:"NTP", UTCDateTime:{Date:{Year:2022,Month:12,Day:1}, Time:{}}}'
 
-./jsonrq.py '10.113.11.163/GetSystemDateAndTime'
-./jsonrq.py '10.113.11.163/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{Year:2022,Month:12,Day:1},Time:{}}}'
+./jsonrq.py '10.86.0.5/GetSystemDateAndTime'
+./jsonrq.py '10.86.0.5/SetSystemDateAndTime{DateTimeType:"Manual", UTCDateTime:{Date:{Year:2022,Month:12,Day:1},Time:{}}}'
 
 d.Year, d.Month, d.Day, t.Hour, t.Minute, t.Second
 
 
 
-./jsonrq.py '10.113.11.163/GetImagingSettings{VideoSourceToken:"src"}' -v
+./jsonrq.py '10.86.0.5/GetImagingSettings{VideoSourceToken:"src"}' -v
 ./jsonrq.py '10.86.0.5/GetImagingSettings{VideoSourceToken:"src"}' -v
 ./jsonrq.py '10.86.0.5/imaging/GetOptions{VideoSourceToken:"src"}' -v
 ./jsonrq.py '10.86.0.5/imaging/SetImagingSettings{VideoSourceToken:"src"}' -v

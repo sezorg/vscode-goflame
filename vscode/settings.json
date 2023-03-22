@@ -5,5 +5,7 @@
     },
     "go.delveConfig": {
         "debugAdapter": "legacy",
-    }
+    },
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": ["--fast"],
 }

@@ -16,6 +16,7 @@ function gh() {
 	echo "gp: git push origin [HEAD:refs/for/master]"
 	echo "gt: gerrit-tags [me/all/username/user@mail]"
 	echo "ss: ssh root-user@[ip_address]"
+	echo "sf: sshfs root-user@[ip_address]"
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	echo "jc: jsoncli.py ...arguments"
 	return 0
@@ -148,7 +149,7 @@ function pi() {
 	if ! device_path=$(_resolve_variable "${1}" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"); then
 		return 1
 	fi
-	if [[ ! -f "${device_path}" ]]; then
+	if ! sh -c ": >${device_path}" >/dev/null 2>/dev/null; then
 		_error "TTY device ${device_path} is not avaliable"
 		return 1
 	fi
