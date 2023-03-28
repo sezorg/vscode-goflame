@@ -16,12 +16,12 @@ xunreferenced_variables "${WRAPPER_TYPE}"
 SERVICES_STOP=(
 	"onvifd" 
 #	"onvifd-debug"
-	"nginx" 
+#	"nginx" 
 )
 
 # List of services to be started
 SERVICES_START=(
-	"nginx"
+#	"nginx"
 )
 
 # List of process names to be stopped
@@ -29,7 +29,7 @@ PROCESSES_STOP=("${TARGET_BIN_SOURCE}" "${TARGET_BIN_NAME}")
 
 # List of directories to be created
 DIRECTORIES_CREATE=(
-	"/tmp/nginx"
+#	"/tmp/nginx"
 )
 
 
@@ -52,7 +52,8 @@ xunreferenced_variables \
 xval XECHO_ENABLED=y
 clear
 xbuild
-xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
+#xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
+xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
 xsstop
 xpstop
 xmkdirs
