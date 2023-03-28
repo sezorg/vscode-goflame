@@ -1,4 +1,4 @@
-device_service/SendAuxiliaryCommand
+onvif/device_service/SendAuxiliaryCommand
 {
-  "AuxiliaryCommand": "tt:IRLamp|CurrentState",
+  "AuxiliaryCommand": "tt:IRLamp|CurrentMode",
 }
