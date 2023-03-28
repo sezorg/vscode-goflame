@@ -123,7 +123,8 @@ function ss() {
 		echo "Connecting to ${ip_address}"
 	fi
 	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
-	sshpass -p "${pass}" ssh -o StrictHostKeyChecking=no "${user}@${ip_address}"
+	sshpass -p "${pass}" ssh 2> >( egrep >&2 -v '^Warning: Permanently added') \
+		-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${user}@${ip_address}"
 	_set_konsole_title
 }
 
