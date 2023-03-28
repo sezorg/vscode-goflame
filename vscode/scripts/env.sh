@@ -649,12 +649,12 @@ function xbuild() {
 		xecho "Go vet finished with status ${EXEC_STATUS}"
 	fi
 	if [ "${RUN_STATICCHECK}" == "yes" ]; then
-		local flags=""
+		local flags=()
 		if [ "${RUN_STATICCHECK_ALL}" == "yes" ]; then
-			flags="-checks=all"
+			flags+=("-checks=all")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${LOCAL_STATICCHECK}" "${flags}" "./..."
+		xexec "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
 		if [ "${EXEC_STDOUT}" != "" ]; then
 			xecho "${EXEC_STDOUT}"
 		fi
@@ -667,7 +667,10 @@ function xbuild() {
 	#xecho "GOPATH=$GOPATH"
 	#xecho "GOROOT=$GOROOT"
 	#xecho "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
-	xexec "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
+	local flags=()
+	flags+=("build")
+	#flags+=("-race")
+	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [ "${EXEC_STATUS}" != "0" ]; then
 		xexit
 	else
