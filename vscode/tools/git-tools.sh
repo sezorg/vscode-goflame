@@ -124,7 +124,8 @@ function ss() {
 	fi
 	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
 	sshpass -p "${pass}" ssh 2> >( egrep >&2 -v '^Warning: Permanently added') \
-		-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null "${user}@${ip_address}"
+		-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
+		-o ConnectTimeout=1 -o ConnectionAttempts=1 "${user}@${ip_address}"
 	_set_konsole_title
 }
 
