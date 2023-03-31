@@ -1,0 +1,4 @@
+onvif/device_service/SendAuxiliaryCommand
+{
+  "AuxiliaryCommand": "tt:IRLamp|Bad",
+}

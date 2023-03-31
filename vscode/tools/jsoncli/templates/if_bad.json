@@ -1,0 +1,15 @@
+onvif/imaging/SetImagingSettings
+{
+  "VideoSourceToken": "(VIDEO_SOURCE)",
+  "ImagingSettings": {
+    "Brightness": 50,
+    "ColorSaturation": 50,
+    "Contrast": 60,
+    "IrCutFilter": "BAD",
+    "Sharpness": 0,
+    "WhiteBalance": {
+      "Mode": "AUTO",
+    },
+  },
+  "ForcePersistence": false
+}
