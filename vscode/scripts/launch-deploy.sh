@@ -16,12 +16,12 @@ xunreferenced_variables "${WRAPPER_TYPE}"
 SERVICES_STOP=(
 	"onvifd" 
 #	"onvifd-debug"
-#	"nginx" 
+	"nginx" 
 )
 
 # List of services to be started
 SERVICES_START=(
-#	"nginx"
+	"nginx"
 )
 
 # List of process names to be stopped
@@ -40,7 +40,8 @@ COPY_FILES=(
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
 #	"init/onvifd.conf|:/etc/onvifd.conf"
 #	"${BUILDROOT_DIR}/output/target/usr/sbin/nginx|:/usr/sbin/nginx"
-#	"init/ipcam.tmpl|:/var/lib/onvifd/ipcam.tmpl"
+	"init/ipcam.conf|:/etc/nginx/ipcam.conf"
+	"init/ipcam.tmpl|:/var/lib/onvifd/ipcam.tmpl"
 	"?init/users.digest|:/var/lib/onvifd/users.digest"
 )
 
