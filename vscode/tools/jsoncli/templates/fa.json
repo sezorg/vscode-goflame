@@ -15,7 +15,7 @@ onvif/imaging/SetImagingSettings
         "IrCutFilterAutoAdjustment": [
           {
             "BoundaryType": "Common",
-            "BoundaryOffset": 0,
+            "BoundaryOffset": 0.5,
             "ResponseTime": "PT5S"
           }
         ]
