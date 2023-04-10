@@ -129,6 +129,11 @@ function ss() {
 	_set_konsole_title
 }
 
+function run() {
+	echo "-- $@"
+	"$@"
+}
+
 function sf() {
 	local user="root"
 	local pass="root"
@@ -141,9 +146,14 @@ function sf() {
 	fi
 	local mount_point="${HOME}/Devices/${ip_address}"
 	mkdir -p "${mount_point}"
-	fusermount -u "${mount_point}"
-	sshfs "${user}@${ip_address}:/" "$mount_point" -o ssh_command="sshpass -p "$pass" ssh"
+	fusermount -u "${mount_point}" > /dev/null 2>&1
+	echo $pass | sshfs -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${user}@${ip_address}:/" "$mount_point" -o workaround=rename -o password_stdin
 	echo "Done. Mounted to: ${mount_point}"
+	if [ -x "$(command -v dolphin)" ]; then
+		dolphin "${mount_point}"
+	elif [ -x "$(command -v nautilus)" ]; then
+		nautilus "${mount_point}"
+	fi
 }
 
 function pi() {
