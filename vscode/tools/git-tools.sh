@@ -8,8 +8,9 @@
 #set -euo pipefail
 
 function gh() {
-	echo "gr: git rebase --interactive HEAD~\${1}"
-	echo "gc: git rebase --continue"
+	echo "gri: git rebase --interactive HEAD~\${1}"
+	echo "grc: git rebase --continue"
+	echo "gpc: git cherry-pick --continue"
 	echo "gx: git rebase --abort"
 	echo "gs: git status"
 	echo "ga: git add -u"
@@ -19,15 +20,20 @@ function gh() {
 	echo "sf: sshfs root-user@[ip_address]"
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	echo "jc: jsoncli.py ...arguments"
+	echo "xcd: cd [directory]"
 	return 0
 }
 
-function gr() {
+function gri() {
 	git rebase --interactive "HEAD~${1}"
 }
 
-function gc() {
+function grc() {
 	git rebase --continue
+}
+
+function gpc() {
+	git cherry-pick --continue
 }
 
 function gx() {
@@ -66,6 +72,16 @@ function _warning() {
 		>&2 echo "WARNING: ${1}"
 	fi
 	return 0
+}
+
+function _readvar() {
+    # call like this: readvar filename variable
+    while read -r line
+    do
+        # you could do some validation here
+        echo "$line"
+    done < "$1"
+    echo ${!2}
 }
 
 function _resolve_variable() {
@@ -171,5 +187,14 @@ function pi() {
 }
 
 function jc() {
-	"jsoncli/jsoncli.sh" $@
+	"./jsoncli/jsoncli.sh" $@
+}
+
+function xcd() {
+	local destin
+	if ! destin=$(_resolve_variable "${1}" "" "last_destin" "Destination directory expected"); then
+		return 1
+	fi
+	echo "Changing directory: $destin"
+	cd "$destin"
 }
