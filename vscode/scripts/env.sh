@@ -56,6 +56,16 @@ function xunreferenced_variables() {
 	return 0
 }
 
+SSH_FLAGS=(-o StrictHostKeyChecking=no 
+	-o UserKnownHostsFile=/dev/null 
+	-o ConnectTimeout=5 
+	-o ConnectionAttempts=1)
+CACHE_DIR="/var/tmp/delve_scp"
+
+if [ ! -d "${CACHE_DIR}" ]; then
+	mkdir -p "${CACHE_DIR}"
+fi
+
 XECHO_ENABLED=
 XDEBUG_ENABLED=
 DT="$(date '+%d/%m/%Y %H:%M:%S') "
@@ -76,8 +86,11 @@ RUN_STATICCHECK_ALL=""
 
 source "${SCRIPT_DIR}/../config.ini"
 
+BUILDROOT_HOST_DIR="${BUILDROOT_DIR}/output/host"
+BUILDROOT_TARGET_DIR="${BUILDROOT_DIR}/output/target"
+
 TARGET_BUILD_LAUNCHER="cmd/onvifd/onvifd.go"
-TARGET_BUILD_GOFLAGS=("-gcflags=-N" "-gcflags=-l")
+TARGET_BUILD_GOFLAGS=("-gcflags=\"-N -l\"")
 TARGET_BUILD_LDFLAGS=("-X main.currentVersion=custom")
 TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
 TARGET_BUILD_LDFLAGS+=("-X main.localStateDir=/var")
@@ -104,13 +117,15 @@ if [ "$WRAPPER_TYPE" == "" ]; then
 	WRAPPER_TYPE="unknown-wrapper"
 fi
 
-ORIGINAL_GOBIN="${BUILDROOT_DIR}/output/host/bin/go"
+ORIGINAL_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
 
 LOCAL_GOPATH="$(go env GOPATH)"
 LOCAL_DLVBIN="$(which dlv)"
 LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
 
 xunreferenced_variables \
+	"${BUILDROOT_HOST_DIR}" \
+	"${BUILDROOT_TARGET_DIR}" \
 	"${TARGET_BIN_SOURCE}" \
 	"${TARGET_BIN_DESTIN}" \
 	"${TARGET_BIN_NAME}" \
@@ -126,11 +141,11 @@ xunreferenced_variables \
 DLVBIN="${SCRIPT_DIR}/dlv.sh"
 GOBIN="${SCRIPT_DIR}/go.sh"
 
-GOROOT="${BUILDROOT_DIR}/output/host/lib/go"
-GOPATH="${BUILDROOT_DIR}/output/host/usr/share/go-path"
-GOMODCACHE="${BUILDROOT_DIR}/output/host/usr/share/go-path/pkg/mod"
-GOTOOLDIR="${BUILDROOT_DIR}/output/host/lib/go/pkg/tool/linux_arm64"
-GOCACHE="${BUILDROOT_DIR}/output/host/usr/share/go-cache"
+GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
+GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
+GOMODCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-path/pkg/mod"
+GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_arm64"
+GOCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-cache"
 
 GOPROXY="direct"
 GO111MODULE="on"
@@ -144,8 +159,8 @@ CGO_ENABLED="1"
 CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
 CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
 CGO_LDFLAGS=""
-CC="${BUILDROOT_DIR}/output/host/bin/aarch64-buildroot-linux-gnu-gcc"
-CXX="${BUILDROOT_DIR}/output/host/bin/aarch64-buildroot-linux-gnu-g++"
+CC="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-gcc"
+CXX="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-g++"
 
 GOLANG_EXPORTS=(
 	"DLVBIN"
@@ -346,7 +361,7 @@ function xssh() {
 		shift
 	fi
 
-	xrun sshpass -p "${TARGET_PASS}" ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} "\"$*\""
+	xrun sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
 
 	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
 		xecho "Failed. Terminating with status ${RUN_STATUS}"
@@ -355,6 +370,7 @@ function xssh() {
 }
 
 SSH_HOST_STDIO=""
+SSH_HOST_POST=""
 SSH_TARGET_STDIO=""
 SSH_TARGET_PREF=""
 SSH_TARGET_POST=""
@@ -366,10 +382,11 @@ function xflash() {
 		[[ "${SSH_TARGET_POST}" != "" ]]; then
 
 		local code="${SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
-		local code="${code}ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} "
+		local code="${code}ssh ${SSH_FLAGS[*]} ${TARGET_USER}@${TARGET_IPADDR} "
 		local code="${code}\"${SSH_TARGET_PREF}${SSH_TARGET_STDIO}${SSH_TARGET_POST}\""
 
 		xrun "${code}"
+		xrun "${SSH_HOST_POST}"
 
 		SSH_HOST_STDIO=""
 		SSH_TARGET_STDIO=""
@@ -413,7 +430,7 @@ function xscp() {
 	fi
 
 	xdebug "Target copy: ${canfail} ${one} -> ${two}"
-	sshpass -p "${TARGET_PASS}" scp -C -o StrictHostKeyChecking=no "${one}" "${two}"
+	sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
 
 	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
 		xecho "Failed. Terminating with status ${RUN_STATUS}"
@@ -442,8 +459,18 @@ function xfdelv() {
 	fi
 }
 
+function cache_put() {
+	echo "$2" > "${CACHE_DIR}/cachedb/${1}"
+}
+
+function cache_get() {
+	cat "${CACHE_DIR}/cachedb/${1}" 2>/dev/null
+}
+
+
 # List of files to be copied, "source|target"
 COPY_FILES=()
+COPY_CACHE=y
 
 # shellcheck disable=SC2120
 function xfcopy() {
@@ -459,14 +486,17 @@ function xfcopy() {
 		list=("${COPY_FILES[@]}")
 	fi
 	if [ "${#list[@]}" != "0" ]; then
-		local backup_prefix="/var/tmp/delve_scp_backup"
-		local backup_archive="/var/tmp/delve_scp_backup.tgz"
+		local backup_source="${CACHE_DIR}/data"
 		local backup_rname=""
 		local backup_subdir=""
-		rm -r "${backup_prefix}"
-		rm -rf "${backup_archive}"
+		rm -r "${backup_source}"
+		if [ "${COPY_CACHE}" != "y" ]; then
+			rm -r "${CACHE_DIR}/cachedb"
+		fi
+		mkdir -p "${CACHE_DIR}/cachedb"
 
 		local elements=""
+		local count="0"
 		local uploading=""
 		for pair in "${list[@]}"; do
 			IFS='|'
@@ -477,18 +507,17 @@ function xfcopy() {
 			local fileB="${files[1]}"
 			if [[ "$fileB" =~ ^\:.* ]]; then
 				uploading="1"
-				SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
 				backup_rname="${fileB:1}"
 				backup_subdir=$(dirname "${backup_rname}")
-				mkdir -p "${backup_prefix}/${backup_subdir}"
+				mkdir -p "${backup_source}/${backup_subdir}"
 				local prefA="${fileA:0:1}"
 				if [[ "${prefA}" == "?" ]]; then
 					fileA="${fileA:1}"
 				fi
 				if [[ -f "${PWD}/${fileA}" ]]; then
-					ln -s "${PWD}/${fileA}" "${backup_prefix}/${backup_rname}"
+					fileA="${PWD}/${fileA}"
 				elif [[ -f "${fileA}" ]]; then
-					ln -s "${fileA}" "${backup_prefix}/${backup_rname}"
+					:
 				elif [[ "${prefA}" == "?" ]]; then
 					xecho "File \"${fileA}\" does not exists, skipping"
 					continue
@@ -496,16 +525,40 @@ function xfcopy() {
 					xecho "ERROR: Unable to find \"${fileA}\" for upload"
 					exit 1
 				fi
+
+				local nameSum
+				local fileSum
+				nameSum=$(md5sum <<< "${fileA}")
+				nameSum="${nameSum:0:32}"
+				fileSum=$(md5sum "${fileA}")
+				fileSum="${fileSum:0:32}"
+
+				#xecho "${nameSum} :: ${fileSum}"
+				if [ "${COPY_CACHE}" != "y" ] || [ "$(cache_get "${nameSum}")"  != "${fileSum}" ]; then
+					ln -s "${fileA}" "${backup_source}/${backup_rname}"	
+					SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
+					SSH_HOST_POST="${SSH_HOST_POST}(cache_put \"${nameSum}\" \"${fileSum}\"); "
+				else 
+					#xecho "Skipping ${fileA} :: ${nameSum} :: ${fileSum}"
+					fileB=""
+				fi
+
+				#ln -s "${fileA}" "${backup_source}/${backup_rname}"
 			fi
-			elements="${elements}, $(basename -- "$fileB")"
+			if [ "${fileB}" != "" ]; then
+				elements="${elements}, $(basename -- "$fileB")"
+				count=$((count+1))
+			fi
 		done
 		if [ "${uploading}" != "" ]; then
-			xecho "Uploading ${#list[@]} files: ${elements:2}"
-			SSH_HOST_STDIO="tar -cf - -C \"${backup_prefix}\" --dereference \".\" | gzip -7 - | "
+			if [ "${elements}" != "" ]; then
+				xecho "Uploading ${count} files: ${elements:2}"
+			fi
+			SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -7 - | "
 			SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
-			#tar -cf - -C "${backup_prefix}" --dereference . | gzip -7 - | \
+			#tar -cf - -C "${backup_source}" --dereference . | gzip -7 - | \
 			#	sshpass -p "${TARGET_PASS}" \
-			#	ssh -o StrictHostKeyChecking=no ${TARGET_USER}@${TARGET_IPADDR} \
+			#	ssh "${SSH_FLAGS[@]}" ${TARGET_USER}@${TARGET_IPADDR} \
 			#	"${command}tar -xzf - -C \"/\""
 		else
 			xecho "Downloading ${#list[@]} files: ${elements:2}"
@@ -637,6 +690,27 @@ function xmkdirsv() {
 	fi
 }
 
+# List of directories to be created
+COMMANDS_EXECUTE=()
+
+function xcommand() {
+	# Create directories from DIRECTORIES_CREATE
+	xcommandv "${COMMANDS_EXECUTE[@]}"
+}
+
+# shellcheck disable=SC2120
+function xcommandv() {
+	local list=("$@")
+	if [ "${#list[@]}" != "0" ]; then
+		local elements=""
+		for command in "${list[@]}"; do
+			elements="${elements}, ${command}"
+			SSH_TARGET_POST="${SSH_TARGET_POST}( ${command} ); "
+		done
+		xecho "Creating ${#list[@]} directories: ${elements:2}"
+	fi
+}
+
 function xbuild() {
 	xexport "${GOLANG_EXPORTS[@]}"
 	if [ "${RUN_GO_VET}" == "yes" ]; then
@@ -660,7 +734,7 @@ function xbuild() {
 		fi
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
-	xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
+	#xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
 	
 	#env
 	#xecho "BUILDROOT_DIR=$BUILDROOT_DIR"
@@ -670,6 +744,7 @@ function xbuild() {
 	local flags=()
 	flags+=("build")
 	#flags+=("-race")
+	#xecho "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [ "${EXEC_STATUS}" != "0" ]; then
 		xexit

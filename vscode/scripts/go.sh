@@ -40,10 +40,11 @@ COPY_FILES=(
 	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
 	".vscode/scripts/onvifd-debug.service|:/usr/lib/systemd/system/onvifd-debug.service"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
-	"${BUILDROOT_DIR}/output/target/usr/bin/dlv|:/usr/bin/dlv"
+	"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
 	"init/onvifd.conf|:/etc/onvifd.conf"
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	"init/users.toml|:/var/lib/onvifd/users.toml")
+COPY_CACHE=n
 
 xunreferenced_variables \
 	"${SERVICES_STOP[@]}" \
@@ -114,6 +115,17 @@ if [ "${HAVE_INSTALL}" != "" ]; then
 	xunreferenced_variables
 fi
 
+function xcamera_option() {
+	local response
+	response=$(wget "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -)
+	local pattern="\"$1\": set to $2"
+	if grep -i -q "$pattern" <<< "$response"; then
+		xecho "Camera option \"$1\" is set to \"$2\"."
+	else
+		xecho "WARNING: Failed to set camera option \"$1\" to \"$2\"."
+	fi
+}
+
 # Exdcute original Golang command
 xexec "${ORIGINAL_GOBIN}" "$@"
 
@@ -121,6 +133,7 @@ if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
 		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
+			xcamera_option "videoanalytics" "true"
 			xsstop
 			xpstop
 			xfdel
