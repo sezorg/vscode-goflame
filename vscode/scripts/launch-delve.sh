@@ -31,8 +31,8 @@ xunreferenced_variables \
 	"${COPY_FILES[@]}"
 
 xval XECHO_ENABLED=y
+xecho "Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 xbuild
-xecho "Deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 xsstop
 xpstop
 xfcopy
