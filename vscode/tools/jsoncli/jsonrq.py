@@ -71,6 +71,20 @@ def parseRequest():
 	global json_url, json_method, json_params
 	request_str = args.request
 	verbose('request is: ' + request_str)
+	startOfJson = request_str.find('{')
+	verbose(f'startOfJson={startOfJson}')
+	if startOfJson >= 0:
+		json_text = request_str[startOfJson:]
+		verbose(f'json_text={json_text}')
+		json_params = demjson.decode(json_text, 'utf-8')
+	else:
+		error(f'Unable to find json')
+	endOfLine = request_str.find('\n')
+	if endOfLine > startOfJson:
+		endOfLine = startOfJson
+	request_str = request_str[0:endOfLine]
+	request_str = request_str.strip()
+
 	request_args = request_str.split('/')
 	verbose('request_args: ' + ', '.join(request_args))
 	if len(request_args) == 2:
@@ -81,19 +95,6 @@ def parseRequest():
 	del request_args[0]
 	json_method = request_args[-1]
 	del request_args[-1]
-	separator = json_method.find('{')
-	if separator >= 0:
-		params = json_method[separator:]
-		json_method = json_method[0:separator]
-		json_params = demjson.decode(params, 'utf-8')
-	else:
-		separator = json_method.find(':')
-		if separator >= 0:
-			filename = json_method[separator+1:]
-			json_method = json_method[0:separator]
-			with open(filename, 'r') as file:
-				params = file.read()
-			json_params = demjson.decode(params, 'utf-8')
 	address = address.strip()
 	json_method = json_method.strip()
 	if len(request_args) == 1:
