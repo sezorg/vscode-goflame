@@ -38,6 +38,7 @@ function debug() {
 
 conf_email=""
 conf_file="/var/tmp/gerrit-conf.txt"
+git prune
 git config --list > "${conf_file}"
 conf_text=()
 readarray -t conf_text < "${conf_file}"
