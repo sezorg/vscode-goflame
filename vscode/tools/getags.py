@@ -5,14 +5,10 @@ import sys
 import argparse
 import pathlib
 import subprocess
+import configparser
+import re
 
-defaultChecksList = ['restrict', 'goimports', 'govet', 'staticcheck']
-defaultPathsList = ['.']
-defaultFilesList = []
-defaultExtensList = ['*.go']
-defaultLineLengthLimit = 92
-defaultLineCountLimit = 1024
-config = {}
+_arguments = {}
 
 def removeFromDict(dict, values):
 	for value in values:
@@ -45,132 +41,103 @@ def parseArgsuments():
 		action='count',
 		default=0,
 		)
-	config = parser.parse_args()
-	config.exitCode = 0
-	config.warnCount = 0
-	return config
+	global _arguments
+	_arguments = parser.parse_args()
+	_arguments.exitCode = 0
+	_arguments.warnCount = 0
+	return
 
 def debug(message):
-	#print(f'VERBOSE: {config}')
-	if config.debug > 0:
+	#print(f'VERBOSE: {_arguments}')
+	if _arguments.debug > 0:
 		print(f'DEBUG: {message}')
 
 def verbose(message):
-	#print(f'VERBOSE: {config}')
-	if config.verbose > 0:
+	#print(f'VERBOSE: {_arguments}')
+	if _arguments.verbose > 0:
 		print(f'VERBOSE: {message}')
 
-def emitWarning(warningMessage):
-	if not config.silent:
-		print(warningMessage)
-	config.warnCount += 1
-	config.exitCode = 1
+def warning(message):
+	print(f'WARNING: {message}')
 
-def emitLineWarning(lineMessage, lineText):
-	if not config.silent:
-		print(lineMessage)
-		if config.outputLines:
-			print(lineText)
-	config.warnCount += 1
-	config.exitCode = 1
+def error(message):
+	print(f'ERROR: {message}')
 
-def findFiles(path, extension):
-	pattern = ''
-	for c in extension:
-		pattern += c if not c.isalpha() else f'[{c.upper()}{c.lower()}]'
-	verbose(f'Processing extension "{extension}" pattern "{pattern}" in path "{path}" . . .')
-	return list(pathlib.Path(path).rglob(pattern))
+def filter(pattern, value):
+	return re.search(pattern, value).group(0)
 
-def restrictLine(fileName, lineIndex, lineText):
-	lineText = lineText.rstrip()
-	lineLen = len(lineText)
-	if lineLen == 0:
-		return
-	if lineText[lineLen - 1] == '`':
-		return
-	if config.lineLengthLimit > 0 and lineLen > config.lineLengthLimit:
-		lineWarning = f'{fileName}:{lineIndex}: Line length {lineLen} exceeds limit {config.lineLengthLimit}'
-		emitLineWarning(lineWarning, lineText)
-
-def restrictFile(fileName):
-	lineIndex = 0
-	fd = open(fileName, 'r')
-	for lineText in fd:
-		lineIndex += 1
-		restrictLine(fileName, lineIndex, lineText)
-	if config.lineCountLimit > 0 and lineIndex > config.lineCountLimit:
-		emitWarning(f'{fileName}: Line count {lineIndex} exceeds limit {config.lineCountLimit}')
-
-def checkRestrictions(checkId):
-	verbose(f'Running "{checkId}" check')
-	if config.lineLengthLimit == 0 and config.lineCountLimit == 0:
-		return
-	allFiles = config.filesList
-	for path in config.pathsList:
-		for ext in config.extensionsList:
-			allFiles += findFiles(path, ext)
-	allFiles = sorted(allFiles)
-	verbose(f'All files: {allFiles}')
-	for fileName in allFiles:
-		restrictFile(fileName)
-
-def checkGoImports(checkId):
-	verbose(f'Running "{checkId}" check')
-	subprocess.run(['goimports', '-d', '.'])
-	return
-
-def checkGoVet(checkId):
-	subprocess.run(['go', 'vet', './...'])
-	return
-
-def checkGoStaticcheck(checkId):
-	subprocess.run(['staticcheck', './...'])
-	return
-
-class Shell(object): 
+class Shell(object):
 	def __init__(self, params):
 		self.params = params
 		proc = subprocess.Popen(
 			params, 
-			shell=True, 
 			stdout=subprocess.PIPE, 
 			stderr=subprocess.PIPE)
-		self.stdout, self.stderr = proc.communicate()
+		stdout, stderr = proc.communicate()
+		self.stdout = stdout.decode()
+		self.stderr = stderr.decode()
 		self.status = proc.returncode
+		if not self.succed():
+			error(f'Failed to execute: {self.params}')
 		return
 
-	def succeeded(self):
+	def succed(self):
 		return self.status == 0
 
 	def debug(self):
 		debug(f'Shell params: {self.params}')
 		debug(f"Shell stdout: {self.stdout}")
 		debug(f'Shell stderr: {self.stderr}')
-		debug(f'Shell status: {self.status}, succeded {self.succeeded()}')
+		debug(f'Shell status: {self.status}, succed {self.succed()}')
 		return
 
 class GitConfig(object):
 	def __init__(self):
-		config = Shell(['git', 'status'])
+		self.data = {}
+		config = Shell(['git', 'config', '--list'])
 		config.debug()
+		if not config.succed():
+			error("Unable to get Git configuration")
+			return
+		lines = config.stdout.split('\n')
+		for line in lines:
+			pos = line.find("=")
+			if pos >= 0:
+				key = line[0:pos]
+				value = line[pos+1:]
+				self.data[key] = value
+				debug(f'Git configuration: key = {key} || value = {value}')
+		self.userEmail = self.data['user.email']
+		if self.userEmail == '':
+			warning('Unable to retrieve user email from git config')
 		return
 
+
 class GerritTags(object):
-	def __init__(self):
+	def __init__(self, userEmail, command):
+		self.execute = true
+		overallFilter = 'status:open'
+		emailFilter = ''
+		match command:
+		case 'me':
+			emailFilter = userEmail
+		case 'del':
+			self.execute = false
+		case 'all':
+			emailFilter = ''
+		case _:
+			emailFilter = command + filter(r'^.*(@.*)@', userEmail)
+		print(emailFilter)
+
 		return
-    
+
 	def readGitConfig():
 		return
 
 def main():
-    # list
-    #result = Execute(['ls', '-lh'])
-    #result.debug()
-  
-	config = parseArgsuments()
-	print(config)
+	parseArgsuments()
 	gitConfig = GitConfig()
 
 if __name__ == '__main__':
-    main()
+	main()
 
