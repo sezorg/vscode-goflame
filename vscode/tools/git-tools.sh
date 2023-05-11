@@ -7,6 +7,11 @@
 
 #set -euo pipefail
 
+SSH_FLAGS=(-o StrictHostKeyChecking=no 
+	-o UserKnownHostsFile=/dev/null 
+	-o ConnectTimeout=5 
+	-o ConnectionAttempts=1)
+
 function gh() {
 	echo "gri: git rebase --interactive HEAD~\${1}"
 	echo "grc: git rebase --continue"
@@ -17,6 +22,7 @@ function gh() {
 	echo "gp: git push origin [HEAD:refs/for/master]"
 	echo "gt: gerrit-tags [me/all/username/user@mail]"
 	echo "ss: ssh root-user@[ip_address]"
+	echo "ssd: ssh root-user@[ip_address] dloop"
 	echo "sf: sshfs root-user@[ip_address]"
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	echo "jc: jsoncli.py ...arguments"
@@ -139,9 +145,24 @@ function ss() {
 		echo "Connecting to ${ip_address}"
 	fi
 	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
-	sshpass -p "${pass}" ssh 2> >( egrep >&2 -v '^Warning: Permanently added') \
-		-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null \
-		-o ConnectTimeout=1 -o ConnectionAttempts=1 "${user}@${ip_address}"
+	sshpass -p "${pass}" ssh 2> >( grep -E >&2 -v '^Warning: Permanently added') \
+		"${SSH_FLAGS[@]}" "${user}@${ip_address}"
+	_set_konsole_title
+}
+
+function ssd() {
+	local user="root"
+	local pass="root"
+	local ip_address
+	if ! ip_address=$(_resolve_variable "${1}" "" "last_ip_addr" "Target IP address parameter expected"); then
+		return 1
+	fi
+	if [[ "${1}" == "" ]]; then
+		echo "Connecting to ${ip_address}"
+	fi
+	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
+	sshpass -p "${pass}" ssh 2> >( grep -E >&2 -v '^Warning: Permanently added') \
+		"${SSH_FLAGS[@]}" "${user}@${ip_address}" dloop
 	_set_konsole_title
 }
 
@@ -163,7 +184,7 @@ function sf() {
 	local mount_point="${HOME}/Devices/${ip_address}"
 	mkdir -p "${mount_point}"
 	fusermount -u "${mount_point}" > /dev/null 2>&1
-	echo $pass | sshfs -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no "${user}@${ip_address}:/" "$mount_point" -o workaround=rename -o password_stdin
+	echo $pass | sshfs "${SSH_FLAGS[@]}" "${user}@${ip_address}:/" "$mount_point" -o workaround=rename -o password_stdin
 	echo "Done. Mounted to: ${mount_point}"
 	if [ -x "$(command -v dolphin)" ]; then
 		dolphin "${mount_point}"
