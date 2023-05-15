@@ -20,8 +20,8 @@ PROCESSES_START=("2>&1 dloop")
 
 # List of files to be copied, "source|target"
 COPY_FILES=(
-	".vscode/scripts/dlv-loop.sh|:/usr/bin/dloop"
-	".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
+	".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
+	".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	"init/onvifd.conf|:/etc/onvifd.conf"
 	)
 

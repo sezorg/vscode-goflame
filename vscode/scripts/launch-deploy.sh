@@ -41,8 +41,8 @@ COPY_FILES=(
 
 if [[ "${DEPLOY_DELVE}" == "y" ]]; then
 	COPY_FILES+=(
-		".vscode/scripts/dlv-loop.sh|:/usr/bin/dloop"
-		".vscode/scripts/dlv-stop.sh|:/usr/bin/dstop"
+		".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
+		".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 		"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
 	)
 fi
