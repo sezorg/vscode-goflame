@@ -7,9 +7,9 @@
 
 #set -euo pipefail
 
-SSH_FLAGS=(-o StrictHostKeyChecking=no 
-	-o UserKnownHostsFile=/dev/null 
-	-o ConnectTimeout=5 
+SSH_FLAGS=(-o StrictHostKeyChecking=no
+	-o UserKnownHostsFile=/dev/null
+	-o ConnectTimeout=5
 	-o ConnectionAttempts=1)
 
 function gh() {
@@ -63,7 +63,7 @@ function gp() {
 }
 
 function gt() {
-	"gerrit-tags.sh" "${1}"
+	"getags.py" "$@"
 }
 
 function _error() {
@@ -121,7 +121,7 @@ function _set_konsole_tab_title_type() {
 	local type=${2:-0}
 	if [[ -z "${title}" ]] || \
 		[[ -z "${KONSOLE_DBUS_SERVICE}" ]]  || \
-		[[ -z "${KONSOLE_DBUS_SESSION}" ]]; then 
+		[[ -z "${KONSOLE_DBUS_SESSION}" ]]; then
 		return 0
 	fi
 	qdbus >/dev/null "${KONSOLE_DBUS_SERVICE}" "${KONSOLE_DBUS_SESSION}" setTabTitleFormat "${type}" "${title}"
