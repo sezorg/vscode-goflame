@@ -56,9 +56,9 @@ function xunreferenced_variables() {
 	return 0
 }
 
-SSH_FLAGS=(-o StrictHostKeyChecking=no 
-	-o UserKnownHostsFile=/dev/null 
-	-o ConnectTimeout=5 
+SSH_FLAGS=(-o StrictHostKeyChecking=no
+	-o UserKnownHostsFile=/dev/null
+	-o ConnectTimeout=5
 	-o ConnectionAttempts=1)
 CACHE_DIR="/var/tmp/delve_scp"
 
@@ -452,7 +452,7 @@ function xfdelv() {
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
 		for filename in "${list[@]}"; do
-			elements="${elements}, $(basename -- "$filename")" 
+			elements="${elements}, $(basename -- "$filename")"
 			SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi); "
 		done
 		xecho "Removing ${#list[@]} files: ${elements:2}"
@@ -535,10 +535,10 @@ function xfcopy() {
 
 				#xecho "${nameSum} :: ${fileSum}"
 				if [ "${COPY_CACHE}" != "y" ] || [ "$(cache_get "${nameSum}")"  != "${fileSum}" ]; then
-					ln -s "${fileA}" "${backup_source}/${backup_rname}"	
+					ln -s "${fileA}" "${backup_source}/${backup_rname}"
 					SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
 					SSH_HOST_POST="${SSH_HOST_POST}(cache_put \"${nameSum}\" \"${fileSum}\"); "
-				else 
+				else
 					#xecho "Skipping ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
 				fi
@@ -715,7 +715,7 @@ function xbuild() {
 	xexport "${GOLANG_EXPORTS[@]}"
 	if [ "${RUN_GO_VET}" == "yes" ]; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		#-checks=all 
+		#-checks=all
 		xexec "go" "vet" "./..."
 		if [ "${EXEC_STDERR}" != "" ]; then
 			xecho "${EXEC_STDERR}"
@@ -735,7 +735,7 @@ function xbuild() {
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
 	#xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
-	
+
 	#env
 	#xecho "BUILDROOT_DIR=$BUILDROOT_DIR"
 	#xecho "GOPATH=$GOPATH"
