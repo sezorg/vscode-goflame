@@ -32,24 +32,7 @@
             "request": "launch",
             "name": "Remote Deploy and Attach",
             "type": "go",
-            "debugAdapter": "dlv-dap", 
-            "port": "${input:TARGET_IPPORT}",
-            "host": "${input:TARGET_IPADDR}", 
-            "mode": "exec",
-            "program": "/usr/bin/onvifd_debug",
-            "args": [
-                "-settings",
-                "/root/onvifd.settings"
-            ],
-            "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-deploy",
-            "console": "internalConsole",
-        },
-        {
-            "request": "launch",
-            "name": "Remote run with Delve",
-            "type": "go",
-            "debugAdapter": "dlv-dap", 
+            "debugAdapter": "dlv-dap",
             "port": "${input:TARGET_IPPORT}",
             "host": "${input:TARGET_IPADDR}",
             "mode": "exec",
@@ -59,7 +42,24 @@
                 "/root/onvifd.settings"
             ],
             "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-delve",
+            "preLaunchTask": "launch-deploy-attach",
+            "console": "internalConsole",
+        },
+        {
+            "request": "launch",
+            "name": "Remote run with Delve",
+            "type": "go",
+            "debugAdapter": "dlv-dap",
+            "port": "${input:TARGET_IPPORT}",
+            "host": "${input:TARGET_IPADDR}",
+            "mode": "exec",
+            "program": "/usr/bin/onvifd_debug",
+            "args": [
+                "-settings",
+                "/root/onvifd.settings"
+            ],
+            "internalConsoleOptions": "openOnSessionStart",
+            "preLaunchTask": "launch-remote-delve",
             "console": "internalConsole",
         },
         {

@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-WRAPPER_TYPE="launch-delve"
+WRAPPER_TYPE="launch-remote-delve"
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)

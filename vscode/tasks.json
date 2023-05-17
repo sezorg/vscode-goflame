@@ -4,16 +4,16 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "launch-delve",
+            "label": "launch-remote-delve",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-delve.sh",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-remote-delve.sh",
             "echoCommand": false,
             "hide": true
         },
         {
-            "label": "launch-deploy",
+            "label": "launch-deploy-attach",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy.sh",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-attach.sh",
             "echoCommand": false,
             "hide": true
         },
@@ -23,7 +23,7 @@
             "command": "${workspaceFolder}/.vscode/scripts/remote-delve.sh",
             "echoCommand": false,
             "hide": false,
-            "problemMatcher": [], 
+            "problemMatcher": [],
             "icon": {"color": "terminal.ansiBlue", "id": "terminal"}
         },
         {

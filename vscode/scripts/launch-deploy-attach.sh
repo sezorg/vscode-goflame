@@ -5,7 +5,7 @@
 
 set -euo pipefail
 
-WRAPPER_TYPE="launch-deploy"
+WRAPPER_TYPE="launch-deploy-attach"
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
@@ -18,7 +18,7 @@ DEPLOY_MEDIAD=n
 
 # List of services to be stopped
 SERVICES_STOP=(
-#	"onvifd" 
+#	"onvifd"
 )
 
 # List of services to be started
@@ -26,7 +26,7 @@ SERVICES_START=()
 
 # List of process names to be stopped
 PROCESSES_STOP=(
-#	"${TARGET_BIN_SOURCE}" 
+#	"${TARGET_BIN_SOURCE}"
 #	"${TARGET_BIN_NAME}"
 )
 
@@ -48,8 +48,8 @@ if [[ "${DEPLOY_DELVE}" == "y" ]]; then
 fi
 
 if [[ "${DEPLOY_NGINX}" == "y" ]]; then
-	SERVICES_STOP+=("nginx") 
-	SERVICES_START+=("nginx") 
+	SERVICES_STOP+=("nginx")
+	SERVICES_START+=("nginx")
 	COPY_FILES+=(
 		"${BUILDROOT_TARGET_DIR}/usr/sbin/nginx|:/usr/sbin/nginx"
 		"init/ipcam.conf|:/etc/nginx/ipcam.conf"
@@ -60,8 +60,8 @@ if [[ "${DEPLOY_NGINX}" == "y" ]]; then
 fi
 
 if [ "${DEPLOY_MEDIAD}" == "y" ]; then
-	SERVICES_STOP+=("mediad") 
-	SERVICES_START+=("mediad") 
+	SERVICES_STOP+=("mediad")
+	SERVICES_START+=("mediad")
 	COPY_FILES+=("${HOME}/Workspace/elvees/work/ecam03_rel0/buildroot/output/target/usr/bin/mediad|:/usr/bin/mediad")
 	:
 fi

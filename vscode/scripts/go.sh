@@ -115,14 +115,14 @@ if [ "${HAVE_INSTALL}" != "" ]; then
 	xunreferenced_variables
 fi
 
-function xcamera_option() {
+function xcamera_feature() {
 	local response
 	response=$(wget "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -)
 	local pattern="\"$1\": set to $2"
 	if grep -i -q "$pattern" <<< "$response"; then
-		xecho "Camera option \"$1\" is set to \"$2\"."
+		xecho "Camera feature \"$1\" is set to \"$2\"."
 	else
-		xecho "WARNING: Failed to set camera option \"$1\" to \"$2\"."
+		xecho "WARNING: Failed to set camera feature \"$1\" to \"$2\"."
 	fi
 }
 
@@ -133,7 +133,7 @@ if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
 		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
-			xcamera_option "videoanalytics" "true"
+			xcamera_feature "videoanalytics" "true"
 			xsstop
 			xpstop
 			xfdel
