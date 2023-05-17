@@ -1,10 +1,30 @@
 #!/usr/bin/env python3
 
+#
+# Git-Gerrit tags
+# Requires:
+#   https://github.com/fbzhong/git-gerrit
+#
+# Usage:
+#	script [-p] [command]
+#
+# Where:
+#	-p			include PatchSets
+#
+# Command
+#	all			get tags for all users
+#	username	get tags for specified user
+#	me			all for me
+#	del			remove created branches
+
 # pylint: disable=missing-module-docstring
 # pylint: disable=missing-class-docstring
 # pylint: disable=missing-function-docstring
 # pylint: disable=bad-indentation
 # pylint: disable=too-few-public-methods
+# pylint: disable=too-many-branches
+# pylint: disable=too-many-statements
+# pylint: disable=too-many-instance-attributes
 
 import os
 import sys
@@ -219,12 +239,13 @@ class GerritTags:
 				self.branch_index += 1
 
 	def git_cleanup(self):
-		status = Shell(['git', 'reflog', 'expire', '--expire-unreachable=all', '--all'])
-		if not status.succed():
-			fatal('Unable to run Git reflog expire')
-		status = Shell(['git', 'gc', '--prune=now'])
-		if not status.succed():
-			fatal('Unable to run Git gc --prune=now')
+		#status = Shell(['git', 'reflog', 'expire', '--expire-unreachable=all', '--all'])
+		#if not status.succed():
+		#	fatal('Unable to run Git reflog expire')
+		#status = Shell(['git', 'gc', '--prune=now'])
+		#if not status.succed():
+		#	fatal('Unable to run Git gc --prune=now')
+		return
 
 	def create_branches(self):
 		if not self.execute:
