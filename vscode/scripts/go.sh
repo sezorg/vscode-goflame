@@ -61,7 +61,7 @@ HAVE_INSTALL=
 function xparseargs() {
 	local dirty=
 	local result=()
-	xdebug "Args: ${SRCIPT_ARGS[*]}"
+	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		item="${SRCIPT_ARGS[$i]}"
 		if [ "${item}" == "${DLVBIN}" ]; then
@@ -122,29 +122,28 @@ function xcamera_features() {
 	for feature in "$@"; do
 		feature_args="${feature_args}&${feature}=${state}"
 	done
-	local response
 	local timeout=2
-	local wget_command=(timeout "${timeout}" wget --no-proxy --timeout="${timeout}"
-		"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}" -q -O -)
-	xdebug "Run Action: ${wget_command[*]}"
-	response=$("${wget_command[@]}")
-
+	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
+		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
+	xexec "${wget_command[*]}"
+	local response="${EXEC_STDOUT//[$'\t\r\n']}"
+	xdebug "WGET response: ${response}"
 	local features_set=""
 	local features_err=""
 	for feature in "$@"; do
 		local pattern="\"${feature}\": set to ${state}"
 		if grep -i -q "$pattern" <<< "$response"; then
-			features_set="${features_set}, \"${feature}\""
+			features_set="${features_set}, ${feature}"
 		else
-			features_err="${features_err}, \"${feature}\""
+			features_err="${features_err}, ${feature}"
 		fi
 	done
 
 	if [[ "${features_set}" != "" ]]; then
-		xecho "Camera features ${features_set:2} set to \"${state}\""
+		xecho "Camera features set to ${state}: ${features_set:2}"
 	fi
 	if [[ "${features_err}" != "" ]]; then
-		xecho "WARNING: Failed to set camera features ${features_err:2} to \"${state}\""
+		xecho "WARNING: Failed to set camera features to ${state}: ${features_err:2}"
 	fi
 }
 
@@ -171,8 +170,8 @@ if [ "${HAVE_BUILD}" != "" ]; then
 		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
 
-			cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
-			sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
+			xrun cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
+			xrun sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
 
 			xcamera_features "true" "videoanalytics" "audio"
 			xsstop
