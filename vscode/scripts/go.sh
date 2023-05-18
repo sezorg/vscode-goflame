@@ -36,7 +36,7 @@ DELETE_FILES=(
 
 # List of files to be copied, "source|target"
 COPY_FILES=(
-	".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
+	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
 	".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	".vscode/scripts/onvifd-debug.service|:/usr/lib/systemd/system/onvifd-debug.service"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
@@ -126,6 +126,12 @@ function xcamera_feature() {
 	fi
 }
 
+if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
+	xecho "ERROR: Can not find Go executable at \"${ORIGINAL_GOBIN}\"."
+	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
+	exit 1
+fi
+
 # Exdcute original Golang command
 xexec "${ORIGINAL_GOBIN}" "$@"
 
@@ -133,6 +139,10 @@ if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
 		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
+
+			cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
+			sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
+
 			xcamera_feature "videoanalytics" "true"
 			xsstop
 			xpstop
