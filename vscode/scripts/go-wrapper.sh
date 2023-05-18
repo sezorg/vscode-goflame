@@ -138,9 +138,8 @@ xexec "${ORIGINAL_GOBIN}" "$@"
 if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
-			xrun cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
-			xrun sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
-
+			xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
+			xexec sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
 			xcamera_features "true" "videoanalytics" "audio"
 			xperform_build_and_deploy "Installing ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
 			exit "0"

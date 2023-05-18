@@ -304,13 +304,22 @@ function xexestat() {
 	fi
 }
 
+CANFAIL="[CANFAIL]"
+OPTIONS_STACK=()
+
+# Execute command which can not fail
 function xexec() {
 	xfset "+e"
+	local canfail=
+	if [ "${1:-}" == "${CANFAIL}" ]; then
+		canfail="${1:-}"
+		shift
+	fi
 	local command="$*"
 	if [[ "${command}" == "" ]]; then
 		return 0
 	fi
-	xdebug "Exe Action: ${command}"
+	xdebug "Exec: ${command}"
 	{
 		EXEC_STDOUT=$(
 			chmod u+w /dev/fd/3 && # Needed for bash5.0
@@ -321,7 +330,16 @@ function xexec() {
 	} 3<<EOF
 EOF
 	xfunset
-	#xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
+	if [ "${EXEC_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
+		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
+		xecho "ERROR: Failed to execute: ${command}"
+		if [ "${EXEC_STDERR}" != "" ]; then
+			xecho "ERROR: ${EXEC_STDERR}"
+		fi
+		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
+		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
+		exit ${EXEC_STATUS}
+	fi
 }
 
 function xexit() {
@@ -334,33 +352,6 @@ function xexit() {
 	fi
 	exit "${EXEC_STATUS}"
 }
-
-RUN_STDOUT=
-RUN_STDERR=
-RUN_STATUS=
-
-function xrun() {
-	xfset "+e"
-	local command="$*"
-	if [[ "${command}" == "" ]]; then
-		return 0
-	fi
-	xdebug "Run Action: ${command}"
-	{
-		RUN_STDOUT=$(
-			chmod u+w /dev/fd/3 && # Needed for bash5.0
-				eval "${command}" 2>/dev/fd/3
-		)
-		RUN_STATUS=$?
-		RUN_STDERR=$(cat <&3)
-	} 3<<EOF
-EOF
-	xfunset
-	xexestat "Run" "${RUN_STDOUT}" "${RUN_STDERR}" "${RUN_STATUS}"
-}
-
-CANFAIL="[CANFAIL]"
-OPTIONS_STACK=()
 
 function xfset() {
 	local oldopts
@@ -382,17 +373,10 @@ function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
-		canfail="$1"
+		canfail="${1:-}"
 		shift
 	fi
-
-	xrun sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
-
-	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
-		xecho "ERROR: Operarion failed. Terminating with status ${RUN_STATUS}"
-		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
-		exit ${RUN_STATUS}
-	fi
+	xexec "${canfail}" sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
 }
 
 SSH_HOST_STDIO=""
@@ -411,8 +395,8 @@ function xflash_pending_commands() {
 		local code="${code}ssh ${SSH_FLAGS[*]} ${TARGET_USER}@${TARGET_IPADDR} "
 		local code="${code}\"${SSH_TARGET_PREF}${SSH_TARGET_STDIO}${SSH_TARGET_POST}\""
 
-		xrun "${code}"
-		xrun "${SSH_HOST_POST}"
+		xexec "${code}"
+		xexec "${SSH_HOST_POST}"
 
 		SSH_HOST_STDIO=""
 		SSH_TARGET_STDIO=""
@@ -453,7 +437,7 @@ function xperform_build_and_deploy() {
 function xkill() {
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
-		canfail="$1"
+		canfail="${1:-}"
 		shift
 	fi
 	for procname in "$@"; do
@@ -464,7 +448,7 @@ function xkill() {
 function xscp() {
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
-		canfail="$1"
+		canfail="${1:-}"
 		shift
 	fi
 
@@ -485,13 +469,7 @@ function xscp() {
 	fi
 
 	xdebug "Target copy: ${canfail} ${one} -> ${two}"
-	sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
-
-	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
-		xecho "ERROR: Operation failed. Terminating with status ${RUN_STATUS}"
-		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
-		exit "${RUN_STATUS}"
-	fi
+	xexec "${canfail}" sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
 }
 
 # List of files to be deleted
@@ -533,7 +511,7 @@ function xfiles_copy() {
 	# Copy files from COPY_FILES
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
-		canfail="$1"
+		canfail="${1:-}"
 		shift
 	fi
 
@@ -545,15 +523,16 @@ function xfiles_copy() {
 		local backup_source="${CACHE_DIR}/data"
 		local backup_rname=""
 		local backup_subdir=""
-		rm -r "${backup_source}"
+		xexec rm -r "${backup_source}"
 		if [ "${COPY_CACHE}" != "y" ]; then
-			rm -r "${CACHE_DIR}/cachedb"
+			xexec rm -r "${CACHE_DIR}/cachedb"
 		fi
-		mkdir -p "${CACHE_DIR}/cachedb"
+		xexec mkdir -p "${CACHE_DIR}/cachedb"
 
 		local elements=""
 		local count="0"
 		local uploading=""
+		local directories=()
 		for pair in "${list[@]}"; do
 			IFS='|'
 			# shellcheck disable=SC2206
@@ -563,9 +542,15 @@ function xfiles_copy() {
 			local fileB="${files[1]}"
 			if [[ "$fileB" =~ ^\:.* ]]; then
 				uploading="1"
-				backup_rname="${fileB:1}"
+				local backup_rname="${fileB:1}"
+				local backup_subdir
 				backup_subdir=$(dirname "${backup_rname}")
-				mkdir -p "${backup_source}/${backup_subdir}"
+				local backup_fulldir="${backup_source}/${backup_subdir}"
+				backup_fulldir="${backup_fulldir//\/\//\/}"
+				if ! xcontains "${backup_fulldir}" "${directories[@]}"; then
+					directories+=("${backup_fulldir}")
+					xexec mkdir -p "${backup_fulldir}"
+				fi
 				local prefA="${fileA:0:1}"
 				if [[ "${prefA}" == "?" ]]; then
 					fileA="${fileA:1}"
@@ -591,9 +576,11 @@ function xfiles_copy() {
 
 				#xecho "${nameSum} :: ${fileSum}"
 				if [ "${COPY_CACHE}" != "y" ] || [ "$(xcache_get "${nameSum}")"  != "${fileSum}" ]; then
-					ln -s "${fileA}" "${backup_source}/${backup_rname}"
+					local backup_target="${backup_source}/${backup_rname}"
+					backup_target="${backup_target//\/\//\/}"
+					xexec ln -s "${fileA}" "${backup_target}"
 					SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
-					SSH_HOST_POST="${SSH_HOST_POST}(xcache_put \"${nameSum}\" \"${fileSum}\"); "
+					SSH_HOST_POST="${SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
 				else
 					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
@@ -791,7 +778,7 @@ function xbuild_project() {
 	fi
 	local flags=()
 	flags+=("build")
-	flags+=("-race")
+	#flags+=("-race")
 	#flags+=("-msan")
 	#flags+=("-asan")
 	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
