@@ -237,7 +237,7 @@ $PROJECTDIR>Finished running tool: $PROJECTDIR/.vscode/scripts/go.sh build
 ```bash
 $ ssh root@IP_ADDRESS
 # dl
-Starting Delve headless server loop in DAP mode. To stop use: $ dstop
+Starting Delve headless server loop in DAP mode. To stop use: $ ds
 DAP server listening at: [::]:2345
 ```
 
@@ -251,7 +251,21 @@ DAP server listening at: [::]:2345
 
 > Текст `http://10.113.11.65` распознается VSCode как гиперссылка и при его помощи можно быстро открыть браузер по IP адресу устройства.
 
-После этого VSCode запустит удалённую отладку и переключится на вкладку «DEBUG CONSOLE». Но эта консоль останется пустой - Delve не умеет пробрасывать STDOUT/STDERR отлаживаемой программы на хостовую систему. Таким образом в открытом терминале (GNOME Terminal, Konsole) можно наблюдать, что приложение запустилось и даже что-то пишет в STDERR.
+После этого VSCode запустит удалённую отладку и переключится на вкладку «DEBUG CONSOLE». Но эта консоль останется пустой - Delve не умеет пробрасывать STDOUT/STDERR отлаживаемой программы на хостовую систему. Таким образом в открытом терминале (GNOME Terminal, Konsole) можно наблюдать, что приложение запустилось и даже что-то пишет в консоль:
+
+```
+Starting Delve headless server loop in DAP mode. To stop use: $ ds
+DAP server listening at: [::]:2345
+2023-05-18T08:09:39Z info layer=debugger launching process with args: [/usr/bin/onvifd_debug -settings /root/onvifd.settings]
+2023/05/18 08:09:43 server.go:376: Starting server at 127.0.0.1:8899 ...
+2023/05/18 08:09:43 operations.go:126: Starting discovery service
+2023/05/18 08:09:44 server.go:779: Operation: Device.GetSystemDateAndTime
+2023/05/18 08:09:44 server.go:779: Operation: Device.GetServiceCapabilities
+2023/05/18 08:09:44 server.go:779: Operation: Device.GetSystemDateAndTime
+2023/05/18 08:09:44 server.go:779: Operation: Device.GetServiceCapabilities
+2023/05/18 08:09:44 server.go:779: Operation: Device.GetSystemDateAndTime
+2023/05/18 08:09:44 server.go:775: Operation: Device.GetDeviceInformation: Unauthorized
+```
 
 На данном этапе с отладчиком можно работать так же, как будто приложение отлаживается локально: ставить точки останова, останавливать, выполнять пошагово, перезапускать, просматривать содержимое переменных.
 
@@ -262,6 +276,7 @@ DAP server listening at: [::]:2345
 1. Иногда, после обновления исходного кода внешней программой, например, через `git fetch` в VSCode перестают работать точки останова. Пересборка/перезапуск приложения проблему не решает. В таких случаях помогает исключительно перезапуск VSCode.
 2. В отладчике не всегда видно содержимое локальных переменных. Проблема связана с оптипизацие приложений Go и на данный момент не имеет решения. Проект собирается с флагами, которые запрещают оптимизацию и добавляют отладочную информацию — все в соответствии с рекомендациями документации Go. Единственный вариант посмотреть состояние таких переменных: выводить их значение через `log.Println`. Как правило, в этом случае Go перестаёт оптимизировать такую переменную и она становится видна и в отладчике.
 3. В некоторых случаях после обновления прошивки отладка становится невозможна из за устаревания отпечатка в `$HOME/.ssh/known_hosts`. Лечится удалением соответствующей строки и повторным входом на устройство по SSH. Хоть скрипты отладки работают таким образом, что не добавляют отпечатки в `known_hosts`, но, как показала практика, уже добавленные в других SSH сессиях неправильные отпечатки могут приводить к невозможности установки соединения и запуска отладки.
+4. Разночтения в `config.ini`. Хоть файл `config.ini` по сути является bash скриптом, этот же файл используется VSCode расширением Command Variable для получения IP адреса и номера порта. Проблема разночтения происходит если в `config.ini` несколько раз переопределяется `TARGET_IPADDR` либо `TARGET_IPPORT`. Bash использует последнее присвоенное значение, в то время как Command Variable - первое найденное.
 
 
 ### TODO
