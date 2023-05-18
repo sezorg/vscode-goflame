@@ -2,6 +2,8 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # GO compiler wrapper environment
+#
+# Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
 
@@ -113,8 +115,8 @@ DELVE_LOGFILE="/var/tmp/dlv.log"
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 
 WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
-if [ "$WRAPPER_TYPE" == "" ]; then
-	WRAPPER_TYPE="unknown-wrapper"
+if [ "$MESSAGE_SOURCE" == "" ]; then
+	MESSAGE_SOURCE="unknown-wrapper"
 fi
 
 ORIGINAL_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
@@ -138,8 +140,8 @@ xunreferenced_variables \
 	"${LOCAL_DLVBIN}" \
 	"${GOLANG_EXPORTS[@]}"
 
-DLVBIN="${SCRIPT_DIR}/dlv.sh"
-GOBIN="${SCRIPT_DIR}/go.sh"
+DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
+GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
 
 GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
 GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
@@ -212,11 +214,24 @@ xunreferenced_variables \
 	"${CC}" \
 	"${CXX}"
 
+
+function xcontains () {
+  local value="$1"
+  shift
+  for element; do [[ "$element" == "$value" ]] && return 0; done
+  return 1
+}
+
 function xexport() {
-	xdebug "Exports: $*"
+	#xdebug "Exports: $*"
 	for variable in "$@"; do
 		local name="${variable}"
 		local value="${!name}"
+		if [[ "${value}" == "" ]]; then
+			if ! xcontains "${variable}" "CGO_LDFLAGS"; then
+				xecho "WARNING: An empty exported variable ${variable}"
+			fi
+		fi
 		# shellcheck disable=SC2086
 		export ${name}="${value}"
 	done
@@ -228,7 +243,7 @@ function xemit() {
 	local echo_flag="$1"
 	shift
 	local message
-	message="$(date '+%d/%m/%Y %H:%M:%S') [${WRAPPER_TYPE}] $*"
+	message="$(date '+%d/%m/%Y %H:%M:%S') [${MESSAGE_SOURCE}] $*"
 	if [ "${FIRST_ECHO}" == "" ]; then
 		if [ "${echo_flag}" != "" ]; then
 			echo >&2 "${EP}${message}"
@@ -291,11 +306,15 @@ function xexestat() {
 
 function xexec() {
 	xfset "+e"
-	xdebug "Exec Action: $*"
+	local command="$*"
+	if [[ "${command}" == "" ]]; then
+		return 0
+	fi
+	xdebug "Exe Action: ${command}"
 	{
 		EXEC_STDOUT=$(
 			chmod u+w /dev/fd/3 && # Needed for bash5.0
-				eval "$*" 2>/dev/fd/3
+				eval "${command}" 2>/dev/fd/3
 		)
 		EXEC_STATUS=$?
 		EXEC_STDERR=$(cat <&3)
@@ -322,11 +341,15 @@ RUN_STATUS=
 
 function xrun() {
 	xfset "+e"
-	xdebug "Run Action: $*"
+	local command="$*"
+	if [[ "${command}" == "" ]]; then
+		return 0
+	fi
+	xdebug "Run Action: ${command}"
 	{
 		RUN_STDOUT=$(
 			chmod u+w /dev/fd/3 && # Needed for bash5.0
-				eval "$*" 2>/dev/fd/3
+				eval "${command}" 2>/dev/fd/3
 		)
 		RUN_STATUS=$?
 		RUN_STDERR=$(cat <&3)
@@ -366,7 +389,8 @@ function xssh() {
 	xrun sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
 
 	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
-		xecho "Failed. Terminating with status ${RUN_STATUS}"
+		xecho "ERROR: Operarion failed. Terminating with status ${RUN_STATUS}"
+		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
 		exit ${RUN_STATUS}
 	fi
 }
@@ -377,7 +401,7 @@ SSH_TARGET_STDIO=""
 SSH_TARGET_PREF=""
 SSH_TARGET_POST=""
 
-function xflash() {
+function xflash_pending_commands() {
 	if [[ "${SSH_HOST_STDIO}" != "" ]] || \
 		[[ "${SSH_TARGET_PREF}" != "" ]] || \
 		[[ "${SSH_TARGET_STDIO}" != "" ]] || \
@@ -395,6 +419,35 @@ function xflash() {
 		SSH_TARGET_PREF=""
 		SSH_TARGET_POST=""
 	fi
+}
+
+function xperform_build_and_deploy() {
+	local fbuild=""
+
+	while :; do
+		if [[ "$1" == "[BUILD]" ]]; then
+			fbuild="y"
+		elif [[ "$1" == "[ECHO]" ]]; then
+			xval XECHO_ENABLED=y
+			clear
+		else
+			break
+		fi
+		shift
+	done
+
+	xecho "$*"
+	if [[ "${fbuild}" == "y" ]]; then
+		xbuild_project
+	fi
+	xservices_stop
+	xprocesses_stop
+	xfiles_delete
+	xcreate_directories
+	xfiles_copy
+	xservices_start
+	xprocesses_start
+	xflash_pending_commands
 }
 
 function xkill() {
@@ -435,7 +488,8 @@ function xscp() {
 	sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
 
 	if [ "${RUN_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
-		xecho "Failed. Terminating with status ${RUN_STATUS}"
+		xecho "ERROR: Operation failed. Terminating with status ${RUN_STATUS}"
+		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
 		exit "${RUN_STATUS}"
 	fi
 }
@@ -443,13 +497,13 @@ function xscp() {
 # List of files to be deleted
 DELETE_FILES=()
 
-function xfdel() {
+function xfiles_delete() {
 	# Delete files from DELETE_FILES
-	xfdelv "${DELETE_FILES[@]}"
+	xfiles_delete_vargs "${DELETE_FILES[@]}"
 }
 
 # shellcheck disable=SC2120
-function xfdelv() {
+function xfiles_delete_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -461,11 +515,11 @@ function xfdelv() {
 	fi
 }
 
-function cache_put() {
+function xcache_put() {
 	echo "$2" > "${CACHE_DIR}/cachedb/${1}"
 }
 
-function cache_get() {
+function xcache_get() {
 	cat "${CACHE_DIR}/cachedb/${1}" 2>/dev/null
 }
 
@@ -475,7 +529,7 @@ COPY_FILES=()
 COPY_CACHE=y
 
 # shellcheck disable=SC2120
-function xfcopy() {
+function xfiles_copy() {
 	# Copy files from COPY_FILES
 	local canfail=
 	if [ "${1:-}" == "${CANFAIL}" ]; then
@@ -525,7 +579,7 @@ function xfcopy() {
 					continue
 				else
 					xecho "ERROR: Unable to find \"${fileA}\" for upload"
-					exit 1
+					exit "1"
 				fi
 
 				local nameSum
@@ -536,12 +590,12 @@ function xfcopy() {
 				fileSum="${fileSum:0:32}"
 
 				#xecho "${nameSum} :: ${fileSum}"
-				if [ "${COPY_CACHE}" != "y" ] || [ "$(cache_get "${nameSum}")"  != "${fileSum}" ]; then
+				if [ "${COPY_CACHE}" != "y" ] || [ "$(xcache_get "${nameSum}")"  != "${fileSum}" ]; then
 					ln -s "${fileA}" "${backup_source}/${backup_rname}"
 					SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
-					SSH_HOST_POST="${SSH_HOST_POST}(cache_put \"${nameSum}\" \"${fileSum}\"); "
+					SSH_HOST_POST="${SSH_HOST_POST}(xcache_put \"${nameSum}\" \"${fileSum}\"); "
 				else
-					#xecho "Skipping ${fileA} :: ${nameSum} :: ${fileSum}"
+					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
 				fi
 
@@ -588,13 +642,13 @@ function xfcopy() {
 # List of services to be stopped
 SERVICES_STOP=()
 
-function xsstop() {
+function xservices_stop() {
 	# Stop services from SERVICES_STOP
-	xsstopv "${SERVICES_STOP[@]}"
+	xservices_stop_vargs "${SERVICES_STOP[@]}"
 }
 
 # shellcheck disable=SC2120
-function xsstopv() {
+function xservices_stop_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -610,13 +664,13 @@ function xsstopv() {
 # List of services to be started
 SERVICES_START=()
 
-function xsstart() {
+function xservices_start() {
 	# Start services from SERVICES_START
-	xsstartv "${SERVICES_START[@]}"
+	xservices_start_vargs "${SERVICES_START[@]}"
 }
 
 # shellcheck disable=SC2120
-function xsstartv() {
+function xservices_start_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -632,13 +686,13 @@ function xsstartv() {
 # List of process names to be stopped
 PROCESSES_STOP=()
 
-function xpstop() {
+function xprocesses_stop() {
 	# Stop processes from PROCESSES_STOP
-	xpstopv "${PROCESSES_STOP[@]}"
+	xprocesses_stop_vargs "${PROCESSES_STOP[@]}"
 }
 
 # shellcheck disable=SC2120
-function xpstopv() {
+function xprocesses_stop_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -653,13 +707,13 @@ function xpstopv() {
 # List of processed to be started, executable with args
 PROCESSES_START=()
 
-function xpstart() {
+function xprocesses_start() {
 	# Start processes from PROCESSES_START
-	xpstartv "${PROCESSES_START[@]}"
+	xprocesses_start_vargs "${PROCESSES_START[@]}"
 }
 
 # shellcheck disable=SC2120
-function xpstartv() {
+function xprocesses_start_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -674,13 +728,13 @@ function xpstartv() {
 # List of directories to be created
 DIRECTORIES_CREATE=()
 
-function xmkdirs() {
+function xcreate_directories() {
 	# Create directories from DIRECTORIES_CREATE
-	xmkdirsv "${DIRECTORIES_CREATE[@]}"
+	xcreate_directories_vargs "${DIRECTORIES_CREATE[@]}"
 }
 
 # shellcheck disable=SC2120
-function xmkdirsv() {
+function xcreate_directories_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -695,13 +749,13 @@ function xmkdirsv() {
 # List of directories to be created
 COMMANDS_EXECUTE=()
 
-function xcommand() {
+function xexecute_commands() {
 	# Create directories from DIRECTORIES_CREATE
-	xcommandv "${COMMANDS_EXECUTE[@]}"
+	xexecute_commands_vargs "${COMMANDS_EXECUTE[@]}"
 }
 
 # shellcheck disable=SC2120
-function xcommandv() {
+function xexecute_commands_vargs() {
 	local list=("$@")
 	if [ "${#list[@]}" != "0" ]; then
 		local elements=""
@@ -713,11 +767,10 @@ function xcommandv() {
 	fi
 }
 
-function xbuild() {
+function xbuild_project() {
 	xexport "${GOLANG_EXPORTS[@]}"
 	if [ "${RUN_GO_VET}" == "yes" ]; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		#-checks=all
 		xexec "go" "vet" "./..."
 		if [ "${EXEC_STDERR}" != "" ]; then
 			xecho "${EXEC_STDERR}"
@@ -736,21 +789,51 @@ function xbuild() {
 		fi
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
-	#xecho "Building ${PI}${TARGET_BUILD_LAUNCHER}${PO}"
-
-	#env
-	#xecho "BUILDROOT_DIR=$BUILDROOT_DIR"
-	#xecho "GOPATH=$GOPATH"
-	#xecho "GOROOT=$GOROOT"
-	#xecho "${ORIGINAL_GOBIN}" "build" "${TARGET_BUILD_FLAGS[@]}"
 	local flags=()
 	flags+=("build")
-	#flags+=("-race")
-	#xecho "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
+	flags+=("-race")
+	#flags+=("-msan")
+	#flags+=("-asan")
 	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [ "${EXEC_STATUS}" != "0" ]; then
+		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
+		xdebug "GOPATH=$GOPATH"
+		xdebug "GOROOT=$GOROOT"
 		xexit
 	else
 		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
+	fi
+}
+
+# Set camera features: xcamera_features state feature1 [feature2 ...[featureN]]
+function xcamera_features() {
+	local state="$1"
+	shift
+	local feature_args=""
+	for feature in "$@"; do
+		feature_args="${feature_args}&${feature}=${state}"
+	done
+	local timeout=2
+	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
+		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
+	xexec "${wget_command[*]}"
+	local response="${EXEC_STDOUT//[$'\t\r\n']}"
+	xdebug "WGET response: ${response}"
+	local features_set=""
+	local features_err=""
+	for feature in "$@"; do
+		local pattern="\"${feature}\": set to ${state}"
+		if grep -i -q "$pattern" <<< "$response"; then
+			features_set="${features_set}, ${feature}"
+		else
+			features_err="${features_err}, ${feature}"
+		fi
+	done
+
+	if [[ "${features_set}" != "" ]]; then
+		xecho "Camera features set to ${state}: ${features_set:2}"
+	fi
+	if [[ "${features_err}" != "" ]]; then
+		xecho "WARNING: Failed to set camera features to ${state}: ${features_err:2}"
 	fi
 }

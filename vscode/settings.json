@@ -1,7 +1,7 @@
 {
     "go.alternateTools": {
-        "go": "${workspaceFolder}/.vscode/scripts/go.sh",
-        "dlv": "${workspaceFolder}/.vscode/scripts/dlv.sh",
+        "go": "${workspaceFolder}/.vscode/scripts/go-wrapper.sh",
+        "dlv": "${workspaceFolder}/.vscode/scripts/dlv-wrapper.sh",
     },
     "go.delveConfig": {
         "debugAdapter": "legacy",

@@ -2,15 +2,17 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # GO compiler wrapper.
+#
+# Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
 
-WRAPPER_TYPE="go"
+MESSAGE_SOURCE="go-wrapper"
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/env.sh"
-xunreferenced_variables "${WRAPPER_TYPE}"
+source "${SCRIPT_DIR}/go-environment.sh"
+xunreferenced_variables "${MESSAGE_SOURCE}"
 
 # List of services to be stopped
 SERVICES_STOP=("onvifd" "onvifd-debug")
@@ -58,7 +60,7 @@ SRCIPT_ARGS=("$@")
 HAVE_BUILD=
 HAVE_INSTALL=
 
-function xparseargs() {
+function xparse_go_arguments() {
 	local dirty=
 	local result=()
 	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
@@ -102,7 +104,7 @@ function xparseargs() {
 	return 1
 }
 
-if xparseargs; then
+if xparse_go_arguments; then
 	set "${SRCIPT_ARGS[@]}"
 	xdebug "New Args: $*"
 fi
@@ -114,38 +116,6 @@ fi
 if [ "${HAVE_INSTALL}" != "" ]; then
 	xunreferenced_variables
 fi
-
-function xcamera_features() {
-	local state="$1"
-	shift
-	local feature_args=""
-	for feature in "$@"; do
-		feature_args="${feature_args}&${feature}=${state}"
-	done
-	local timeout=2
-	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
-		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
-	xexec "${wget_command[*]}"
-	local response="${EXEC_STDOUT//[$'\t\r\n']}"
-	xdebug "WGET response: ${response}"
-	local features_set=""
-	local features_err=""
-	for feature in "$@"; do
-		local pattern="\"${feature}\": set to ${state}"
-		if grep -i -q "$pattern" <<< "$response"; then
-			features_set="${features_set}, ${feature}"
-		else
-			features_err="${features_err}, ${feature}"
-		fi
-	done
-
-	if [[ "${features_set}" != "" ]]; then
-		xecho "Camera features set to ${state}: ${features_set:2}"
-	fi
-	if [[ "${features_err}" != "" ]]; then
-		xecho "WARNING: Failed to set camera features to ${state}: ${features_err:2}"
-	fi
-}
 
 if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 	xecho "ERROR: Can not find Go executable at \"${ORIGINAL_GOBIN}\"."
@@ -159,7 +129,7 @@ if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 		lookup_dir="$(dirname "${lookup_dir}")"
 		xecho "HINT: Set BUILDROOT_DIR=\"${lookup_dir}\"."
 	fi
-	exit 1
+	exit "1"
 fi
 
 # Exdcute original Golang command
@@ -167,22 +137,13 @@ xexec "${ORIGINAL_GOBIN}" "$@"
 
 if [ "${HAVE_BUILD}" != "" ]; then
 	if [ "${EXEC_STATUS}" == "0" ]; then
-		xecho "Installing to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
 		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
-
 			xrun cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
 			xrun sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
 
 			xcamera_features "true" "videoanalytics" "audio"
-			xsstop
-			xpstop
-			xfdel
-			xfcopy
-			xmkdirs
-			xsstart
-			xpstart
-			xflash
-			exit "1"
+			xperform_build_and_deploy "Installing ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
+			exit "0"
 		else
 			xecho "ERROR: Main executable ${PI}${TARGET_BIN_SOURCE}${PO} does not exist"
 			exit "1"

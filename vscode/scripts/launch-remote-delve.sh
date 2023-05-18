@@ -2,15 +2,17 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # Deploy binary & start delve in DAP mode
+#
+# Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
 
-WRAPPER_TYPE="launch-remote-delve"
+MESSAGE_SOURCE="launch-remote-delve"
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/env.sh"
-xunreferenced_variables "${WRAPPER_TYPE}"
+source "${SCRIPT_DIR}/go-environment.sh"
+xunreferenced_variables "${MESSAGE_SOURCE}"
 
 # List of services to be stopped
 SERVICES_STOP=("onvifd" "onvifd-debug")
@@ -30,12 +32,5 @@ xunreferenced_variables \
 	"${PROCESSES_START[@]}" \
 	"${COPY_FILES[@]}"
 
-xval XECHO_ENABLED=y
-xecho "Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host ${PI}${TARGET_USER}@${TARGET_IPADDR}${PO}"
-xbuild
-xsstop
-xpstop
-xfcopy
-xecho "Starting Delve on remote host..."
-xpstart
-xflash
+xperform_build_and_deploy "[ECHO]" "[BUILD]" \
+	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"

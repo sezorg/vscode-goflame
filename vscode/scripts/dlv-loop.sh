@@ -10,7 +10,7 @@ set -euo pipefail
 PATTERN="TARGET_IPPORT"
 if [[ "{TARGET_IPPORT}" == "{$PATTERN}" ]]; then
 	echo "IP port number is not set. Do not run this script directly."
-	exit 1
+	exit "1"
 fi
 
 IGNORE_LIST=()
@@ -79,7 +79,7 @@ while :; do
 	while [ "${count}" != "0" ]; do
 		count=$((count - 1))
 		if [ ! -f "${DLOOP_STATUS_FILE}" ]; then
-			exit 0
+			exit "0"
 		fi
 		sleep 0.2
 	done

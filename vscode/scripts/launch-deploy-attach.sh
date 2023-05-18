@@ -2,15 +2,17 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # Deploy binary to remote host (Delve should run in infinite loop)
+#
+# Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
 
-WRAPPER_TYPE="launch-deploy-attach"
+MESSAGE_SOURCE="launch-deploy-attach"
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/env.sh"
-xunreferenced_variables "${WRAPPER_TYPE}"
+source "${SCRIPT_DIR}/go-environment.sh"
+xunreferenced_variables "${MESSAGE_SOURCE}"
 
 DEPLOY_DELVE=n
 DEPLOY_NGINX=n
@@ -71,13 +73,5 @@ xunreferenced_variables \
 	"${PROCESSES_STOP[@]}" \
 	"${COPY_FILES[@]}"
 
-xval XECHO_ENABLED=y
-clear
-xbuild
-xecho "Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
-xsstop
-xpstop
-xmkdirs
-xfcopy
-xsstart
-xflash
+xperform_build_and_deploy "[ECHO]" "[BUILD]" \
+	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
