@@ -1,0 +1,106 @@
+onvif/media/SetVideoAnalyticsConfiguration
+{
+	"Configuration":{
+		"Name":"Analytics configuration",
+		"UseCount":1,
+		"Token":"vac",
+		"AnalyticsEngineConfiguration":{
+			"AnalyticsModule":[
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"16\"/><SimpleItem Name=\"Rows\" Value=\"9\"/></Parameters>",
+					"Name":"module0",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module1",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module2",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module3",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module4",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module5",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module6",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module7",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module8",
+					"Type":"cellmotiondetector"
+				},
+			]
+		},
+		"RuleEngineConfiguration":{
+			"Rule":[
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule0",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule1",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule2",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule3",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule4",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule5",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule6",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule7",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule8",
+					"Type":"cellmotionrule"
+				},
+			]
+		}
+	}
+}

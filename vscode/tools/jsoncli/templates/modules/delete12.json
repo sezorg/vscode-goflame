@@ -1,0 +1,8 @@
+onvif/analytics/DeleteAnalyticsModules
+{
+	"ConfigurationToken":"vac",
+	"AnalyticsModuleName":[
+		"Test1",
+		"Test2",
+	]
+}

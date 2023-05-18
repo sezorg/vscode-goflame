@@ -1,0 +1,18 @@
+onvif/analytics/CreateAnalyticsModules
+{
+	"ConfigurationToken":"vac",
+	"AnalyticsModule":[
+		{
+
+			"Parameters":"<Parameters><SimpleItem Name=\"Sensitivity\" Value=\"100\"/><ElementItem Name=\"Layout\"><CellLayout Columns=\"32\" Rows=\"18\"/></ElementItem></Parameters>",
+			"Parameters0":"<Parameters><SimpleItem Name=\"Sensitivity\" Value=\"90\"/><ElementItem Name=\"Layout\"><CellLayout Columns=\"32\" Rows=\"18\"/></ElementItem></Parameters>",
+			"Name":"Test1",
+			"Type":"cellmotiondetector"
+		},
+		{
+			"Parameters":"<Parameters><SimpleItem Name=\"Sensitivity\" Value=\"90\"/><ElementItem Name=\"Layout\"><CellLayout Columns=\"32\" Rows=\"18\"/></ElementItem></Parameters>",
+			"Name":"Test2",
+			"Type":"cellmotiondetector"
+		},
+	]
+}

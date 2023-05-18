@@ -1,0 +1,16 @@
+onvif/analytics/ModifyRules
+{
+	"ConfigurationToken":"vac",
+	"Rule":[
+		{
+			"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"212\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"1000\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/><SimpleItem Name=\"ActiveCells\" Value=\"AQAf//8BAB///wEAH///AQAf//8BAB/f/wH4D///AfgP//8B+A/3/w==\"/></Parameters>",
+			"Name":"CellMotionDetector1",
+			"Type":"cellmotionrule"
+		},
+		{
+			"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"212\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"1000\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/><SimpleItem Name=\"ActiveCells\" Value=\"AQAf//8BAB///wEAH///AQAf//8BAB/f/wH4D///AfgP//8B+A/3/w==\"/></Parameters>",
+			"Name":"CellMotionDetector2",
+			"Type":"cellmotionrule"
+		},
+	]
+}

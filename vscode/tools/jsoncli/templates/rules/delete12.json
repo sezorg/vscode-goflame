@@ -1,0 +1,8 @@
+onvif/analytics/DeleteRules
+{
+	"ConfigurationToken":"vac",
+	"RuleName":[
+		"CellMotionDetector1",
+		"CellMotionDetector2",
+	]
+}

@@ -1,0 +1,4 @@
+onvif/imaging/GetOptions
+{
+  "VideoSourceToken": "(VIDEO_SOURCE)",
+}

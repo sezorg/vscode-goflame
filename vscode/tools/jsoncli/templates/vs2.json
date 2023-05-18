@@ -1,0 +1,46 @@
+onvif/media/SetVideoAnalyticsConfiguration
+{
+	"Configuration":{
+		"Name":"Analytics configuration",
+		"UseCount":1,
+		"Token":"vac",
+		"AnalyticsEngineConfiguration":{
+			"AnalyticsModule":[
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"17\"/><SimpleItem Name=\"Rows\" Value=\"10\"/></Parameters>",
+					"Name":"module1",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"16\"/><SimpleItem Name=\"Rows\" Value=\"9\"/></Parameters>",
+					"Name":"module0",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"16\"/><SimpleItem Name=\"Rows\" Value=\"9\"/></Parameters>",
+					"Name":"module90",
+					"Type":"cellmotiondetector"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"Columns\" Value=\"16\"/><SimpleItem Name=\"Rows\" Value=\"9\"/></Parameters>",
+					"Name":"module91",
+					"Type":"cellmotiondetector"
+				},
+			]
+		},
+		"RuleEngineConfiguration":{
+			"Rule":[
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule0",
+					"Type":"cellmotionrule"
+				},
+				{
+					"Parameters":"<Parameters><SimpleItem Name=\"MinCount\" Value=\"4\"/><SimpleItem Name=\"AlarmOnDelay\" Value=\"777\"/><SimpleItem Name=\"AlarmOffDelay\" Value=\"1000\"/></Parameters>",
+					"Name":"rule90",
+					"Type":"cellmotionrule"
+				},
+			]
+		}
+	}
+}

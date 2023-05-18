@@ -65,7 +65,7 @@ function execute_json_request() {
   local json="${1}"
   json="${json/(VIDEO_SOURCE)/"${VIDEO_SOURCE}"}"
   json="${IP_ADDR}/${json}"
-  echo python3 "${SCRIPT_DIR}/jsonrq.py" "${json}"
+  echo python3 "jsonrq.py" "${json}"
   python3 "${SCRIPT_DIR}/jsonrq.py" "${json}" "${RUN_FLAGS[@]}"
 }
 
