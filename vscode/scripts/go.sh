@@ -115,17 +115,36 @@ if [ "${HAVE_INSTALL}" != "" ]; then
 	xunreferenced_variables
 fi
 
-function xcamera_feature() {
+function xcamera_features() {
+	local state="$1"
+	shift
+	local feature_args=""
+	for feature in "$@"; do
+		feature_args="${feature_args}&${feature}=${state}"
+	done
 	local response
 	local timeout=2
-	local wget_command=(timeout "${timeout}" wget --no-proxy --timeout="${timeout}" "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -)
+	local wget_command=(timeout "${timeout}" wget --no-proxy --timeout="${timeout}"
+		"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}" -q -O -)
 	xdebug "Run Action: ${wget_command[*]}"
 	response=$("${wget_command[@]}")
-	local pattern="\"$1\": set to $2"
-	if grep -i -q "$pattern" <<< "$response"; then
-		xecho "Camera feature \"$1\" is set to \"$2\"."
-	else
-		xecho "WARNING: Failed to set camera feature \"$1\" to \"$2\"."
+
+	local features_set=""
+	local features_err=""
+	for feature in "$@"; do
+		local pattern="\"${feature}\": set to ${state}"
+		if grep -i -q "$pattern" <<< "$response"; then
+			features_set="${features_set}, \"${feature}\""
+		else
+			features_err="${features_err}, \"${feature}\""
+		fi
+	done
+
+	if [[ "${features_set}" != "" ]]; then
+		xecho "Camera features ${features_set:2} set to \"${state}\""
+	fi
+	if [[ "${features_err}" != "" ]]; then
+		xecho "WARNING: Failed to set camera features ${features_err:2} to \"${state}\""
 	fi
 }
 
@@ -146,7 +165,7 @@ if [ "${HAVE_BUILD}" != "" ]; then
 			cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
 			sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
 
-			xcamera_feature "videoanalytics" "true"
+			xcamera_features "true" "videoanalytics" "audio"
 			xsstop
 			xpstop
 			xfdel
