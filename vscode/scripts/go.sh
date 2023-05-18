@@ -117,7 +117,8 @@ fi
 
 function xcamera_feature() {
 	local response
-	response=$(wget "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -)
+	xdebug "Run Action: wget --timeout=5 "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -"
+	response=$(wget --timeout=5 "http://${TARGET_IPADDR}/cgi/features.cgi?$1=$2" -q -O -)
 	local pattern="\"$1\": set to $2"
 	if grep -i -q "$pattern" <<< "$response"; then
 		xecho "Camera feature \"$1\" is set to \"$2\"."
