@@ -2,7 +2,7 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # Run Delve in inifinite DAP loop with local console capture
-# To terminate use `dstop' command
+# To terminate use `ds' command
 
 set -euo pipefail
 #set "-x"
@@ -42,7 +42,7 @@ if [ -f "${DLOOP_STATUS_FILE}" ]; then
 fi
 
 while :; do
-	echo "Starting Delve headless server loop in DAP mode. To stop use: \$ dstop"
+	echo "Starting Delve headless server loop in DAP mode. To stop use: \$ ds"
 	#echo "Ignore pattern: ${PRINT_PATTERNS}"
 
 	function safe() {
