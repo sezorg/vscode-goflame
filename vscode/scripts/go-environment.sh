@@ -12,13 +12,7 @@ function xtime() {
 }
 
 function xelapsed() {
-	local dt
-	local dd
-	local dt2
-	local dh
-	local dt3
-	local dm
-	local ds
+	local dt dd dt2 dh dt3 dm ds
 	dt=$(echo "$(date +%s.%N) - $1" | bc)
 	dd=$(echo "$dt/86400" | bc)
 	dt2=$(echo "$dt-86400*$dd" | bc)
@@ -441,7 +435,7 @@ function xkill() {
 		shift
 	fi
 	for procname in "$@"; do
-		SSH_TARGET_PREF="${SSH_TARGET_PREF}(if pgrep ${procname} > /dev/null; then pkill ${procname}; fi); "
+		SSH_TARGET_PREF="${SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
 	done
 }
 
@@ -487,9 +481,17 @@ function xfiles_delete_vargs() {
 		local elements=""
 		for filename in "${list[@]}"; do
 			elements="${elements}, $(basename -- "$filename")"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi); "
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi; "
 		done
 		xecho "Removing ${#list[@]} files: ${elements:2}"
+	fi
+}
+
+function xclean_directory() {
+	if [ -d "${1}" ]; then
+		xexec rm -rf "${1}/*"
+	else
+		xexec mkdir -p "${1}"
 	fi
 }
 
@@ -500,7 +502,6 @@ function xcache_put() {
 function xcache_get() {
 	cat "${CACHE_DIR}/cachedb/${1}" 2>/dev/null
 }
-
 
 # List of files to be copied, "source|target"
 COPY_FILES=()
@@ -521,13 +522,11 @@ function xfiles_copy() {
 	fi
 	if [ "${#list[@]}" != "0" ]; then
 		local backup_source="${CACHE_DIR}/data"
-		local backup_rname=""
-		local backup_subdir=""
-		xexec rm -r "${backup_source}"
 		if [ "${COPY_CACHE}" != "y" ]; then
-			xexec rm -r "${CACHE_DIR}/cachedb"
+			xclean_directory "${CACHE_DIR}/cachedb"
+		elif [ ! -d "${CACHE_DIR}/cachedb" ]; then
+			xexec mkdir -p "${CACHE_DIR}/cachedb"
 		fi
-		xexec mkdir -p "${CACHE_DIR}/cachedb"
 
 		local elements=""
 		local count="0"
@@ -542,15 +541,6 @@ function xfiles_copy() {
 			local fileB="${files[1]}"
 			if [[ "$fileB" =~ ^\:.* ]]; then
 				uploading="1"
-				local backup_rname="${fileB:1}"
-				local backup_subdir
-				backup_subdir=$(dirname "${backup_rname}")
-				local backup_fulldir="${backup_source}/${backup_subdir}"
-				backup_fulldir="${backup_fulldir//\/\//\/}"
-				if ! xcontains "${backup_fulldir}" "${directories[@]}"; then
-					directories+=("${backup_fulldir}")
-					xexec mkdir -p "${backup_fulldir}"
-				fi
 				local prefA="${fileA:0:1}"
 				if [[ "${prefA}" == "?" ]]; then
 					fileA="${fileA:1}"
@@ -567,26 +557,32 @@ function xfiles_copy() {
 					exit "1"
 				fi
 
-				local nameSum
-				local fileSum
+				local nameSum fileSum
 				nameSum=$(md5sum <<< "${fileA}")
 				nameSum="${nameSum:0:32}"
 				fileSum=$(md5sum "${fileA}")
 				fileSum="${fileSum:0:32}"
-
 				#xecho "${nameSum} :: ${fileSum}"
+
 				if [ "${COPY_CACHE}" != "y" ] || [ "$(xcache_get "${nameSum}")"  != "${fileSum}" ]; then
-					local backup_target="${backup_source}/${backup_rname}"
+					if [ "${directories[*]}" == "" ]; then
+						xclean_directory "${backup_source}"
+					fi
+					local backup_target="${backup_source}/${fileB:1}"
 					backup_target="${backup_target//\/\//\/}"
+					local backup_subdir
+					backup_subdir=$(dirname "${backup_target}")
+					if ! xcontains "${backup_subdir}" "${directories[@]}"; then
+						directories+=("${backup_subdir}")
+						xexec mkdir -p "${backup_subdir}"
+					fi
 					xexec ln -s "${fileA}" "${backup_target}"
-					SSH_TARGET_PREF="${SSH_TARGET_PREF}(if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi); "
+					SSH_TARGET_PREF="${SSH_TARGET_PREF}if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi; "
 					SSH_HOST_POST="${SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
 				else
 					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
 				fi
-
-				#ln -s "${fileA}" "${backup_source}/${backup_rname}"
 			fi
 			if [ "${fileB}" != "" ]; then
 				elements="${elements}, $(basename -- "$fileB")"
@@ -596,13 +592,9 @@ function xfiles_copy() {
 		if [ "${uploading}" != "" ]; then
 			if [ "${elements}" != "" ]; then
 				xecho "Uploading ${count} files: ${elements:2}"
+				SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -6 - | "
+				SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
 			fi
-			SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -7 - | "
-			SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
-			#tar -cf - -C "${backup_source}" --dereference . | gzip -7 - | \
-			#	sshpass -p "${TARGET_PASS}" \
-			#	ssh "${SSH_FLAGS[@]}" ${TARGET_USER}@${TARGET_IPADDR} \
-			#	"${command}tar -xzf - -C \"/\""
 		else
 			xecho "Downloading ${#list[@]} files: ${elements:2}"
 		fi
@@ -685,7 +677,7 @@ function xprocesses_stop_vargs() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}(if pgrep ${procname} > /dev/null; then pkill ${procname}; fi); "
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
 	fi
@@ -748,7 +740,7 @@ function xexecute_commands_vargs() {
 		local elements=""
 		for command in "${list[@]}"; do
 			elements="${elements}, ${command}"
-			SSH_TARGET_POST="${SSH_TARGET_POST}( ${command} ); "
+			SSH_TARGET_POST="${SSH_TARGET_POST}(${command}); "
 		done
 		xecho "Creating ${#list[@]} directories: ${elements:2}"
 	fi
