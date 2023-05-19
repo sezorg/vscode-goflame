@@ -32,9 +32,9 @@ function xelapsed() {
 }
 
 xstart="$(xtime)"
-trap at_exit EXIT
+trap xat_exit_trap EXIT
 
-function at_exit() {
+function xat_exit_trap() {
 	xelapsed "${xstart}"
 	return 0
 }
@@ -425,6 +425,7 @@ function xperform_build_and_deploy() {
 	xfiles_copy
 	xservices_start
 	xprocesses_start
+	xcamera_features
 	xflash_pending_commands
 }
 
@@ -726,11 +727,11 @@ function xcreate_directories_vargs() {
 }
 
 # List of directories to be created
-COMMANDS_EXECUTE=()
+EXECUTE_COMMANDS=()
 
 function xexecute_commands() {
 	# Create directories from DIRECTORIES_CREATE
-	xexecute_commands_vargs "${COMMANDS_EXECUTE[@]}"
+	xexecute_commands_vargs "${EXECUTE_COMMANDS[@]}"
 }
 
 # shellcheck disable=SC2120
@@ -784,35 +785,71 @@ function xbuild_project() {
 	fi
 }
 
-# Set camera features: xcamera_features state feature1 [feature2 ...[featureN]]
+CAMERA_FEATURES_ON=()
+CAMERA_FEATURES_OFF=()
+
+# Set camera features
 function xcamera_features() {
-	local state="$1"
-	shift
 	local feature_args=""
-	for feature in "$@"; do
-		feature_args="${feature_args}&${feature}=${state}"
+	for feature in "${CAMERA_FEATURES_ON[@]}"; do
+		feature_args="${feature_args}&${feature}=true"
 	done
+	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
+		feature_args="${feature_args}&${feature}=false"
+	done
+	if [[ "${feature_args}" == "" ]]; then
+		return 0
+	fi
 	local timeout=2
 	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
 		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"
 	local response="${EXEC_STDOUT//[$'\t\r\n']/}"
 	xdebug "WGET response: ${response}"
-	local features_set=""
-	local features_err=""
-	for feature in "$@"; do
-		local pattern="\"${feature}\": set to ${state}"
+
+	local features_on_set=""
+	local features_on_err=""
+	for feature in "${CAMERA_FEATURES_ON[@]}"; do
+		local pattern="\"${feature}\": set to True"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_set="${features_set}, ${feature}"
+			features_on_set="${features_on_set}, ${feature}"
 		else
-			features_err="${features_err}, ${feature}"
+			features_on_err="${features_on_err}, ${feature}"
 		fi
 	done
 
+	local features_off_set=""
+	local features_off_err=""
+	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
+		local pattern="\"${feature}\": set to False"
+		if grep -i -q "$pattern" <<<"$response"; then
+			features_off_set="${features_off_set}, ${feature}"
+		else
+			features_off_err="${features_off_err}, ${feature}"
+		fi
+	done
+
+	local features_set=""
+	if [[ "${features_on_set}" != "" ]]; then
+		features_set="${features_set}; true: ${features_on_set:2}"
+	fi
+	if [[ "${features_off_set}" != "" ]]; then
+		features_set="${features_set}; false: ${features_off_set:2}"
+	fi
+
+	local features_err=""
+	if [[ "${features_on_err}" != "" ]]; then
+		features_err="${features_err}; true: ${features_on_err:2}"
+	fi
+	if [[ "${features_off_err}" != "" ]]; then
+		features_err="${features_err}; false: ${features_off_err:2}"
+	fi
+
 	if [[ "${features_set}" != "" ]]; then
-		xecho "Camera features set to ${state}: ${features_set:2}"
+		xecho "Camera features set to ${features_set:2}"
 	fi
 	if [[ "${features_err}" != "" ]]; then
-		xecho "WARNING: Failed to set camera features to ${state}: ${features_err:2}"
+		xecho "WARNING: Failed to set camera features to ${features_err:2}"
 	fi
 }
+

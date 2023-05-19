@@ -48,13 +48,24 @@ COPY_FILES=(
 	"init/users.toml|:/var/lib/onvifd/users.toml")
 COPY_CACHE=n
 
+# Enable camera feature
+CAMERA_FEATURES_ON+=(
+	"audio"
+	"videoanalytics"
+)
+
+# Disable camera feature
+CAMERA_FEATURES_OFF+=(
+)
+
 xunreferenced_variables \
 	"${SERVICES_STOP[@]}" \
 	"${SERVICES_START[@]}" \
 	"${PROCESSES_STOP[@]}" \
 	"${PROCESSES_START[@]}" \
 	"${DELETE_FILES[@]}" \
-	"${COPY_FILES[@]}"
+	"${COPY_FILES[@]}" \
+	"${CAMERA_FEATURES_ON[@]}"
 
 SRCIPT_ARGS=("$@")
 HAVE_BUILD=
@@ -140,7 +151,6 @@ if [[ "${HAVE_BUILD}" != "" ]]; then
 		if [[ -f "./${TARGET_BIN_SOURCE}" ]]; then
 			xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
 			xexec sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
-			xcamera_features "true" "videoanalytics" "audio"
 			xperform_build_and_deploy "Installing ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
 			exit "0"
 		else
