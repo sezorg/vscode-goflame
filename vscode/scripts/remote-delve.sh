@@ -25,7 +25,7 @@ COPY_FILES=(
 	".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
 	".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	"init/onvifd.conf|:/etc/onvifd.conf"
-	)
+)
 
 xunreferenced_variables \
 	"${PROCESSES_STOP[@]}" \

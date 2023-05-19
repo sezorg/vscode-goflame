@@ -43,7 +43,7 @@ git config --list > "${conf_file}"
 conf_text=()
 readarray -t conf_text < "${conf_file}"
 debug "conf_text count:${#conf_text[@]}"
-for conf_line in "${conf_text[@]}"; do 
+for conf_line in "${conf_text[@]}"; do
     if [[ "${conf_line}" =~ ^"user.email="* ]]; then
         conf_email="${conf_line:11}"
     fi
@@ -53,7 +53,7 @@ message_width="65"
 message_ruler=""
 
 count="0"
-while [ "${count}" -lt "${message_width}" ]; do
+while [[ "${count}" -lt "${message_width}" ]]; do
     digit=$((count % 10))
     count=$((count + 1))
     message_ruler="${message_ruler}$(printf "%d" "${digit}")"
@@ -66,7 +66,7 @@ message_head_size="${#message_head_size}"
 table_line_xfill=""
 table_line_blank=""
 count="0"
-while [ "${count}" -lt "${message_head_size}" ]; do
+while [[ "${count}" -lt "${message_head_size}" ]]; do
     count=$((count + 1))
     table_line_xfill="${table_line_xfill}-"
     table_line_blank="${table_line_blank} "
@@ -128,7 +128,7 @@ for branches_line in "${branches_text[@]}"; do
 done
 
 set +u
-if [ "${1}" != "" ]; then
+if [[ "${1}" != "" ]]; then
     gerrit_email="${1}"
 fi
 set -u
@@ -170,7 +170,7 @@ revision=""
 ref=""
 header_emit=""
 
-for changes_line in "${changes_text[@]}"; do 
+for changes_line in "${changes_text[@]}"; do
     if [[ "${changes_line}" =~ ^"change "* ]]; then
         change_id="${changes_line:7}"
         number=""
@@ -188,7 +188,7 @@ for changes_line in "${changes_text[@]}"; do
         debug "mode: \"${mode}\""
     fi
 
-    if [[ "${mode}" == "change" ]]; then 
+    if [[ "${mode}" == "change" ]]; then
         if [[ "${changes_line}" =~ ^"  number: "* ]]; then
             number="${changes_line:10}"
             debug "number: \"${number}\""
@@ -219,7 +219,7 @@ for changes_line in "${changes_text[@]}"; do
         fi
     fi
 
-    if [[ "${mode}" == "currentPatchSet" ]] || [[ "${mode}" == "patchSets" ]]; then 
+    if [[ "${mode}" == "currentPatchSet" ]] || [[ "${mode}" == "patchSets" ]]; then
         if [[ "${changes_line}" =~ ^"    number: "* ]]; then
             patch_num="${changes_line:12}"
             if [[ "${mode}" == "currentPatchSet" ]]; then
@@ -240,7 +240,7 @@ for changes_line in "${changes_text[@]}"; do
         fi
     fi
 
-    if [[ "${mode}" == "listPatchSets" ]]; then 
+    if [[ "${mode}" == "listPatchSets" ]]; then
         if [[ "${changes_line}" =~ ^"  patchSets:"$ ]]; then
             patch_num=""
             revision=""
@@ -250,7 +250,7 @@ for changes_line in "${changes_text[@]}"; do
         fi
     fi
 
-    if [[ "${mode}" == "currentPatchSetAdd" ]] || [[ "${mode}" == "patchSetsAdd" ]]; then 
+    if [[ "${mode}" == "currentPatchSetAdd" ]] || [[ "${mode}" == "patchSetsAdd" ]]; then
         if [[ "${change_id}" != "" ]] && \
             [[ "${number}" != "" ]] && \
             [[ "${subject}" != "" ]] && \

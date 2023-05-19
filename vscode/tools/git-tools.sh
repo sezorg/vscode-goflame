@@ -68,26 +68,25 @@ function gt() {
 
 function _error() {
 	if [[ "${1}" != "" ]]; then
-		>&2 echo "ERROR: ${1}"
+		echo >&2 "ERROR: ${1}"
 	fi
 	return 1
 }
 
 function _warning() {
 	if [[ "${1}" != "" ]]; then
-		>&2 echo "WARNING: ${1}"
+		echo >&2 "WARNING: ${1}"
 	fi
 	return 0
 }
 
 function _readvar() {
-    # call like this: readvar filename variable
-    while read -r line
-    do
-        # you could do some validation here
-        echo "$line"
-    done < "$1"
-    echo ${!2}
+	# call like this: readvar filename variable
+	while read -r line; do
+		# you could do some validation here
+		echo "$line"
+	done <"$1"
+	echo "${!2}"
 }
 
 function _resolve_variable() {
@@ -101,15 +100,15 @@ function _resolve_variable() {
 			actual_value=$(cat "${value_path}/${value_name}")
 		fi
 	else
-		mkdir -p "${value_path}" > /dev/null >&2
-		echo "${actual_value}" > "${value_path}/${value_name}"
+		mkdir -p "${value_path}" >/dev/null >&2
+		echo "${actual_value}" >"${value_path}/${value_name}"
 	fi
 	if [[ "${actual_value}" == "" ]]; then
 		if [[ "${default_value}" != "" ]]; then
 			_warning "${error_message}"
 			actual_value="${default_value}"
 		else
-			_error  "${error_message}"
+			_error "${error_message}"
 			return 1
 		fi
 	fi
@@ -119,8 +118,8 @@ function _resolve_variable() {
 function _set_konsole_tab_title_type() {
 	local title="$1"
 	local type=${2:-0}
-	if [[ -z "${title}" ]] || \
-		[[ -z "${KONSOLE_DBUS_SERVICE}" ]]  || \
+	if [[ -z "${title}" ]] ||
+		[[ -z "${KONSOLE_DBUS_SERVICE}" ]] ||
 		[[ -z "${KONSOLE_DBUS_SESSION}" ]]; then
 		return 0
 	fi
@@ -130,7 +129,7 @@ function _set_konsole_tab_title_type() {
 function _set_konsole_title() {
 	local titleLocal=${1:-%d : %n}
 	local titleRemote=${2:-(%u) %H}
-	_set_konsole_tab_title_type "$titleLocal" && \
+	_set_konsole_tab_title_type "$titleLocal" &&
 		_set_konsole_tab_title_type "$titleRemote" 1
 }
 
@@ -145,8 +144,8 @@ function ss() {
 		echo "Connecting to ${ip_address}"
 	fi
 	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
-	sshpass -p "${pass}" ssh 2> >( grep -E >&2 -v '^Warning: Permanently added') \
-		"${SSH_FLAGS[@]}" "${user}@${ip_address}"
+	sshpass -p "${pass}" ssh \
+		"${SSH_FLAGS[@]}" "${user}@${ip_address}" 2> >(grep -E -v '^Warning: Permanently added' >&2)
 	_set_konsole_title
 }
 
@@ -161,13 +160,13 @@ function ssd() {
 		echo "Connecting to ${ip_address}"
 	fi
 	_set_konsole_title "SSH on ${user}@${ip_address}" "SSH on ${user}@${ip_address}"
-	sshpass -p "${pass}" ssh 2> >( grep -E >&2 -v '^Warning: Permanently added') \
-		"${SSH_FLAGS[@]}" "${user}@${ip_address}" dloop
+	sshpass -p "${pass}" ssh \
+		"${SSH_FLAGS[@]}" "${user}@${ip_address}" dloop 2> >(grep -E -v '^Warning: Permanently added' >&2)
 	_set_konsole_title
 }
 
 function run() {
-	echo "-- $@"
+	echo "-- $*"
 	"$@"
 }
 
@@ -183,12 +182,12 @@ function sf() {
 	fi
 	local mount_point="${HOME}/Devices/${ip_address}"
 	mkdir -p "${mount_point}"
-	fusermount -u "${mount_point}" > /dev/null 2>&1
+	fusermount -u "${mount_point}" >/dev/null 2>&1
 	echo $pass | sshfs "${SSH_FLAGS[@]}" "${user}@${ip_address}:/" "$mount_point" -o workaround=rename -o password_stdin
 	echo "Done. Mounted to: ${mount_point}"
-	if [ -x "$(command -v dolphin)" ]; then
+	if [[ -x "$(command -v dolphin)" ]]; then
 		dolphin "${mount_point}"
-	elif [ -x "$(command -v nautilus)" ]; then
+	elif [[ -x "$(command -v nautilus)" ]]; then
 		nautilus "${mount_point}"
 	fi
 }
@@ -208,7 +207,7 @@ function pi() {
 }
 
 function jc() {
-	"./jsoncli/jsoncli.sh" $@
+	"./jsoncli/jsoncli.sh" "$@"
 }
 
 function xcd() {
@@ -217,5 +216,5 @@ function xcd() {
 		return 1
 	fi
 	echo "Changing directory: $destin"
-	cd "$destin"
+	cd "$destin" || true
 }

@@ -66,25 +66,25 @@ function xparse_go_arguments() {
 	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		item="${SRCIPT_ARGS[$i]}"
-		if [ "${item}" == "${DLVBIN}" ]; then
+		if [[ "${item}" == "${DLVBIN}" ]]; then
 			result+=("${LOCAL_DLVBIN}")
 			dirty="y"
-		elif [ "${item}" == "build" ]; then
+		elif [[ "${item}" == "build" ]]; then
 			xval XECHO_ENABLED=y
 			xecho "Building \`${TARGET_BUILD_LAUNCHER}'"
 			result+=("${item}")
 			dirty="y"
 			HAVE_BUILD="y"
-		elif [ "${item}" == "install" ]; then
+		elif [[ "${item}" == "install" ]]; then
 			xval HAVE_INSTALL="y"
 			result+=("${item}")
-		elif [ "${item}" == "--echo" ]; then
+		elif [[ "${item}" == "--echo" ]]; then
 			xval XECHO_ENABLED="y"
 			dirty="y"
-		elif [ "${item}" == "--debug" ]; then
+		elif [[ "${item}" == "--debug" ]]; then
 			xval XDEBUG_ENABLED="y"
 			dirty="y"
-		elif [ "${item}" == "--trace" ]; then
+		elif [[ "${item}" == "--trace" ]]; then
 			set -x
 			dirty="y"
 		else
@@ -92,8 +92,8 @@ function xparse_go_arguments() {
 		fi
 	done
 
-	if [ "${dirty}" != "" ]; then
-		if [ "${HAVE_BUILD}" != "" ]; then
+	if [[ "${dirty}" != "" ]]; then
+		if [[ "${HAVE_BUILD}" != "" ]]; then
 			# force debug build
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
@@ -109,11 +109,11 @@ if xparse_go_arguments; then
 	xdebug "New Args: $*"
 fi
 
-if [ "${HAVE_BUILD}" != "" ]; then
+if [[ "${HAVE_BUILD}" != "" ]]; then
 	xexport "${GOLANG_EXPORTS[@]}"
 fi
 
-if [ "${HAVE_INSTALL}" != "" ]; then
+if [[ "${HAVE_INSTALL}" != "" ]]; then
 	xunreferenced_variables
 fi
 
@@ -135,9 +135,9 @@ fi
 # Exdcute original Golang command
 xexec "${ORIGINAL_GOBIN}" "$@"
 
-if [ "${HAVE_BUILD}" != "" ]; then
-	if [ "${EXEC_STATUS}" == "0" ]; then
-		if [ -f "./${TARGET_BIN_SOURCE}" ]; then
+if [[ "${HAVE_BUILD}" != "" ]]; then
+	if [[ "${EXEC_STATUS}" == "0" ]]; then
+		if [[ -f "./${TARGET_BIN_SOURCE}" ]]; then
 			xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
 			xexec sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
 			xcamera_features "true" "videoanalytics" "audio"

@@ -38,7 +38,7 @@ function cleanup() {
 }
 trap cleanup EXIT
 
-if [ -f "${DLOOP_STATUS_FILE}" ]; then
+if [[ -f "${DLOOP_STATUS_FILE}" ]]; then
 	dlv_pid="$(cat "${DLOOP_STATUS_FILE}")"
 	rm -f "${DLOOP_STATUS_FILE}"
 	function xnull() { return 0; }
@@ -61,7 +61,7 @@ while :; do
 	safe dlv_binary="$(which dlv)"
 	if [[ "${dlv_binary}" == "" ]]; then
 		echo "Unable to locate Delve/DLV binary. Waiting for deploy..."
-		while [ "${dlv_binary}" == "" ]; do
+		while [[ "${dlv_binary}" == "" ]]; do
 			sleep 1
 			safe dlv_binary="$(which dlv)"
 		done
@@ -76,9 +76,9 @@ while :; do
 	unset dlv_pid
 
 	count="5"
-	while [ "${count}" != "0" ]; do
+	while [[ "${count}" != "0" ]]; do
 		count=$((count - 1))
-		if [ ! -f "${DLOOP_STATUS_FILE}" ]; then
+		if [[ ! -f "${DLOOP_STATUS_FILE}" ]]; then
 			exit "0"
 		fi
 		sleep 0.2

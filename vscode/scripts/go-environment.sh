@@ -39,7 +39,7 @@ function at_exit() {
 	return 0
 }
 
-if [ ! -f "${HOME}/.shellcheckrc" ]; then
+if [[ ! -f "${HOME}/.shellcheckrc" ]]; then
 	echo "external-sources=true" >"${HOME}/.shellcheckrc"
 fi
 
@@ -58,7 +58,7 @@ SSH_FLAGS=(-o StrictHostKeyChecking=no
 	-o ConnectionAttempts=1)
 CACHE_DIR="/var/tmp/delve_scp"
 
-if [ ! -d "${CACHE_DIR}" ]; then
+if [[ ! -d "${CACHE_DIR}" ]]; then
 	mkdir -p "${CACHE_DIR}"
 fi
 
@@ -92,10 +92,10 @@ TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
 TARGET_BUILD_LDFLAGS+=("-X main.localStateDir=/var")
 
 TARGET_BUILD_FLAGS=("${TARGET_BUILD_GOFLAGS[@]}")
-if [ "${#TARGET_BUILD_LDFLAGS[@]}" != "0" ]; then
+if [[ "${#TARGET_BUILD_LDFLAGS[@]}" != "0" ]]; then
 	TARGET_BUILD_FLAGS+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
 fi
-if [ "${TARGET_BUILD_LAUNCHER}" != "" ]; then
+if [[ "${TARGET_BUILD_LAUNCHER}" != "" ]]; then
 	TARGET_BUILD_FLAGS+=("${TARGET_BUILD_LAUNCHER}")
 fi
 
@@ -109,7 +109,7 @@ DELVE_LOGFILE="/var/tmp/dlv.log"
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 
 WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
-if [ "$MESSAGE_SOURCE" == "" ]; then
+if [[ "$MESSAGE_SOURCE" == "" ]]; then
 	MESSAGE_SOURCE="unknown-wrapper"
 fi
 
@@ -208,12 +208,11 @@ xunreferenced_variables \
 	"${CC}" \
 	"${CXX}"
 
-
-function xcontains () {
-  local value="$1"
-  shift
-  for element; do [[ "$element" == "$value" ]] && return 0; done
-  return 1
+function xcontains() {
+	local value="$1"
+	shift
+	for element; do [[ "$element" == "$value" ]] && return 0; done
+	return 1
 }
 
 function xexport() {
@@ -238,17 +237,18 @@ function xemit() {
 	shift
 	local message
 	message="$(date '+%d/%m/%Y %H:%M:%S') [${MESSAGE_SOURCE}] $*"
-	if [ "${FIRST_ECHO}" == "" ]; then
-		if [ "${echo_flag}" != "" ]; then
+	if [[ "${FIRST_ECHO}" == "" ]]; then
+		if [[ "${echo_flag}" != "" ]]; then
 			echo >&2 "${EP}${message}"
 		fi
 		echo "${message}" >>"${WRAPPER_LOGFILE}"
 	else
 		FIRST_ECHO=
-		if [ "${XECHO_ENABLED}" != "" ] || [ "${XDEBUG_ENABLED}" != "" ]; then
+		if [[ "${XECHO_ENABLED}" != "" ]] ||
+			[[ "${XDEBUG_ENABLED}" != "" ]]; then
 			echo >&2
 		fi
-		if [ "${echo_flag}" != "" ]; then
+		if [[ "${echo_flag}" != "" ]]; then
 			echo >&2 "${EP}${message}"
 		fi
 		echo >>"${WRAPPER_LOGFILE}"
@@ -275,24 +275,24 @@ function xexestat() {
 	local stdout="${2}"
 	local stderr="${3}"
 	local status="${4}"
-	if [ "${status}" != "0" ]; then
+	if [[ "${status}" != "0" ]]; then
 		local needStatus="1"
-		if [ "${stdout}" != "" ]; then
+		if [[ "${stdout}" != "" ]]; then
 			xecho "${prefix} STATUS ${status}, STDOUT: ${stdout}"
 			needStatus="0"
 		fi
-		if [ "${stderr}" != "" ]; then
+		if [[ "${stderr}" != "" ]]; then
 			xecho "${prefix} STATUS ${status}, STDERR: ${stderr}"
 			needStatus="0"
 		fi
-		if [ "${needStatus}" == "1" ]; then
+		if [[ "${needStatus}" == "1" ]]; then
 			xecho "${prefix} STATUS: ${status}"
 		fi
 	else
-		if [ "${stdout}" != "" ]; then
+		if [[ "${stdout}" != "" ]]; then
 			xdebug "${prefix} STDOUT: ${stdout}"
 		fi
-		if [ "${2}" != "" ]; then
+		if [[ "${2}" != "" ]]; then
 			xdebug "${prefix} STDERR: ${stderr}"
 		fi
 	fi
@@ -305,7 +305,7 @@ OPTIONS_STACK=()
 function xexec() {
 	xfset "+e"
 	local canfail=
-	if [ "${1:-}" == "${CANFAIL}" ]; then
+	if [[ "${1:-}" == "${CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -324,10 +324,10 @@ function xexec() {
 	} 3<<EOF
 EOF
 	xfunset
-	if [ "${EXEC_STATUS}" != "0" ] && [ "${canfail}" == "" ]; then
+	if [[ "${EXEC_STATUS}" != "0" ]] && [[ "${canfail}" == "" ]]; then
 		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
 		xecho "ERROR: Failed to execute: ${command}"
-		if [ "${EXEC_STDERR}" != "" ]; then
+		if [[ "${EXEC_STDERR}" != "" ]]; then
 			xecho "ERROR: ${EXEC_STDERR}"
 		fi
 		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
@@ -338,10 +338,10 @@ EOF
 
 function xexit() {
 	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=${EXEC_STATUS}"
-	if [ "${EXEC_STDOUT}" != "" ]; then
+	if [[ "${EXEC_STDOUT}" != "" ]]; then
 		echo "${EXEC_STDOUT}"
 	fi
-	if [ "${EXEC_STDERR}" != "" ]; then
+	if [[ "${EXEC_STDERR}" != "" ]]; then
 		echo "${EXEC_STDERR}" 1>&2
 	fi
 	exit "${EXEC_STATUS}"
@@ -366,7 +366,7 @@ function xfunset() {
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
-	if [ "${1:-}" == "${CANFAIL}" ]; then
+	if [[ "${1:-}" == "${CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -380,9 +380,9 @@ SSH_TARGET_PREF=""
 SSH_TARGET_POST=""
 
 function xflash_pending_commands() {
-	if [[ "${SSH_HOST_STDIO}" != "" ]] || \
-		[[ "${SSH_TARGET_PREF}" != "" ]] || \
-		[[ "${SSH_TARGET_STDIO}" != "" ]] || \
+	if [[ "${SSH_HOST_STDIO}" != "" ]] ||
+		[[ "${SSH_TARGET_PREF}" != "" ]] ||
+		[[ "${SSH_TARGET_STDIO}" != "" ]] ||
 		[[ "${SSH_TARGET_POST}" != "" ]]; then
 
 		local code="${SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
@@ -430,7 +430,7 @@ function xperform_build_and_deploy() {
 
 function xkill() {
 	local canfail=
-	if [ "${1:-}" == "${CANFAIL}" ]; then
+	if [[ "${1:-}" == "${CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -441,7 +441,7 @@ function xkill() {
 
 function xscp() {
 	local canfail=
-	if [ "${1:-}" == "${CANFAIL}" ]; then
+	if [[ "${1:-}" == "${CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -477,18 +477,18 @@ function xfiles_delete() {
 # shellcheck disable=SC2120
 function xfiles_delete_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for filename in "${list[@]}"; do
 			elements="${elements}, $(basename -- "$filename")"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}if [ -f \"${filename}\" ]; then rm -f \"${filename}\"; fi; "
+			SSH_TARGET_PREF="${SSH_TARGET_PREF}if [[ -f \"${filename}\" ]]; then rm -f \"${filename}\"; fi; "
 		done
 		xecho "Removing ${#list[@]} files: ${elements:2}"
 	fi
 }
 
 function xclean_directory() {
-	if [ -d "${1}" ]; then
+	if [[ -d "${1}" ]]; then
 		xexec rm -rf "${1}/*"
 	else
 		xexec mkdir -p "${1}"
@@ -496,7 +496,7 @@ function xclean_directory() {
 }
 
 function xcache_put() {
-	echo "$2" > "${CACHE_DIR}/cachedb/${1}"
+	echo "$2" >"${CACHE_DIR}/cachedb/${1}"
 }
 
 function xcache_get() {
@@ -511,20 +511,20 @@ COPY_CACHE=y
 function xfiles_copy() {
 	# Copy files from COPY_FILES
 	local canfail=
-	if [ "${1:-}" == "${CANFAIL}" ]; then
+	if [[ "${1:-}" == "${CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
 
 	local list=("$@")
-	if [ "${#list[@]}" == "0" ]; then
+	if [[ "${#list[@]}" == "0" ]]; then
 		list=("${COPY_FILES[@]}")
 	fi
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local backup_source="${CACHE_DIR}/data"
-		if [ "${COPY_CACHE}" != "y" ]; then
+		if [[ "${COPY_CACHE}" != "y" ]]; then
 			xclean_directory "${CACHE_DIR}/cachedb"
-		elif [ ! -d "${CACHE_DIR}/cachedb" ]; then
+		elif [[ ! -d "${CACHE_DIR}/cachedb" ]]; then
 			xexec mkdir -p "${CACHE_DIR}/cachedb"
 		fi
 
@@ -558,14 +558,14 @@ function xfiles_copy() {
 				fi
 
 				local nameSum fileSum
-				nameSum=$(md5sum <<< "${fileA}")
+				nameSum=$(md5sum <<<"${fileA}")
 				nameSum="${nameSum:0:32}"
 				fileSum=$(md5sum "${fileA}")
 				fileSum="${fileSum:0:32}"
 				#xecho "${nameSum} :: ${fileSum}"
 
-				if [ "${COPY_CACHE}" != "y" ] || [ "$(xcache_get "${nameSum}")"  != "${fileSum}" ]; then
-					if [ "${directories[*]}" == "" ]; then
+				if [[ "${COPY_CACHE}" != "y" ]] || [[ "$(xcache_get "${nameSum}")" != "${fileSum}" ]]; then
+					if [[ "${directories[*]}" == "" ]]; then
 						xclean_directory "${backup_source}"
 					fi
 					local backup_target="${backup_source}/${fileB:1}"
@@ -577,20 +577,20 @@ function xfiles_copy() {
 						xexec mkdir -p "${backup_subdir}"
 					fi
 					xexec ln -s "${fileA}" "${backup_target}"
-					SSH_TARGET_PREF="${SSH_TARGET_PREF}if [ -f \"${fileB:1}\" ]; then rm -f \"${fileB:1}\"; fi; "
+					SSH_TARGET_PREF="${SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
 					SSH_HOST_POST="${SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
 				else
 					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
 				fi
 			fi
-			if [ "${fileB}" != "" ]; then
+			if [[ "${fileB}" != "" ]]; then
 				elements="${elements}, $(basename -- "$fileB")"
-				count=$((count+1))
+				count=$((count + 1))
 			fi
 		done
-		if [ "${uploading}" != "" ]; then
-			if [ "${elements}" != "" ]; then
+		if [[ "${uploading}" != "" ]]; then
+			if [[ "${elements}" != "" ]]; then
 				xecho "Uploading ${count} files: ${elements:2}"
 				SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -6 - | "
 				SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
@@ -608,7 +608,7 @@ function xfiles_copy() {
 			local fileB="${files[1]}"
 			if [[ ! "$fileB" =~ ^\:.* ]]; then
 				xdebug "    ${fileB#":"}"
-				if [ "${canfail}" != "" ]; then
+				if [[ "${canfail}" != "" ]]; then
 					xscp "${CANFAIL}" "${fileA}" "${fileB}"
 				else
 					xscp "${fileA}" "${fileB}"
@@ -629,7 +629,7 @@ function xservices_stop() {
 # shellcheck disable=SC2120
 function xservices_stop_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="${elements}, ${service}"
@@ -651,7 +651,7 @@ function xservices_start() {
 # shellcheck disable=SC2120
 function xservices_start_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="${elements}, ${service}"
@@ -673,7 +673,7 @@ function xprocesses_stop() {
 # shellcheck disable=SC2120
 function xprocesses_stop_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
@@ -694,7 +694,7 @@ function xprocesses_start() {
 # shellcheck disable=SC2120
 function xprocesses_start_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
@@ -715,7 +715,7 @@ function xcreate_directories() {
 # shellcheck disable=SC2120
 function xcreate_directories_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for dirname in "${list[@]}"; do
 			elements="${elements}, ${dirname}"
@@ -736,7 +736,7 @@ function xexecute_commands() {
 # shellcheck disable=SC2120
 function xexecute_commands_vargs() {
 	local list=("$@")
-	if [ "${#list[@]}" != "0" ]; then
+	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for command in "${list[@]}"; do
 			elements="${elements}, ${command}"
@@ -748,22 +748,22 @@ function xexecute_commands_vargs() {
 
 function xbuild_project() {
 	xexport "${GOLANG_EXPORTS[@]}"
-	if [ "${RUN_GO_VET}" == "yes" ]; then
+	if [[ "${RUN_GO_VET}" == "yes" ]]; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
 		xexec "go" "vet" "./..."
-		if [ "${EXEC_STDERR}" != "" ]; then
+		if [[ "${EXEC_STDERR}" != "" ]]; then
 			xecho "${EXEC_STDERR}"
 		fi
 		xecho "Go vet finished with status ${EXEC_STATUS}"
 	fi
-	if [ "${RUN_STATICCHECK}" == "yes" ]; then
+	if [[ "${RUN_STATICCHECK}" == "yes" ]]; then
 		local flags=()
-		if [ "${RUN_STATICCHECK_ALL}" == "yes" ]; then
+		if [[ "${RUN_STATICCHECK_ALL}" == "yes" ]]; then
 			flags+=("-checks=all")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
 		xexec "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
-		if [ "${EXEC_STDOUT}" != "" ]; then
+		if [[ "${EXEC_STDOUT}" != "" ]]; then
 			xecho "${EXEC_STDOUT}"
 		fi
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
@@ -774,7 +774,7 @@ function xbuild_project() {
 	#flags+=("-msan")
 	#flags+=("-asan")
 	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
-	if [ "${EXEC_STATUS}" != "0" ]; then
+	if [[ "${EXEC_STATUS}" != "0" ]]; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
 		xdebug "GOPATH=$GOPATH"
 		xdebug "GOROOT=$GOROOT"
@@ -796,13 +796,13 @@ function xcamera_features() {
 	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
 		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"
-	local response="${EXEC_STDOUT//[$'\t\r\n']}"
+	local response="${EXEC_STDOUT//[$'\t\r\n']/}"
 	xdebug "WGET response: ${response}"
 	local features_set=""
 	local features_err=""
 	for feature in "$@"; do
 		local pattern="\"${feature}\": set to ${state}"
-		if grep -i -q "$pattern" <<< "$response"; then
+		if grep -i -q "$pattern" <<<"$response"; then
 			features_set="${features_set}, ${feature}"
 		else
 			features_err="${features_err}, ${feature}"

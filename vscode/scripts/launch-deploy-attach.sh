@@ -20,7 +20,7 @@ DEPLOY_MEDIAD=n
 
 # List of services to be stopped
 SERVICES_STOP=(
-#	"onvifd"
+	#"onvifd"
 )
 
 # List of services to be started
@@ -28,8 +28,8 @@ SERVICES_START=()
 
 # List of process names to be stopped
 PROCESSES_STOP=(
-#	"${TARGET_BIN_SOURCE}"
-#	"${TARGET_BIN_NAME}"
+	#"${TARGET_BIN_SOURCE}"
+	#"${TARGET_BIN_NAME}"
 )
 
 # List of directories to be created
@@ -61,7 +61,7 @@ if [[ "${DEPLOY_NGINX}" == "y" ]]; then
 
 fi
 
-if [ "${DEPLOY_MEDIAD}" == "y" ]; then
+if [[ "${DEPLOY_MEDIAD}" == "y" ]]; then
 	SERVICES_STOP+=("mediad")
 	SERVICES_START+=("mediad")
 	COPY_FILES+=("${HOME}/Workspace/elvees/work/ecam03_rel0/buildroot/output/target/usr/bin/mediad|:/usr/bin/mediad")

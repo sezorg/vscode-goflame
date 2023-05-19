@@ -7,7 +7,7 @@ set -euo pipefail
 #set "-x"
 
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
-if [ -f "${DLOOP_STATUS_FILE}" ]; then
+if [[ -f "${DLOOP_STATUS_FILE}" ]]; then
 	dlv_pid="$(cat "${DLOOP_STATUS_FILE}")"
 	rm -f "${DLOOP_STATUS_FILE}"
 	function xnull() { return 0; }
