@@ -131,14 +131,16 @@ fi
 if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 	xecho "ERROR: Can not find Go executable at \"${ORIGINAL_GOBIN}\"."
 	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
-	lookup_dir=$(find "${BUILDROOT_DIR}" -name "using-buildroot-toolchain.txt" -maxdepth 5)
-	xdebug "Actual BUILDROOT_DIR=\"${BUILDROOT_DIR}\""
-	xdebug "Found buildroot doc file: ${lookup_dir}"
-	if [[ "${lookup_dir}" != "" ]]; then
-		lookup_dir="$(dirname "${lookup_dir}")"
-		lookup_dir="$(dirname "${lookup_dir}")"
-		lookup_dir="$(dirname "${lookup_dir}")"
-		xecho "HINT: Set BUILDROOT_DIR=\"${lookup_dir}\"."
+	if [[ -d "${BUILDROOT_DIR}" ]]; then
+		lookup_dir=$(find "${BUILDROOT_DIR}" -name "using-buildroot-toolchain.txt" -maxdepth 5)
+		xdebug "Actual BUILDROOT_DIR=\"${BUILDROOT_DIR}\""
+		xdebug "Found buildroot doc file: ${lookup_dir}"
+		if [[ "${lookup_dir}" != "" ]]; then
+			lookup_dir="$(dirname "${lookup_dir}")"
+			lookup_dir="$(dirname "${lookup_dir}")"
+			lookup_dir="$(dirname "${lookup_dir}")"
+			xecho "HINT: Set BUILDROOT_DIR=\"${lookup_dir}\"."
+		fi
 	fi
 	exit "1"
 fi
