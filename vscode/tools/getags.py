@@ -251,6 +251,9 @@ class GerritTags:
 		if not self.execute:
 			print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
 			return
+		status = Shell(['git', 'fetch', self.repository_url])
+		if not status.succed():
+			fatal(f'Failed to fetch from {self.repository_url}')
 		self.branch_index = 0
 		status = Shell(['git', 'gerrit', 'changes'] + self.filter)
 		if not status.succed():
