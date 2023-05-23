@@ -145,7 +145,10 @@ if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 	exit "1"
 fi
 
-# Exdcute original Golang command
+RUN_STATICCHECK=yes
+RUN_GO_VET=yes
+
+# Execute original Golang command
 xexec "${ORIGINAL_GOBIN}" "$@"
 
 if [[ "${HAVE_BUILD}" != "" ]]; then
