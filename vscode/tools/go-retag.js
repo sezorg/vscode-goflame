@@ -1,16 +1,16 @@
 #!/usr/bin/env node
 
 const fs = require('fs');
+const path = require("path");
 const process = require('process');
-const glob = require('glob'); // install: $ npm i glob
 const child_process = require("child_process");
 
 // Complete optimizations
 const optimizationOptionsComplete = {
 	// XML/SOAP/JSON
-	omitTagNames: true, // Remove matching tag/key from configuration (safe). 
-	transformNs: true, // Replace XML namespaces with their shorten XMLNS versions. 
-	sortOptions: true, // Sort additional options, remove duplicates. 
+	omitTagNames: true, // Remove matching tag/key from configuration (safe).
+	transformNs: false, // Replace XML namespaces with their shorten XMLNS versions.
+	sortOptions: true, // Sort additional options, remove duplicates.
 	// JSON
 	omitXmlInternals: true, // Remove xml.Name and over types from JSON RPC.
 	derriveJsonKeys: true, // Derive JSON keys fro XML/SOAP tags.
@@ -18,13 +18,15 @@ const optimizationOptionsComplete = {
 	omitPointerTypes: true, // Make pointed types optional.
 	omitArrayTypes: true, // Make array types optional.
 	derriveOmitempty: true, // Use carefully: zero/null values will not be included into JSON.
+	// Overall
+	saveTagsComments: false, // Save original structure tags in comments
 }
 
 const optimizationOptionsCurrent = {
 	// XML/SOAP/JSON
-	omitTagNames: false, // Remove matching tag/key from configuration (safe). 
-	transformNs: false, // Replace XML namespaces with their shorten XMLNS versions. 
-	sortOptions: false, // Sort additional options, remove duplicates. 
+	omitTagNames: false, // Remove matching tag/key from configuration (safe).
+	transformNs: false, // Replace XML namespaces with their shorten XMLNS versions.
+	sortOptions: false, // Sort additional options, remove duplicates.
 	// JSON
 	omitXmlInternals: false, // Remove xml.Name and over types from JSON RPC.
 	derriveJsonKeys: false, // Derive JSON keys fro XML/SOAP tags.
@@ -32,10 +34,12 @@ const optimizationOptionsCurrent = {
 	omitPointerTypes: false, // Make pointed types optional.
 	omitArrayTypes: false, // Make array types optional.
 	derriveOmitempty: false, // Use carefully: zero/null values will not be included into JSON.
+	// Overall
+	saveTagsComments: false, // Save original structure tags in comments
 }
 
 // Optimizations selector.
-const optimizationOptions = optimizationOptionsCurrent;
+const optimizationOptions = optimizationOptionsComplete;
 
 const backupFilePostfix = ".bak";
 const outputFilePostfix = ""; // ".out";
@@ -52,7 +56,8 @@ const TOKEN_STRING = 'string';
 const TOKEN_BINARY = 'binary';
 const TOKEN_COMMENT = 'comment';
 const TOKEN_PUNCT = 'punct';
-const DEBUG_ENABLE = 0;
+const DEBUG_ENABLE = true;
+const CREATE_BACKUP = false;
 
 const specialNamespaces = {
 	"xmlns": true,
@@ -330,6 +335,7 @@ class LineParser {
 		this.fileInfo = fileInfo;
 		this.tagList = [];
 		this.tagMap = {};
+		this.tagMapSize = 0;
 		this.silent = silent;
 		this.haveHeader = false;
 		this.errorCount = 0;
@@ -621,27 +627,36 @@ class LineParser {
 			if (tagString !== modifiedTag) {
 
 				var commentPrefix = " ";
-				var commentString = "//";
+				var commentString = "";
 				if (comment) {
 					commentPrefix = "";
 					commentString = comment.toString();
+				} else if(optimizationOptions.saveTagsComments) {
+					commentString = "//";
 				}
 
-				if (!declaration.commentTag) {
+				if (!declaration.commentTag && optimizationOptions.saveTagsComments) {
 					commentString = commentString.trim() + " origin:" + tagString;
 				}
 
 				if (tag) {
 					this.newSource = tag.stringBefore() + modifiedTag +
-						tag.stringAfter(comment) + commentPrefix + commentString;
+						tag.stringAfter(comment);
+					if (commentString != "") {
+						this.newSource += commentPrefix + commentString;
+					}
 				} else if (comment) {
-					this.newSource = comment.stringBefore().trimRight() +
-						" " + modifiedTag + " " + commentPrefix + commentString;
+					this.newSource = comment.stringBefore().trimRight() + " " + modifiedTag;
+					if (commentString != "") {
+						this.newSource += " " + commentPrefix + commentString;
+					}
 				} else {
-					this.newSource = this.source.trimRight() +
-						" " + modifiedTag + " " + commentPrefix + commentString;
+					this.newSource = this.source.trimRight() + " " + modifiedTag;
+					if (commentString != "") {
+						this.newSource += " " + commentPrefix + commentString;
+					}
 				}
-			} 
+			}
 		} else if (comment) {
 			var commentOrigin = declaration.commentOrigin;
 			var commentTag = declaration.commentTag;
@@ -661,8 +676,8 @@ class LineParser {
 		if (this.newSource === this.source) {
 			this.newSource = null;
 		} else {
-			debug(null, "Source old: " + this.source);
-			debug(null, "Source new: " + this.newSource);
+			debug("Source old: " + this.source);
+			debug("Source new: " + this.newSource);
 		}
 }
 
@@ -698,6 +713,7 @@ class LineParser {
 			}
 			this.tagList.push(tagConfig);
 			this.tagMap[idString] = tagConfig;
+			this.tagMapSize++;
 		}
 		return tagConfig;
 	}
@@ -828,8 +844,10 @@ class LineParser {
 		var tagPoint = tagConfig.tagName ? tagConfig.tagName : tagConfig.id;
 
 		var shortNs = null;
+		debug("Processing namespace '" + namespace + "'.");
 		if (namespace) {
 			shortNs = reverseOnvifNamespaces[namespace];
+			debug("Short namespace '" + shortNs + "'.");
 			if (!shortNs) {
 				if (unknonLongNs.indexOf(namespace) < 0) {
 					unknonLongNs.push(namespace);
@@ -909,7 +927,7 @@ class LineParser {
 		tagConfig.emitName = emitName;
 
 		//
-		// Additional JSON postprocessing.	
+		// Additional JSON postprocessing.
 		//
 
 		if (xmlConfig) {
@@ -970,12 +988,16 @@ class LineParser {
 			}
 
 			// Omit empty pointed types.
-			if ((declaration.isPointer && optimizationOptions.omitPointerTypes) ||
-				(declaration.isArray && optimizationOptions.omitArrayTypes)) {
-				if (newOptions.indexOf("omitempty") < 0) {
-					newOptions.push("omitempty");
-					newOptionsChanged = true;
-					this.info(tagPoint, "Added JSON 'omitempty' flag for pointed/array type.");
+			var xmlState = this.tagMap["xml"];
+			var jsonState = this.tagMap["json"];
+			if ((xmlState && xmlState.present) || (jsonState && jsonState.present)) {
+				if ((declaration.isPointer && optimizationOptions.omitPointerTypes) ||
+					(declaration.isArray && optimizationOptions.omitArrayTypes)) {
+					if (newOptions.indexOf("omitempty") < 0) {
+						newOptions.push("omitempty");
+						newOptionsChanged = true;
+						this.info(tagPoint, "Added JSON 'omitempty' flag for pointed/array type.");
+					}
 				}
 			}
 		}
@@ -1002,13 +1024,13 @@ class LineParser {
 		if (newOptionsChanged || namespace !== newNamespace || tagName !== newTagName) {
 			var emitResult = "";
 			if (newNamespace) {
-				emitResult = newNamespace;
+				emitResult = newNamespace + " ";
+				if (!newTagName) {
+					newTagName = declName;
+				}
 			}
 
 			if (newTagName) {
-				if (emitResult.length !== 0) {
-					emitResult += " ";
-				}
 				emitResult += newTagName;
 			}
 
@@ -1020,7 +1042,7 @@ class LineParser {
 			emitResult = "\"" + emitResult + "\"";
 			tagConfig.emitResult = emitResult;
 			debug("Optimized from: " + tagConfig.id.toString() + ":" + tagConfig.data.toString());
-			debug("Optimized to:   " + tagConfig.id.toString() + ":" + emitResult);
+			debug("Optimized   to: " + tagConfig.id.toString() + ":" + emitResult);
 		}
 	}
 }
@@ -1055,7 +1077,7 @@ class FileParser {
 
 		if (textModified && !readonlyMode) {
 			var backupName = this.fileName + backupFilePostfix;
-			if (!fs.existsSync(backupName)) {
+			if (CREATE_BACKUP && !fs.existsSync(backupName)) {
 				try {
 					fs.copyFileSync(this.fileName, backupName);
 				} catch (e) {
@@ -1118,23 +1140,33 @@ class LogFile {
 	}
 }
 
+function getAllFiles(dirPath, arrayOfFiles) {
+	arrayOfFiles = arrayOfFiles || []
+	files = fs.readdirSync(dirPath)
+	files.forEach(function(file) {
+	  if (fs.statSync(dirPath + "/" + file).isDirectory()) {
+		arrayOfFiles = getAllFiles(dirPath + "/" + file, arrayOfFiles)
+	  } else {
+		arrayOfFiles.push(path.join(dirPath, "/", file))
+	  }
+	})
+
+	return arrayOfFiles
+}
+
 function execute() {
-	glob("**/*.go", processFiles)
+	filelist = getAllFiles(".");
+	var filteredFiles = filelist.filter(function(file){
+		return file.endsWith('.go');
+	});
 
-	function processFiles(error, files) {
-		if (error) {
-			console.log(error)
-			return
-		}
+	var log = new LogFile(logFileName);
+	log.write("Started " + new Date().toISOString());
 
-		var log = new LogFile(logFileName);
-		log.write("Started " + new Date().toISOString());
-
-		for (var index = 0; index < files.length; index++) {
-			var fileName = files[index];
-			var file = new FileParser(fileName, log);
-			file.parse(false);
-		}
+	for (var index = 0; index < filteredFiles.length; index++) {
+		var fileName = filteredFiles[index];
+		var file = new FileParser(fileName, log);
+		file.parse(false);
 	}
 }
 
