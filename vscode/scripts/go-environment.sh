@@ -7,6 +7,10 @@
 
 set -euo pipefail
 
+function xis_true() {
+	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]];
+}
+
 function xtime() {
 	date +%s.%N
 }
@@ -77,6 +81,7 @@ TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 RUN_GO_VET=""
+RUN_GO_VET_FLAGS=("-composites=false")
 RUN_STATICCHECK=""
 RUN_STATICCHECK_ALL=""
 
@@ -261,6 +266,14 @@ function xecho() {
 	xemit "${XECHO_ENABLED}" "$*"
 }
 
+function xtext() {
+	local text
+	readarray -t text <<<"$@"
+	for line in "${text[@]}"; do
+		xecho "${line}"
+	done
+}
+
 function xdebug() {
 	# Debug message
 	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
@@ -315,10 +328,7 @@ function xexec() {
 	fi
 	xdebug "Exec: ${command}"
 	{
-		EXEC_STDOUT=$(
-			chmod u+w /dev/fd/3 && # Needed for bash5.0
-				eval "${command}" 2>/dev/fd/3
-		)
+		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "${command}" 2>/dev/fd/3)
 		EXEC_STATUS=$?
 		EXEC_STDERR=$(cat <&3)
 	} 3<<EOF
@@ -328,7 +338,7 @@ EOF
 		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
 		xecho "ERROR: Failed to execute: ${command}"
 		if [[ "${EXEC_STDERR}" != "" ]]; then
-			xecho "ERROR: ${EXEC_STDERR}"
+			xtext "${EXEC_STDERR}"
 		fi
 		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
 		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
@@ -404,7 +414,7 @@ function xperform_build_and_deploy() {
 
 	while :; do
 		if [[ "$1" == "[BUILD]" ]]; then
-			fbuild="y"
+			fbuild="yes"
 		elif [[ "$1" == "[ECHO]" ]]; then
 			xval XECHO_ENABLED=y
 			clear
@@ -415,7 +425,7 @@ function xperform_build_and_deploy() {
 	done
 
 	xecho "$*"
-	if [[ "${fbuild}" == "y" ]]; then
+	if xis_true "${fbuild}"; then
 		xbuild_project
 	else
 		xcheck_project
@@ -525,7 +535,7 @@ function xfiles_copy() {
 	fi
 	if [[ "${#list[@]}" != "0" ]]; then
 		local backup_source="${CACHE_DIR}/data"
-		if [[ "${COPY_CACHE}" != "y" ]]; then
+		if ! xis_true "${COPY_CACHE}"; then
 			xclean_directory "${CACHE_DIR}/cachedb"
 		elif [[ ! -d "${CACHE_DIR}/cachedb" ]]; then
 			xexec mkdir -p "${CACHE_DIR}/cachedb"
@@ -567,7 +577,7 @@ function xfiles_copy() {
 				fileSum="${fileSum:0:32}"
 				#xecho "${nameSum} :: ${fileSum}"
 
-				if [[ "${COPY_CACHE}" != "y" ]] || [[ "$(xcache_get "${nameSum}")" != "${fileSum}" ]]; then
+				if ! xis_true "${COPY_CACHE}" || [[ "$(xcache_get "${nameSum}")" != "${fileSum}" ]]; then
 					if [[ "${directories[*]}" == "" ]]; then
 						xclean_directory "${backup_source}"
 					fi
@@ -751,23 +761,23 @@ function xexecute_commands_vargs() {
 
 function xcheck_project() {
 	xexport "${GOLANG_EXPORTS[@]}"
-	if [[ "${RUN_GO_VET}" == "yes" ]]; then
+	if xis_true "${RUN_GO_VET}"; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "go" "vet" "./..."
+		xexec "${CANFAIL}" "go" "vet" "${RUN_GO_VET_FLAGS[@]}" "./..."
 		if [[ "${EXEC_STDERR}" != "" ]]; then
-			xecho "${EXEC_STDERR}"
+			xtext "${EXEC_STDERR}"
 		fi
 		xecho "Go vet finished with status ${EXEC_STATUS}"
 	fi
-	if [[ "${RUN_STATICCHECK}" == "yes" ]]; then
+	if xis_true "${RUN_STATICCHECK}"; then
 		local flags=()
-		if [[ "${RUN_STATICCHECK_ALL}" == "yes" ]]; then
+		if xis_true "${RUN_STATICCHECK_ALL}"; then
 			flags+=("-checks=all")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
+		xexec "${CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
 		if [[ "${EXEC_STDOUT}" != "" ]]; then
-			xecho "${EXEC_STDOUT}"
+			xtext "${EXEC_STDOUT}"
 		fi
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
