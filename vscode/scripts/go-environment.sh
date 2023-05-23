@@ -417,6 +417,8 @@ function xperform_build_and_deploy() {
 	xecho "$*"
 	if [[ "${fbuild}" == "y" ]]; then
 		xbuild_project
+	else
+		xcheck_project
 	fi
 	xservices_stop
 	xprocesses_stop
@@ -747,7 +749,7 @@ function xexecute_commands_vargs() {
 	fi
 }
 
-function xbuild_project() {
+function xcheck_project() {
 	xexport "${GOLANG_EXPORTS[@]}"
 	if [[ "${RUN_GO_VET}" == "yes" ]]; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
@@ -769,6 +771,10 @@ function xbuild_project() {
 		fi
 		xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
+}
+
+function xbuild_project() {
+	xcheck_project
 	local flags=()
 	flags+=("build")
 	#flags+=("-race")
