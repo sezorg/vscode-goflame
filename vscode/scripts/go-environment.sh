@@ -8,7 +8,7 @@
 set -euo pipefail
 
 function xis_true() {
-	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]];
+	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
 }
 
 function xtime() {
@@ -870,3 +870,30 @@ function xcamera_features() {
 	fi
 }
 
+function xtruncate_text_file() {
+	local name="$1"
+	local limit="$2"
+	local target="$3"
+	if [[ ! -f "${name}" ]]; then
+		return 0
+	fi
+	local actual
+	actual=$(wc -l "${name}")
+	actual=${actual%% *}
+	local truncate=$((actual > limit ? 1 : 0))
+	if ! xis_true "${truncate}"; then
+		return 0
+	fi
+	local tmp_name="${name}.tmp"
+	xdebug "Truncating ${WRAPPER_LOGFILE} from $actual to $target limit, thresold $limit."
+	xexec "cp \"${name}\" \"${tmp_name}\""
+	local offset=$((actual - target))
+	xexec "tail -$offset \"${tmp_name}\" > \"${name}\""
+	xexec "rm -rf \"${tmp_name}\""
+}
+
+function xtruncate_log_file() {
+	xtruncate_text_file "${WRAPPER_LOGFILE}" 5000 300
+}
+
+xtruncate_log_file
