@@ -36,6 +36,13 @@ DELETE_FILES=(
 	"${TARGET_LOGFILE}"
 	"${DELVE_LOGFILE}")
 
+DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
+
+# Advised target stripts that the initial upload process is complete.
+EXECUTE_COMMANDS+=(
+	"echo 1 > ${DLOOP_ENABLE_FILE}"
+)
+
 # List of files to be copied, "source|target"
 COPY_FILES=(
 	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"

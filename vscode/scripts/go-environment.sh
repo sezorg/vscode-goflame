@@ -437,6 +437,7 @@ function xperform_build_and_deploy() {
 	xfiles_copy
 	xservices_start
 	xprocesses_start
+	xexecute_commands
 	xflash_pending_commands
 	xcamera_features
 }
