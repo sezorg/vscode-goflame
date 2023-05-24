@@ -37,19 +37,19 @@ DIRECTORIES_CREATE=()
 
 # List of files to be copied, "source|target"
 COPY_FILES=(
-	"init/onvifd.conf|:/etc/onvifd.conf"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
+	"init/onvifd.conf|:/etc/onvifd.conf"
 )
 
-if [[ "${DEPLOY_DELVE}" == "y" ]]; then
+if xis_true "${DEPLOY_DELVE}"; then
 	COPY_FILES+=(
-		".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
-		".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 		"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+		".vscode/scripts/dlv-loop.sh|:/usr/bin/dl"
+		#".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	)
 fi
 
-if [[ "${DEPLOY_NGINX}" == "y" ]]; then
+if xis_true "${DEPLOY_NGINX}"; then
 	SERVICES_STOP+=("nginx")
 	SERVICES_START+=("nginx")
 	COPY_FILES+=(
@@ -61,11 +61,10 @@ if [[ "${DEPLOY_NGINX}" == "y" ]]; then
 
 fi
 
-if [[ "${DEPLOY_MEDIAD}" == "y" ]]; then
+if xis_true "${DEPLOY_MEDIAD}"; then
 	SERVICES_STOP+=("mediad")
 	SERVICES_START+=("mediad")
-	COPY_FILES+=("${HOME}/Workspace/elvees/work/ecam03_rel0/buildroot/output/target/usr/bin/mediad|:/usr/bin/mediad")
-	:
+	COPY_FILES+=("${BUILDROOT_TARGET_DIR}/usr/bin/mediad|:/usr/bin/mediad")
 fi
 
 xunreferenced_variables \

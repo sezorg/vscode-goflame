@@ -753,10 +753,10 @@ function xexecute_commands_vargs() {
 	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for command in "${list[@]}"; do
-			elements="${elements}, ${command}"
+			elements="${elements}, ${command%% *}"
 			SSH_TARGET_POST="${SSH_TARGET_POST}(${command}); "
 		done
-		xecho "Creating ${#list[@]} directories: ${elements:2}"
+		xecho "Executing ${#list[@]} target commands: ${elements:2}"
 	fi
 }
 

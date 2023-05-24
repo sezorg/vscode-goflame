@@ -15,44 +15,52 @@ source "${SCRIPT_DIR}/go-environment.sh"
 xunreferenced_variables "${MESSAGE_SOURCE}"
 
 # List of services to be stopped
-SERVICES_STOP=("onvifd" "onvifd-debug")
+SERVICES_STOP=(
+	"onvifd"
+	"onvifd-debug"
+)
 
 # List of services to be started
-#SERVICES_START=("nginx")
+SERVICES_START=(
+	#"nginx"
+)
 
 # List of process names to be stopped
-PROCESSES_STOP=("dlv" "${TARGET_BIN_SOURCE}" "${TARGET_BIN_NAME}")
+PROCESSES_STOP=(
+	"dlv"
+	"${TARGET_BIN_SOURCE}"
+	"${TARGET_BIN_NAME}"
+)
 
 # List of processed to be started, executable with args
 PROCESSES_START=(
 	#"nohup dlv exec ${TARGET_BIN_DESTIN} --listen=:2345 --headless=true --log=true --allow-non-terminal-interactive --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc --accept-multiclient --api-version=2 -- ${TARGET_EXEC_ARGS} >${DELVE_LOGFILE} 2>&1 &"
 )
 
-#DIRECTORIES_CREATE=("/tmp/nginx/")
+DIRECTORIES_CREATE+=(
+	#"/tmp/nginx/"
+)
 
 # List of files to be deleted
 DELETE_FILES=(
 	"${TARGET_BIN_DESTIN}"
 	"${TARGET_LOGFILE}"
-	"${DELVE_LOGFILE}")
-
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-
-# Advised target stripts that the initial upload process is complete.
-EXECUTE_COMMANDS+=(
-	"echo 1 > ${DLOOP_ENABLE_FILE}"
+	"${DELVE_LOGFILE}"
 )
 
 # List of files to be copied, "source|target"
 COPY_FILES=(
-	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
-	".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
-	".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
-	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
 	"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
+	#".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
+	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
+	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
 	"init/onvifd.conf|:/etc/onvifd.conf"
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
-	"init/users.toml|:/var/lib/onvifd/users.toml")
+	#"init/users.toml|:/var/lib/onvifd/users.toml"
+)
+
+# Disable chache then building workspace.
 COPY_CACHE=n
 
 # Enable camera feature
@@ -64,6 +72,18 @@ CAMERA_FEATURES_ON+=(
 # Disable camera feature
 CAMERA_FEATURES_OFF+=(
 )
+
+# Target file which signals that the initial deploy is complete.
+DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
+
+# Advised target stripts that the initial upload deploy is complete.
+EXECUTE_COMMANDS+=(
+	"echo 1 > ${DLOOP_ENABLE_FILE}"
+)
+
+# Enable vet & staticcheck on build workspace.
+RUN_GO_VET=yes
+RUN_STATICCHECK=yes
 
 xunreferenced_variables \
 	"${SERVICES_STOP[@]}" \
@@ -132,9 +152,10 @@ if [[ "${HAVE_BUILD}" != "" ]]; then
 fi
 
 if [[ "${HAVE_INSTALL}" != "" ]]; then
-	xunreferenced_variables
+	:
 fi
 
+# Check configuration.
 if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 	xecho "ERROR: Can not find Go executable at \"${ORIGINAL_GOBIN}\"."
 	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
@@ -151,9 +172,6 @@ if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 	fi
 	exit "1"
 fi
-
-RUN_STATICCHECK=yes
-RUN_GO_VET=yes
 
 # Execute original Golang command
 xexec "${ORIGINAL_GOBIN}" "$@"
