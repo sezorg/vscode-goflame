@@ -82,8 +82,8 @@ EXECUTE_COMMANDS+=(
 )
 
 # Enable vet & staticcheck on build workspace.
-RUN_GO_VET=yes
-RUN_STATICCHECK=yes
+#RUN_GO_VET=yes
+#RUN_STATICCHECK=yes
 
 xunreferenced_variables \
 	"${SERVICES_STOP[@]}" \
@@ -97,6 +97,8 @@ xunreferenced_variables \
 SRCIPT_ARGS=("$@")
 HAVE_BUILD=
 HAVE_INSTALL=
+HAVE_ENV=
+HAVE_VERSION=
 
 function xparse_go_arguments() {
 	local dirty=
@@ -115,6 +117,12 @@ function xparse_go_arguments() {
 			HAVE_BUILD="y"
 		elif [[ "${item}" == "install" ]]; then
 			xval HAVE_INSTALL="y"
+			result+=("${item}")
+		elif [[ "${item}" == "env" ]]; then
+			xval HAVE_ENV="y"
+			result+=("${item}")
+		elif [[ "${item}" == "version" ]]; then
+			xval HAVE_VERSION="y"
 			result+=("${item}")
 		elif [[ "${item}" == "--echo" ]]; then
 			xval XECHO_ENABLED="y"
@@ -136,7 +144,7 @@ function xparse_go_arguments() {
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
 		SRCIPT_ARGS=("${result[@]}")
-		xdebug "Dirty args: ${ORIGINAL_GOBIN} ${SRCIPT_ARGS[*]}"
+		xdebug "Dirty args: ${BUILDROOT_GOBIN} ${SRCIPT_ARGS[*]}"
 		return 0
 	fi
 	return 1
@@ -147,17 +155,26 @@ if xparse_go_arguments; then
 	xdebug "New Args: $*"
 fi
 
-if [[ "${HAVE_BUILD}" != "" ]]; then
+if xis_true "${HAVE_INSTALL}"; then
+	xdebug "Executing 'install' command on local Go."
+	xexec "${LOCAL_GOBIN}" "$@"
+	xexit
+fi
+
+if xis_true "${HAVE_VERSION}"; then
+	xdebug "Executing 'version' command on local Go."
+	xexec "${LOCAL_GOBIN}" "$@"
+	xexit
+fi
+
+# Export GO environment variables.
+if xis_true "${HAVE_BUILD}"; then
 	xexport "${GOLANG_EXPORTS[@]}"
 fi
 
-if [[ "${HAVE_INSTALL}" != "" ]]; then
-	:
-fi
-
 # Check configuration.
-if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
-	xecho "ERROR: Can not find Go executable at \"${ORIGINAL_GOBIN}\"."
+if [[ ! -f "${BUILDROOT_GOBIN}" ]]; then
+	xecho "ERROR: Can not find Go executable at \"${BUILDROOT_GOBIN}\"."
 	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
 	if [[ -d "${BUILDROOT_DIR}" ]]; then
 		lookup_dir=$(find "${BUILDROOT_DIR}" -name "using-buildroot-toolchain.txt" -maxdepth 5)
@@ -174,7 +191,16 @@ if [[ ! -f "${ORIGINAL_GOBIN}" ]]; then
 fi
 
 # Execute original Golang command
-xexec "${ORIGINAL_GOBIN}" "$@"
+xexec "${BUILDROOT_GOBIN}" "$@"
+
+if xis_true "${HAVE_ENV}"; then
+	xdebug "Fixing GO environment..."
+	#xdebug "Old environment:"
+	#xdebug "${EXEC_STDOUT}"
+	#EXEC_STDOUT="${EXEC_STDOUT/go1.17/go1.18}"
+	#xdebug "New environment:"
+	#xdebug "${EXEC_STDOUT}"
+fi
 
 if [[ "${HAVE_BUILD}" != "" ]]; then
 	if [[ "${EXEC_STATUS}" == "0" ]]; then

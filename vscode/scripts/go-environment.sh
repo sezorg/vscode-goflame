@@ -118,9 +118,10 @@ if [[ "$MESSAGE_SOURCE" == "" ]]; then
 	MESSAGE_SOURCE="unknown-wrapper"
 fi
 
-ORIGINAL_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
+BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
 
 LOCAL_GOPATH="$(go env GOPATH)"
+LOCAL_GOBIN="/usr/bin/go"
 LOCAL_DLVBIN="$(which dlv)"
 LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
 
@@ -135,7 +136,8 @@ xunreferenced_variables \
 	"${DELVE_LOGFILE}" \
 	"${DELVE_DAP_START}" \
 	"${WRAPPER_LOGFILE}" \
-	"${ORIGINAL_GOBIN}" \
+	"${BUILDROOT_GOBIN}" \
+	"${LOCAL_GOBIN}" \
 	"${LOCAL_DLVBIN}" \
 	"${GOLANG_EXPORTS[@]}"
 
@@ -791,7 +793,7 @@ function xbuild_project() {
 	#flags+=("-race")
 	#flags+=("-msan")
 	#flags+=("-asan")
-	xexec "${ORIGINAL_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
+	xexec "${BUILDROOT_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [[ "${EXEC_STATUS}" != "0" ]]; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
 		xdebug "GOPATH=$GOPATH"
