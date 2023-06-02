@@ -8,5 +8,5 @@
     },
     "go.lintTool": "golangci-lint",
     "go.lintFlags": ["--fast"],
-    "editor.rulers": [92]
+    "editor.rulers": [100]
 }
