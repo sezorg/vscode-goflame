@@ -167,11 +167,6 @@ if xis_true "${HAVE_VERSION}"; then
 	xexit
 fi
 
-# Export GO environment variables.
-if xis_true "${HAVE_BUILD}"; then
-	xexport "${GOLANG_EXPORTS[@]}"
-fi
-
 # Check configuration.
 if [[ ! -f "${BUILDROOT_GOBIN}" ]]; then
 	xecho "ERROR: Can not find Go executable at \"${BUILDROOT_GOBIN}\"."
@@ -191,6 +186,7 @@ if [[ ! -f "${BUILDROOT_GOBIN}" ]]; then
 fi
 
 # Execute original Golang command
+xexport "${GOLANG_EXPORTS[@]}"
 xexec "${BUILDROOT_GOBIN}" "$@"
 
 if xis_true "${HAVE_ENV}"; then
