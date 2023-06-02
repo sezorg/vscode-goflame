@@ -95,10 +95,8 @@ xunreferenced_variables \
 	"${CAMERA_FEATURES_ON[@]}"
 
 SRCIPT_ARGS=("$@")
-HAVE_BUILD=
-HAVE_INSTALL=
-HAVE_ENV=
-HAVE_VERSION=
+HAVE_BUILD_COMMAND=
+HAVE_LOCAL_COMMAND=
 
 function xparse_go_arguments() {
 	local dirty=
@@ -106,7 +104,7 @@ function xparse_go_arguments() {
 	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		item="${SRCIPT_ARGS[$i]}"
-		if [[ "${item}" == "${DLVBIN}" ]]; then
+		if [[ "${item}" == "${EXPORT_DLVBIN}" ]]; then
 			result+=("${LOCAL_DLVBIN}")
 			dirty="y"
 		elif [[ "${item}" == "build" ]]; then
@@ -114,15 +112,18 @@ function xparse_go_arguments() {
 			xecho "Building \`${TARGET_BUILD_LAUNCHER}'"
 			result+=("${item}")
 			dirty="y"
-			HAVE_BUILD="y"
+			HAVE_BUILD_COMMAND="y"
 		elif [[ "${item}" == "install" ]]; then
-			xval HAVE_INSTALL="y"
+			xval HAVE_LOCAL_COMMAND="${item}"
 			result+=("${item}")
 		elif [[ "${item}" == "env" ]]; then
-			xval HAVE_ENV="y"
+			xval HAVE_LOCAL_COMMAND="${item}"
 			result+=("${item}")
 		elif [[ "${item}" == "version" ]]; then
-			xval HAVE_VERSION="y"
+			xval HAVE_LOCAL_COMMAND="${item}"
+			result+=("${item}")
+		elif [[ "${item}" == "list" ]]; then
+			xval HAVE_LOCAL_COMMAND="${item}"
 			result+=("${item}")
 		elif [[ "${item}" == "--echo" ]]; then
 			xval XECHO_ENABLED="y"
@@ -139,7 +140,7 @@ function xparse_go_arguments() {
 	done
 
 	if [[ "${dirty}" != "" ]]; then
-		if [[ "${HAVE_BUILD}" != "" ]]; then
+		if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then
 			# force debug build
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
@@ -155,14 +156,8 @@ if xparse_go_arguments; then
 	xdebug "New Args: $*"
 fi
 
-if xis_true "${HAVE_INSTALL}"; then
-	xdebug "Executing 'install' command on local Go."
-	xexec "${LOCAL_GOBIN}" "$@"
-	xexit
-fi
-
-if xis_true "${HAVE_VERSION}"; then
-	xdebug "Executing 'version' command on local Go."
+if [[ "${HAVE_LOCAL_COMMAND}" != "" ]]; then
+	xdebug "Executing \"${HAVE_LOCAL_COMMAND}\" command on local Go."
 	xexec "${LOCAL_GOBIN}" "$@"
 	xexit
 fi
@@ -189,16 +184,7 @@ fi
 xexport "${GOLANG_EXPORTS[@]}"
 xexec "${BUILDROOT_GOBIN}" "$@"
 
-if xis_true "${HAVE_ENV}"; then
-	xdebug "Fixing GO environment..."
-	#xdebug "Old environment:"
-	#xdebug "${EXEC_STDOUT}"
-	#EXEC_STDOUT="${EXEC_STDOUT/go1.17/go1.18}"
-	#xdebug "New environment:"
-	#xdebug "${EXEC_STDOUT}"
-fi
-
-if [[ "${HAVE_BUILD}" != "" ]]; then
+if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then
 	if [[ "${EXEC_STATUS}" == "0" ]]; then
 		if [[ -f "./${TARGET_BIN_SOURCE}" ]]; then
 			xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"

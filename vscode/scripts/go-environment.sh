@@ -120,9 +120,9 @@ fi
 
 BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
 
-LOCAL_GOPATH="$(go env GOPATH)"
-LOCAL_GOBIN="/usr/bin/go"
 LOCAL_DLVBIN="$(which dlv)"
+LOCAL_GOBIN="$(which go)"
+LOCAL_GOPATH="$(go env GOPATH)"
 LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
 
 xunreferenced_variables \
@@ -141,79 +141,78 @@ xunreferenced_variables \
 	"${LOCAL_DLVBIN}" \
 	"${GOLANG_EXPORTS[@]}"
 
-DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
-GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
+EXPORT_DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
+EXPORT_GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
 
-GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
-GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
-GOMODCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-path/pkg/mod"
-GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_arm64"
-GOCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-cache"
+EXPORT_GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
+EXPORT_GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
+EXPORT_GOMODCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-path/pkg/mod"
+EXPORT_GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_arm64"
+EXPORT_GOCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-cache"
 
-GOPROXY="direct"
-GO111MODULE="on"
-GOWORK="off"
-GOVCS="*:all"
-GOARCH="arm64"
-#GOFLAGS="-mod=vendor"
-GOFLAGS="-mod=mod"
+EXPORT_GOPROXY="direct"
+EXPORT_GO111MODULE="on"
+EXPORT_GOWORK="off"
+EXPORT_GOVCS="*:all"
+EXPORT_GOARCH="arm64"
+#EXPORT_GOFLAGS="-mod=vendor"
+EXPORT_GOFLAGS="-mod=mod"
 
-CGO_ENABLED="1"
-#CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
-#CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
-CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
-CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
-CGO_LDFLAGS=""
-CC="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-gcc"
-CXX="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-g++"
+EXPORT_CGO_ENABLED="1"
+#EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
+#EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
+EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
+EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
+EXPORT_CGO_LDFLAGS=""
+EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-gcc"
+EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-g++"
 
 GOLANG_EXPORTS=(
-	"DLVBIN"
-	"GOBIN"
+	"EXPORT_DLVBIN"
+	"EXPORT_GOBIN"
 
-	"GOROOT"
-	"GOPATH"
-	"GOMODCACHE"
-	"GOTOOLDIR"
-	"GOCACHE"
+	"EXPORT_GOROOT"
+	"EXPORT_GOPATH"
+	"EXPORT_GOMODCACHE"
+	"EXPORT_GOTOOLDIR"
+	"EXPORT_GOCACHE"
 
-	"GOPROXY"
-	"GO111MODULE"
-	"GOWORK"
-	"GOVCS"
-	"GOARCH"
-	"GOFLAGS"
-	"GOFLAGS"
+	"EXPORT_GOPROXY"
+	"EXPORT_GO111MODULE"
+	"EXPORT_GOWORK"
+	"EXPORT_GOVCS"
+	"EXPORT_GOARCH"
+	"EXPORT_GOFLAGS"
 
-	"CGO_ENABLED"
-	"CGO_CFLAGS"
-	"CGO_CXXFLAGS"
-	"CGO_LDFLAGS"
-	"CC"
-	"CXX"
+	"EXPORT_CGO_ENABLED"
+	"EXPORT_CGO_CFLAGS"
+	"EXPORT_CGO_CXXFLAGS"
+	"EXPORT_CGO_LDFLAGS"
+	"EXPORT_CC"
+	"EXPORT_CXX"
 )
 
 xunreferenced_variables \
-	"${DLVBIN}" \
-	"${GOBIN}" \
-	"${GOROOT}" \
-	"${GOPATH}" \
-	"${GOMODCACHE}" \
-	"${GOTOOLDIR}" \
-	"${GOCACHE}" \
-	"${GOPROXY}" \
-	"${GO111MODULE}" \
-	"${GOWORK}" \
-	"${GOVCS}" \
-	"${GOARCH}" \
-	"${GOFLAGS}" \
-	"${GOFLAGS}" \
-	"${CGO_ENABLED}" \
-	"${CGO_CFLAGS}" \
-	"${CGO_CXXFLAGS}" \
-	"${CGO_LDFLAGS}" \
-	"${CC}" \
-	"${CXX}"
+	"${EXPORT_DLVBIN}" \
+	"${EXPORT_GOBIN}" \
+	"${EXPORT_GOROOT}" \
+	"${EXPORT_GOPATH}" \
+	"${EXPORT_GOMODCACHE}" \
+	"${EXPORT_GOTOOLDIR}" \
+	"${EXPORT_GOCACHE}" \
+	"${EXPORT_GOPROXY}" \
+	"${EXPORT_GO111MODULE}" \
+	"${EXPORT_GOWORK}" \
+	"${EXPORT_GOVCS}" \
+	"${EXPORT_GOARCH}" \
+	"${EXPORT_GOFLAGS}" \
+	"${EXPORT_GOFLAGS}" \
+	"${EXPORT_CGO_ENABLED}" \
+	"${EXPORT_CGO_CFLAGS}" \
+	"${EXPORT_CGO_CXXFLAGS}" \
+	"${EXPORT_CGO_LDFLAGS}" \
+	"${EXPORT_CC}" \
+	"${EXPORT_CXX}"
 
 function xcontains() {
 	local value="$1"
@@ -228,10 +227,11 @@ function xexport() {
 		local name="${variable}"
 		local value="${!name}"
 		if [[ "${value}" == "" ]]; then
-			if ! xcontains "${variable}" "CGO_LDFLAGS"; then
+			if ! xcontains "${variable}" "EXPORT_CGO_LDFLAGS"; then
 				xecho "WARNING: An empty exported variable ${variable}"
 			fi
 		fi
+		name=${name:7}
 		# shellcheck disable=SC2086
 		export ${name}="${value}"
 	done
@@ -345,6 +345,13 @@ EOF
 		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
 		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
 		exit ${EXEC_STATUS}
+	elif xis_true "0"; then
+		if [[ "${EXEC_STDOUT}" != "" ]]; then
+			xdebug "EXEC_STDOUT: ${EXEC_STDOUT}"
+		fi
+		if [[ "${EXEC_STDERR}" != "" ]]; then
+			xdebug "EXEC_STDERR: ${EXEC_STDERR}"
+		fi
 	fi
 }
 
@@ -796,8 +803,8 @@ function xbuild_project() {
 	xexec "${BUILDROOT_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [[ "${EXEC_STATUS}" != "0" ]]; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
-		xdebug "GOPATH=$GOPATH"
-		xdebug "GOROOT=$GOROOT"
+		xdebug "EXPORT_GOPATH=$EXPORT_GOPATH"
+		xdebug "EXPORT_GOROOT=$EXPORT_GOROOT"
 		xexit
 	else
 		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
