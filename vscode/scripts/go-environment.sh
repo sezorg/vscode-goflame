@@ -237,13 +237,25 @@ function xexport() {
 	done
 }
 
+IGNORE_LIST=()
+IGNORE_LIST+=("# github.com/lestrrat-go/libxml2/clib")
+IGNORE_LIST+=("WARNING: unsafe header/library path used in cross-compilation:")
+IGNORE_PATTERN="$(printf "\n%s" "${IGNORE_LIST[@]}")"
+IGNORE_PATTERN="${IGNORE_PATTERN:1}"
+
 FIRST_ECHO=y
 
 function xemit() {
 	local echo_flag="$1"
 	shift
-	local message
-	message="$(date '+%d/%m/%Y %H:%M:%S') [${MESSAGE_SOURCE}] $*"
+	local message input="$*"
+	if [[ "${input}" != "" ]]; then
+		input=$(grep -v "${IGNORE_PATTERN}" <<<"$input")
+		if [[ "${input}" == "" ]]; then
+			return 0
+		fi
+	fi
+	message="$(date '+%d/%m/%Y %H:%M:%S') [${MESSAGE_SOURCE}] ${input}"
 	if [[ "${FIRST_ECHO}" == "" ]]; then
 		if [[ "${echo_flag}" != "" ]]; then
 			echo >&2 "${EP}${message}"
@@ -337,10 +349,13 @@ function xexec() {
 EOF
 	xfunset
 	if [[ "${EXEC_STATUS}" != "0" ]] && [[ "${canfail}" == "" ]]; then
-		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
+		#xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
 		xecho "ERROR: Failed to execute: ${command}"
 		if [[ "${EXEC_STDERR}" != "" ]]; then
 			xtext "${EXEC_STDERR}"
+		fi
+		if [[ "${EXEC_STDOUT}" != "" ]]; then
+			xtext "${EXEC_STDOUT}"
 		fi
 		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
 		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
