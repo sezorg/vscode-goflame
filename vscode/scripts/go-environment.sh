@@ -221,8 +221,14 @@ function xcontains() {
 	return 1
 }
 
+EXPORTED_STATE=
+
 function xexport() {
-	#xdebug "Exports: $*"
+	if xis_true "${EXPORTED_STATE}"; then
+		return 0
+	fi
+	EXPORTED_STATE=y
+	#xecho "Exports: $*"
 	for variable in "$@"; do
 		local name="${variable}"
 		local value="${!name}"
@@ -232,8 +238,15 @@ function xexport() {
 			fi
 		fi
 		name=${name:7}
-		# shellcheck disable=SC2086
-		export ${name}="${value}"
+		set +u
+		local actual="${!name}"
+		set -u
+		if [[ "${actual}" == "" ]]; then
+			# shellcheck disable=SC2086
+			export ${name}="${value}"
+		else
+			: #xecho "INFO: Unexported variable: ${name}=\"${actual}\""
+		fi
 	done
 }
 
