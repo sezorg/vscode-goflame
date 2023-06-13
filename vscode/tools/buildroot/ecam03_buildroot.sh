@@ -65,7 +65,7 @@ if [[ -f "../local.mk" ]]; then
 fi
 
 # Создание dbg.fragment
-cat <<EOF >> "./external-ipcam/ecam03-fragments/dbg.fragment"
+cat <<EOF > "./external-ipcam/ecam03-fragments/dbg.fragment"
 BR2_PACKAGE_DELVE=y
 BR2_PACKAGE_PPROF=y
 BR2_PACKAGE_DSP_THERMO_TESTS=n
