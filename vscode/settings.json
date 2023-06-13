@@ -8,5 +8,11 @@
     },
     "go.lintTool": "golangci-lint",
     "go.lintFlags": ["--fast"],
-    "editor.rulers": [100]
+    "editor.rulers": [
+        100
+    ],
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8"
+    },
+    "python.formatting.provider": "none"
 }
