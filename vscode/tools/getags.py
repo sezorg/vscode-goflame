@@ -1,9 +1,7 @@
 #!/usr/bin/env python3
 
 #
-# Git-Gerrit tags
-# Requires:
-#   https://github.com/fbzhong/git-gerrit
+# Create local named branches for Gerrit commints/changs.
 #
 # Usage:
 # script [-p] [command]
@@ -26,10 +24,11 @@
 # pylint: disable=too-many-statements
 # pylint: disable=too-many-instance-attributes
 
-import os
-import sys
 import argparse
+import os
+import re
 import subprocess
+import sys
 
 
 class Config:
@@ -221,6 +220,9 @@ class GerritTags:
         self.restore_branch = ''
         self.subject_limit = 65
         self.username_limit = 12
+        self.gerrit_host = ''
+        self.gerrit_port = []
+        self.gerrit_project = ''
         debug(f'Gerrit filter: {self.filter}')
 
     def remove_branches(self):
@@ -264,18 +266,46 @@ class GerritTags:
         # fatal('Unable to run Git gc --prune=now')
         return
 
+    def peek_gerrit_project(self):
+        status = Shell(['git', 'remote', 'show', '-n', 'origin'])
+        if not status.succed():
+            fatal('Failed to get remote repoistory configuration')
+        lines = status.stdout.split('\n')
+        for line in lines:
+            pos = line.find('Push  URL:')
+            if pos < 0:
+                continue
+            host_and_project = line[pos+10:].strip()
+            exp = r'^ssh:\/\/([\w@.]+)(:(\d+))?\/([\w\/]+)$'
+            match = re.search(exp, host_and_project)
+            if match:
+                self.gerrit_host = match.group(1)
+                port = match.group(3)
+                if port != '':
+                    self.gerrit_port = ['-p', port]
+                self.gerrit_project = match.group(4)
+                return self.gerrit_host != '' and self.gerrit_project != ''
+            return False
+        return False
+
     def create_branches(self):
         if not self.execute:
-            print(
-                f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
+            print(f'{Colors.green}{self.branch_index} branches has been '
+                  f'deleted.{Colors.nc}')
             return
         status = Shell(['git', 'fetch', self.repository_url])
         if not status.succed():
             fatal(f'Failed to fetch from {self.repository_url}')
         self.branch_index = 0
-        status = Shell(['git', 'gerrit', 'changes'] + self.filter)
+        if not self.peek_gerrit_project():
+            fatal(f'Failed to retrieve Gerrit project configuration from'
+                  f' {self.repository_url}')
+        args = ['ssh'] + self.gerrit_port
+        args += [self.gerrit_host, 'gerrit', 'query', '--current-patch-set',
+                 '--all-approvals', 'project:' + self.gerrit_project]
+        status = Shell(args + self.filter)
         if not status.succed():
-            fatal('Unable to pull Gerrit commits')
+            fatal(f'Failed to fetch from {self.repository_url}')
         lines = status.stdout.split('\n')
         self.print_header()
         state = State()
