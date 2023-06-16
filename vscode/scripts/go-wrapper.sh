@@ -65,8 +65,14 @@ COPY_CACHE=n
 
 # Enable camera feature
 CAMERA_FEATURES_ON+=(
+	"actionengine"
+	"archive"
 	"audio"
+	"ddns"
+	"ipfiltering"
+	"mse"
 	"videoanalytics"
+	"webrtc"
 )
 
 # Disable camera feature
