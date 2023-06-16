@@ -38,7 +38,7 @@ DIRECTORIES_CREATE=()
 # List of files to be copied, "source|target"
 COPY_FILES=(
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
-	"init/onvifd.conf|:/etc/onvifd.conf"
+	#"init/onvifd.conf|:/etc/onvifd.conf"
 )
 
 if xis_true "${DEPLOY_DELVE}"; then

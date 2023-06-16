@@ -55,7 +55,7 @@ COPY_FILES=(
 	#".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
-	"init/onvifd.conf|:/etc/onvifd.conf"
+	#"init/onvifd.conf|:/etc/onvifd.conf"
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	#"init/users.toml|:/var/lib/onvifd/users.toml"
 )
