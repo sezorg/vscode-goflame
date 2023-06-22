@@ -90,8 +90,7 @@ function digest() {
 function seltest() {
 	s2=$(digest "$0")
 	if [[ "${s1}" != "${s2}" ]]; then
-		echo "${RED}WARNING: The script has been updated via external upload.${NC}"
-		echo "${RED}WARNING: Exiting.... Please restart this script.${NC}"
+		echo "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
 		exit 1
 	fi
 }

@@ -38,16 +38,20 @@ if [[ "${EXE_BINARY_PATH}" == "[[$PATTERN]]" ]]; then
 	exit "1"
 fi
 
+EXE_PROCESS_PID=""
+
 function cleanup() {
-	local filename processes is_bash
-	filename=$(basename -- "${EXE_BINARY_PATH}")
-	processes=$(ps -a)
 	set +e
-	running=$(grep "${filename}" <<<"${processes}")
-	is_bash=$(grep "bash" <<<"${running}")
-	if [[ "$running" != "" ]] && [[ "${is_bash}" == "" ]]; then
+	local processes
+	processes=$(ps -a)
+	running=$(grep "\"root     ${EXE_BINARY_PATH}\"" <<<"${processes}")
+	if [[ "$running" != "" ]]; then
 		echo "Terminating ${EXE_BINARY_PATH}..."
-		killall "${filename}" >/dev/null 2>&1
+		killall "$(basename -- "${EXE_BINARY_PATH}")" >/dev/null 2>&1
+	fi
+	if [[ "${EXE_PROCESS_PID}" != "" ]]; then
+		wait "${EXE_PROCESS_PID}"
+		EXE_PROCESS_PID=""
 	fi
 	set -e
 }
@@ -56,7 +60,7 @@ trap cleanup EXIT
 
 function digest() {
 	if [[ -f "${1}" ]]; then
-		echo "$(md5sum "${1}")$(date -r "${1}" "+%m-%d-%Y %H:%M:%S" 2>/dev/null)" ###
+		echo "$(md5sum "${1}")$(date -r "${1}" "+%m-%d-%Y %H:%M:%S" 2>/dev/null)"
 	else
 		echo "no-file"
 	fi
@@ -65,8 +69,7 @@ function digest() {
 function seltest() {
 	s2=$(digest "$0")
 	if [[ "${s1}" != "${s2}" ]]; then
-		echo "${RED}WARNING: The script has been updated via external upload.${NC}"
-		echo "${RED}WARNING: Exiting.... Please restart this script.${NC}"
+		echo "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
 		exit 1
 	fi
 }
@@ -126,6 +129,7 @@ while true; do
 	cleanup
 	echo "Starting ${EXE_BINARY_PATH}..."
 	exec "${EXE_BINARY_PATH}" "${EXE_BINARY_ARGS[@]}" &
+	EXE_PROCESS_PID="$!"
 
 	while true; do
 		seltest
