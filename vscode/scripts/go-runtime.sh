@@ -6,6 +6,7 @@
 # Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
+#set -x
 
 function xis_true() {
 	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
@@ -81,18 +82,55 @@ TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
+TARGET_BUILD_LAUNCHER="cmd/onvifd/onvifd.go"
+TARGET_BIN_SOURCE="onvifd"
+TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
+TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 RUN_GO_VET=""
 RUN_GO_VET_FLAGS=("-composites=false")
 RUN_STATICCHECK=""
 RUN_STATICCHECK_ALL=""
 
+# Cimpiler messages to be ignored
+MESSAGES_IGNORE=()
+MESSAGES_IGNORE+=("# github.com/lestrrat-go/libxml2/clib")
+MESSAGES_IGNORE+=("WARNING: unsafe header/library path used in cross-compilation:")
+
+# List of files to be deleted
+DELETE_FILES=()
+
+# List of files to be copied, "source|target"
+COPY_FILES=()
+COPY_CACHE=y
+
+# List of services to be stopped
+SERVICES_STOP=()
+
+# List of services to be started
+SERVICES_START=()
+
+# List of process names to be stopped
+PROCESSES_STOP=()
+
+# List of processed to be started, executable with args
+PROCESSES_START=()
+
+# List of directories to be created
+DIRECTORIES_CREATE=()
+
+# List of directories to be created
+EXECUTE_COMMANDS=()
+
+# Camera features ON and OFF
+CAMERA_FEATURES_ON=()
+CAMERA_FEATURES_OFF=()
+
 source "${SCRIPT_DIR}/../config.ini"
 
 BUILDROOT_HOST_DIR="${BUILDROOT_DIR}/output/host"
 BUILDROOT_TARGET_DIR="${BUILDROOT_DIR}/output/target"
 
-TARGET_BUILD_LAUNCHER="cmd/onvifd/onvifd.go"
 TARGET_BUILD_GOFLAGS=("-gcflags=\"-N -l\"")
 TARGET_BUILD_LDFLAGS=("-X main.currentVersion=custom")
 TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
@@ -106,20 +144,13 @@ if [[ "${TARGET_BUILD_LAUNCHER}" != "" ]]; then
 	TARGET_BUILD_FLAGS+=("${TARGET_BUILD_LAUNCHER}")
 fi
 
-TARGET_BIN_SOURCE="onvifd"
-TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
-TARGET_EXEC_ARGS="-settings /root/onvifd.settings"
 TARGET_LOGFILE="/var/tmp/${TARGET_BIN_NAME}.log"
 
 DELVE_LOGFILE="/var/tmp/dlv.log"
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 
 WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
-if [[ "$MESSAGE_SOURCE" == "" ]]; then
-	MESSAGE_SOURCE="unknown-wrapper"
-fi
-
 BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
 
 LOCAL_DLVBIN="$(which dlv)"
@@ -127,13 +158,17 @@ LOCAL_GOBIN="$(which go)"
 LOCAL_GOPATH="$(go env GOPATH)"
 LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
 
+DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
+DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
+DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
+
 xunreferenced_variables \
 	"${BUILDROOT_HOST_DIR}" \
 	"${BUILDROOT_TARGET_DIR}" \
 	"${TARGET_BIN_SOURCE}" \
 	"${TARGET_BIN_DESTIN}" \
 	"${TARGET_BIN_NAME}" \
-	"${TARGET_EXEC_ARGS}" \
+	"${TARGET_EXEC_ARGS[@]}" \
 	"${TARGET_LOGFILE}" \
 	"${DELVE_LOGFILE}" \
 	"${DELVE_DAP_START}" \
@@ -141,7 +176,10 @@ xunreferenced_variables \
 	"${BUILDROOT_GOBIN}" \
 	"${LOCAL_GOBIN}" \
 	"${LOCAL_DLVBIN}" \
-	"${GOLANG_EXPORTS[@]}"
+	"${GOLANG_EXPORTS[@]}" \
+	"${DLOOP_ENABLE_FILE}" \
+	"${DLOOP_STATUS_FILE}" \
+	"${DLOOP_RESTART_FILE}"
 
 EXPORT_DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
 EXPORT_GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
@@ -223,13 +261,13 @@ function xcontains() {
 	return 1
 }
 
-EXPORTED_STATE=
+P_EXPORTED_STATE=
 
 function xexport() {
-	if xis_true "${EXPORTED_STATE}"; then
+	if xis_true "${P_EXPORTED_STATE}"; then
 		return 0
 	fi
-	EXPORTED_STATE=y
+	P_EXPORTED_STATE=y
 	#xecho "Exports: $*"
 	for variable in "$@"; do
 		local name="${variable}"
@@ -252,32 +290,36 @@ function xexport() {
 	done
 }
 
-IGNORE_LIST=()
-IGNORE_LIST+=("# github.com/lestrrat-go/libxml2/clib")
-IGNORE_LIST+=("WARNING: unsafe header/library path used in cross-compilation:")
-IGNORE_PATTERN="$(printf "\n%s" "${IGNORE_LIST[@]}")"
-IGNORE_PATTERN="${IGNORE_PATTERN:1}"
+P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
+P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
+P_FIRST_ECHO=y
+P_MESSAGE_SOURCE="unknown-wrapper-script"
 
-FIRST_ECHO=y
+function xmessage_source() {
+	P_MESSAGE_SOURCE="$*"
+	if [[ "$P_MESSAGE_SOURCE" == "" ]]; then
+		P_MESSAGE_SOURCE="unknown-wrapper-script"
+	fi
+}
 
 function xemit() {
 	local echo_flag="$1"
 	shift
 	local message input="$*"
 	if [[ "${input}" != "" ]]; then
-		input=$(grep -v "${IGNORE_PATTERN}" <<<"$input")
+		input=$(grep -v "${P_IGNORE_PATTERN}" <<<"$input")
 		if [[ "${input}" == "" ]]; then
 			return 0
 		fi
 	fi
-	message="$(date '+%d/%m/%Y %H:%M:%S') [${MESSAGE_SOURCE}] ${input}"
-	if [[ "${FIRST_ECHO}" == "" ]]; then
+	message="$(date '+%d/%m/%Y %H:%M:%S') [${P_MESSAGE_SOURCE}] ${input}"
+	if [[ "${P_FIRST_ECHO}" == "" ]]; then
 		if [[ "${echo_flag}" != "" ]]; then
 			echo >&2 "${EP}${message}"
 		fi
 		echo "${message}" >>"${WRAPPER_LOGFILE}"
 	else
-		FIRST_ECHO=
+		P_FIRST_ECHO=
 		if [[ "${XECHO_ENABLED}" != "" ]] ||
 			[[ "${XDEBUG_ENABLED}" != "" ]]; then
 			echo >&2
@@ -307,6 +349,8 @@ function xdebug() {
 	# Debug message
 	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
 }
+
+xdebug "Script has been started..."
 
 EXEC_STDOUT=
 EXEC_STDERR=
@@ -340,14 +384,14 @@ function xexestat() {
 	fi
 }
 
-CANFAIL="[CANFAIL]"
-OPTIONS_STACK=()
+P_CANFAIL="[CANFAIL]"
+P_OPTIONS_STACK=()
 
 # Execute command which can not fail
 function xexec() {
 	xfset "+e"
 	local canfail=
-	if [[ "${1:-}" == "${CANFAIL}" ]]; then
+	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -399,52 +443,50 @@ function xexit() {
 function xfset() {
 	local oldopts
 	oldopts="$(set +o)"
-	OPTIONS_STACK+=("${oldopts}")
+	P_OPTIONS_STACK+=("${oldopts}")
 	for opt in "$@"; do
 		set "${opt}"
 	done
 }
 
 function xfunset() {
-	local oldopts="${OPTIONS_STACK[-1]}"
+	local oldopts="${P_OPTIONS_STACK[-1]}"
 	set +vx
 	eval "${oldopts}"
-	unset "OPTIONS_STACK[-1]"
+	unset "P_OPTIONS_STACK[-1]"
 }
 
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
-	if [[ "${1:-}" == "${CANFAIL}" ]]; then
+	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
 	xexec "${canfail}" sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
 }
 
-SSH_HOST_STDIO=""
-SSH_HOST_POST=""
-SSH_TARGET_STDIO=""
-SSH_TARGET_PREF="" # mount -o remount,rw /;
-SSH_TARGET_POST=""
+P_SSH_HOST_STDIO=""
+P_SSH_HOST_POST=""
+P_SSH_TARGET_STDIO=""
+P_SSH_TARGET_PREF="" # mount -o remount,rw /;
+P_SSH_TARGET_POST=""
 
 function xflash_pending_commands() {
-	if [[ "${SSH_HOST_STDIO}" != "" ]] ||
-		[[ "${SSH_TARGET_PREF}" != "" ]] ||
-		[[ "${SSH_TARGET_STDIO}" != "" ]] ||
-		[[ "${SSH_TARGET_POST}" != "" ]]; then
-
-		local code="${SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
-		local code="${code}ssh ${SSH_FLAGS[*]} ${TARGET_USER}@${TARGET_IPADDR} "
-		local code="${code}\"${SSH_TARGET_PREF}${SSH_TARGET_STDIO}${SSH_TARGET_POST}\""
-
-		xexec "${code}"
-		xexec "${SSH_HOST_POST}"
-
-		SSH_HOST_STDIO=""
-		SSH_TARGET_STDIO=""
-		SSH_TARGET_PREF=""
-		SSH_TARGET_POST=""
+	if [[ "${P_SSH_HOST_STDIO}${P_SSH_HOST_POST}" != "" ]] ||
+		[[ "${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}" != "" ]]; then
+		if [[ "${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}" != "" ]]; then
+			local code="${P_SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
+			local code="${code}ssh ${SSH_FLAGS[*]} ${TARGET_USER}@${TARGET_IPADDR} "
+			local code="${code}\"${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}\""
+			xexec "${code}"
+		fi
+		xexec "${P_SSH_HOST_POST}"
+		P_SSH_HOST_STDIO=""
+		P_SSH_HOST_POST=""
+		P_SSH_TARGET_STDIO=""
+		P_SSH_TARGET_PREF=""
+		P_SSH_TARGET_POST=""
 	fi
 }
 
@@ -469,6 +511,11 @@ function xperform_build_and_deploy() {
 	else
 		xcheck_project
 	fi
+
+	if [[ "$TARGET_ARCH" == "arm" ]]; then
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_RESTART_FILE}\"); "
+	fi
+
 	xservices_stop
 	xprocesses_stop
 	xfiles_delete
@@ -483,18 +530,18 @@ function xperform_build_and_deploy() {
 
 function xkill() {
 	local canfail=
-	if [[ "${1:-}" == "${CANFAIL}" ]]; then
+	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
 	for procname in "$@"; do
-		SSH_TARGET_PREF="${SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
 	done
 }
 
 function xscp() {
 	local canfail=
-	if [[ "${1:-}" == "${CANFAIL}" ]]; then
+	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -519,9 +566,6 @@ function xscp() {
 	xexec "${canfail}" sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
 }
 
-# List of files to be deleted
-DELETE_FILES=()
-
 function xfiles_delete() {
 	# Delete files from DELETE_FILES
 	xfiles_delete_vargs "${DELETE_FILES[@]}"
@@ -534,7 +578,7 @@ function xfiles_delete_vargs() {
 		local elements=""
 		for filename in "${list[@]}"; do
 			elements="${elements}, $(basename -- "$filename")"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}if [[ -f \"${filename}\" ]]; then rm -f \"${filename}\"; fi; "
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${filename}\" ]]; then rm -f \"${filename}\"; fi; "
 		done
 		xecho "Removing ${#list[@]} files: ${elements:2}"
 	fi
@@ -548,6 +592,16 @@ function xclean_directory() {
 	fi
 }
 
+P_CACHE_SALT=$(echo -n "${TARGET_ARCH}${TARGET_GOCXX}${BUILDROOT_DIR}${TARGET_IPADDR}" | md5sum)
+P_CACHE_SALT="${P_CACHE_SALT:0:32}"
+
+function xcache_hash() {
+	local fileSum
+	fileSum=$(md5sum "${fileA}")
+	fileSum="${fileSum:0:32}"
+	echo "${fileSum}-${P_CACHE_SALT}"
+}
+
 function xcache_put() {
 	echo "$2" >"${CACHE_DIR}/cachedb/${1}"
 }
@@ -556,15 +610,11 @@ function xcache_get() {
 	cat "${CACHE_DIR}/cachedb/${1}" 2>/dev/null
 }
 
-# List of files to be copied, "source|target"
-COPY_FILES=()
-COPY_CACHE=y
-
 # shellcheck disable=SC2120
 function xfiles_copy() {
 	# Copy files from COPY_FILES
 	local canfail=
-	if [[ "${1:-}" == "${CANFAIL}" ]]; then
+	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
 		canfail="${1:-}"
 		shift
 	fi
@@ -611,10 +661,8 @@ function xfiles_copy() {
 				fi
 
 				local nameSum fileSum
-				nameSum=$(md5sum <<<"${fileA}")
-				nameSum="${nameSum:0:32}"
-				fileSum=$(md5sum "${fileA}")
-				fileSum="${fileSum:0:32}"
+				nameSum=$(xcache_hash <<<"${fileA}")
+				fileSum=$(xcache_hash "${fileA}")
 				#xecho "${nameSum} :: ${fileSum}"
 
 				if ! xis_true "${COPY_CACHE}" || [[ "$(xcache_get "${nameSum}")" != "${fileSum}" ]]; then
@@ -630,8 +678,8 @@ function xfiles_copy() {
 						xexec mkdir -p "${backup_subdir}"
 					fi
 					xexec ln -s "${fileA}" "${backup_target}"
-					SSH_TARGET_PREF="${SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
-					SSH_HOST_POST="${SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
+					P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
+					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
 				else
 					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
 					fileB=""
@@ -645,8 +693,8 @@ function xfiles_copy() {
 		if [[ "${uploading}" != "" ]]; then
 			if [[ "${elements}" != "" ]]; then
 				xecho "Uploading ${count} files: ${elements:2}"
-				SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -5 - | "
-				SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
+				P_SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -5 - | "
+				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			fi
 		else
 			xecho "Downloading ${#list[@]} files: ${elements:2}"
@@ -662,7 +710,7 @@ function xfiles_copy() {
 			if [[ ! "$fileB" =~ ^\:.* ]]; then
 				xdebug "    ${fileB#":"}"
 				if [[ "${canfail}" != "" ]]; then
-					xscp "${CANFAIL}" "${fileA}" "${fileB}"
+					xscp "${P_CANFAIL}" "${fileA}" "${fileB}"
 				else
 					xscp "${fileA}" "${fileB}"
 				fi
@@ -670,9 +718,6 @@ function xfiles_copy() {
 		done
 	fi
 }
-
-# List of services to be stopped
-SERVICES_STOP=()
 
 function xservices_stop() {
 	# Stop services from SERVICES_STOP
@@ -686,15 +731,12 @@ function xservices_stop_vargs() {
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="${elements}, ${service}"
-			#SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl mask \"${service}\"; "
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl stop \"${service}\"; "
+			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"${service}\"; "
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"${service}\"; "
 		done
 		xecho "Stopping ${#list[@]} services: ${elements:2}"
 	fi
 }
-
-# List of services to be started
-SERVICES_START=()
 
 function xservices_start() {
 	# Start services from SERVICES_START
@@ -708,15 +750,12 @@ function xservices_start_vargs() {
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="${elements}, ${service}"
-			#SSH_TARGET_PREF="${SSH_TARGET_PREF}systemctl unmask \"${service}\"; "
-			SSH_TARGET_POST="${SSH_TARGET_POST}systemctl start \"${service}\"; "
+			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl unmask \"${service}\"; "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"${service}\"; "
 		done
 		xecho "Starting ${#list[@]} services: ${elements:2}"
 	fi
 }
-
-# List of process names to be stopped
-PROCESSES_STOP=()
 
 function xprocesses_stop() {
 	# Stop processes from PROCESSES_STOP
@@ -730,14 +769,11 @@ function xprocesses_stop_vargs() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
-			SSH_TARGET_PREF="${SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
 	fi
 }
-
-# List of processed to be started, executable with args
-PROCESSES_START=()
 
 function xprocesses_start() {
 	# Start processes from PROCESSES_START
@@ -751,14 +787,11 @@ function xprocesses_start_vargs() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="${elements}, ${procname}"
-			SSH_TARGET_POST="${SSH_TARGET_POST}${procname}; "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}${procname}; "
 		done
 		xecho "Starting ${#list[@]} processes: ${elements:2}"
 	fi
 }
-
-# List of directories to be created
-DIRECTORIES_CREATE=()
 
 function xcreate_directories() {
 	# Create directories from DIRECTORIES_CREATE
@@ -772,14 +805,11 @@ function xcreate_directories_vargs() {
 		local elements=""
 		for dirname in "${list[@]}"; do
 			elements="${elements}, ${dirname}"
-			SSH_TARGET_POST="${SSH_TARGET_POST}mkdir -p \"${dirname}\"; "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"${dirname}\"; "
 		done
 		xecho "Creating ${#list[@]} directories: ${elements:2}"
 	fi
 }
-
-# List of directories to be created
-EXECUTE_COMMANDS=()
 
 function xexecute_commands() {
 	# Create directories from DIRECTORIES_CREATE
@@ -797,7 +827,7 @@ function xexecute_commands_vargs() {
 			else
 				elements="${elements}, ${command%% *}"
 			fi
-			SSH_TARGET_POST="${SSH_TARGET_POST}(${command}); "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}(${command}); "
 		done
 		if [[ "$elements" != "" ]]; then
 			xecho "Executing ${#list[@]} target commands: ${elements:2}"
@@ -809,7 +839,7 @@ function xcheck_project() {
 	xexport "${GOLANG_EXPORTS[@]}"
 	if xis_true "${RUN_GO_VET}"; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${CANFAIL}" "go" "vet" "${RUN_GO_VET_FLAGS[@]}" "./..."
+		xexec "${P_CANFAIL}" "go" "vet" "${RUN_GO_VET_FLAGS[@]}" "./..."
 		if [[ "${EXEC_STDERR}" != "" ]]; then
 			xtext "${EXEC_STDERR}"
 		fi
@@ -821,7 +851,7 @@ function xcheck_project() {
 			flags+=("-checks=all")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
+		xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
 		if [[ "${EXEC_STDOUT}" != "" ]]; then
 			xtext "${EXEC_STDOUT}"
 		fi
@@ -846,9 +876,6 @@ function xbuild_project() {
 		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
 	fi
 }
-
-CAMERA_FEATURES_ON=()
-CAMERA_FEATURES_OFF=()
 
 # Set camera features
 function xcamera_features() {
@@ -942,3 +969,27 @@ function xtruncate_log_file() {
 }
 
 xtruncate_log_file
+
+function xsed_escape() {
+	printf '%s' "$*" | sed -e 's/[\/&-\"]/\\&/g'
+}
+
+function xsed_replace() {
+	xexec sed -i "\"s/$(xsed_escape "$1")/$(xsed_escape "$2")/g\"" "$3"
+}
+
+function xprepare_runtime_scripts() {
+	local args=""
+	for arg in "${TARGET_EXEC_ARGS[@]}"; do
+		args="${args} \"${arg}\""
+	done
+	xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
+	xexec cp "${PWD}/.vscode/scripts/dlv-exec.sh" "/var/tmp/dlv-exec.sh"
+	xsed_replace "[[TARGET_IPPORT]]" "${TARGET_IPPORT}" "/var/tmp/dlv-loop.sh"
+	xsed_replace "[[TARGET_BINARY_PATH]]" "${TARGET_BIN_DESTIN}" "/var/tmp/dlv-exec.sh"
+	xsed_replace "[[TARGET_BINARY_ARGS]]" "${args:1}" "/var/tmp/dlv-exec.sh"
+	COPY_FILES+=(
+		"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
+		"/var/tmp/dlv-exec.sh|:/usr/bin/de"
+	)
+}

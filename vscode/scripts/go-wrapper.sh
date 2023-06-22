@@ -7,34 +7,32 @@
 
 set -euo pipefail
 
-MESSAGE_SOURCE="go-wrapper"
-
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/go-environment.sh"
-xunreferenced_variables "${MESSAGE_SOURCE}"
+source "${SCRIPT_DIR}/go-runtime.sh"
+xmessage_source "go-wrapper"
 
 # List of services to be stopped
-SERVICES_STOP=(
+SERVICES_STOP+=(
 	"onvifd"
 	"onvifd-debug"
 )
 
 # List of services to be started
-SERVICES_START=(
+SERVICES_START+=(
 	#"nginx"
 )
 
 # List of process names to be stopped
-PROCESSES_STOP=(
+PROCESSES_STOP+=(
 	"dlv"
 	"${TARGET_BIN_SOURCE}"
 	"${TARGET_BIN_NAME}"
 )
 
 # List of processed to be started, executable with args
-PROCESSES_START=(
-	#"nohup dlv exec ${TARGET_BIN_DESTIN} --listen=:2345 --headless=true --log=true --allow-non-terminal-interactive --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc --accept-multiclient --api-version=2 -- ${TARGET_EXEC_ARGS} >${DELVE_LOGFILE} 2>&1 &"
+PROCESSES_START+=(
+	#"nohup dlv exec ${TARGET_BIN_DESTIN} --listen=:2345 --headless=true --log=true --allow-non-terminal-interactive --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc --accept-multiclient --api-version=2 -- ${TARGET_EXEC_ARGS[@]} >${DELVE_LOGFILE} 2>&1 &"
 )
 
 DIRECTORIES_CREATE+=(
@@ -42,7 +40,7 @@ DIRECTORIES_CREATE+=(
 )
 
 # List of files to be deleted
-DELETE_FILES=(
+DELETE_FILES+=(
 	"${TARGET_BIN_DESTIN}"
 	"${TARGET_LOGFILE}"
 	"${DELVE_LOGFILE}"
@@ -55,8 +53,6 @@ if [[ "$TARGET_ARCH" != "arm" ]]; then
 	)
 fi
 COPY_FILES+=(
-	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
-	#".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
 	#"init/onvifd.conf|:/etc/onvifd.conf"
@@ -83,11 +79,9 @@ CAMERA_FEATURES_ON+=(
 CAMERA_FEATURES_OFF+=(
 )
 
-# Target file which signals that the initial deploy is complete.
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-
 # Advised target stripts that the initial upload deploy is complete.``
 EXECUTE_COMMANDS+=(
+	"@rm -f > ${DLOOP_RESTART_FILE}"
 	"@echo 1 > ${DLOOP_ENABLE_FILE}"
 )
 
@@ -197,8 +191,7 @@ xexec "${BUILDROOT_GOBIN}" "$@"
 if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then
 	if [[ "${EXEC_STATUS}" == "0" ]]; then
 		if [[ -f "./${TARGET_BIN_SOURCE}" ]]; then
-			xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
-			xexec sed -i "s/{TARGET_IPPORT}/${TARGET_IPPORT}/" "/var/tmp/dlv-loop.sh"
+			xprepare_runtime_scripts
 			xperform_build_and_deploy "Installing ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
 			exit "0"
 		else

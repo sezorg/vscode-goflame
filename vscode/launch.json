@@ -30,7 +30,7 @@
     "configurations": [
         {
             "request": "launch",
-            "name": "Remote Deploy and Attach",
+            "name": "Deploy and Debug",
             "type": "go",
             "debugAdapter": "dlv-dap",
             "port": "${input:TARGET_IPPORT}",
@@ -47,27 +47,33 @@
         },
         {
             "request": "launch",
-            "name": "Remote run with Delve",
-            "type": "go",
-            "debugAdapter": "dlv-dap",
-            "port": "${input:TARGET_IPPORT}",
-            "host": "${input:TARGET_IPADDR}",
-            "mode": "exec",
-            "program": "/usr/bin/onvifd_debug",
-            "args": [
-                "-settings",
-                "/root/onvifd.settings"
-            ],
+            "name": "Deploy and Execute",
+            "type": "bashdb",
+            "cwd": "${workspaceFolder}/.vscode/scripts/",
+            "program": "${workspaceFolder}/.vscode/scripts/go-exe-stub.sh",
+            "args": [],
             "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-remote-delve",
-            "console": "internalConsole",
+            "preLaunchTask": "launch-deploy-execute",
+            //"showDebugOutput": true,
+            "terminalKind": "integrated",
+        },
+        /*{
+            "request": "launch",
+            "name": "Deploy and Execute (CPP)",
+            "type": "cppdbg",
+            "cwd": "${workspaceFolder}/.vscode/scripts/",
+            "program": "${workspaceFolder}/.vscode/scripts/go-exe-stub",
+            "args": [],
+            "internalConsoleOptions": "openOnSessionStart",
+            "preLaunchTask": "launch-deploy-execute",
+            "miDebuggerPath": "/usr/libexec/gdb"
         },
         {
-            "name": "Launch Package",
+            "name": "Local Launch Package",
             "type": "go",
             "request": "launch",
             "mode": "debug",
             "program": "${workspaceFolder}/cmd/onvifd/onvifd.go"
-        }
+        }*/
     ],
 }

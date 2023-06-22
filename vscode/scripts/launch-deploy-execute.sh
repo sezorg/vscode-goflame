@@ -6,11 +6,12 @@
 # Log messages are stored into file:///var/tmp/go-wrapper.log
 
 set -euo pipefail
+#set -x
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/go-runtime.sh"
-xmessage_source "launch-deploy-attach"
+xmessage_source "launch-deploy-execute"
 
 DEPLOY_DELVE=n
 DEPLOY_NGINX=n
@@ -75,5 +76,6 @@ xunreferenced_variables \
 	"${PROCESSES_STOP[@]}" \
 	"${COPY_FILES[@]}"
 
+xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" \
 	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"

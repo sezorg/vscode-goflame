@@ -10,10 +10,4 @@ set -euo pipefail
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/go-runtime.sh"
-xmessage_source "dlv-wrapper"
-
-xdebug "Dlv Args: $*"
-
-xflash_pending_commands
-xexec "${LOCAL_DLVBIN}" "$@"
-xexit
+xmessage_source "vscode-install"
