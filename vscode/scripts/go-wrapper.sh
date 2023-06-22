@@ -49,8 +49,12 @@ DELETE_FILES=(
 )
 
 # List of files to be copied, "source|target"
-COPY_FILES=(
-	"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+if [[ "$TARGET_ARCH" != "arm" ]]; then
+	COPY_FILES+=(
+		"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+	)
+fi
+COPY_FILES+=(
 	"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
 	#".vscode/scripts/dlv-stop.sh|:/usr/bin/ds"
 	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
@@ -82,9 +86,9 @@ CAMERA_FEATURES_OFF+=(
 # Target file which signals that the initial deploy is complete.
 DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 
-# Advised target stripts that the initial upload deploy is complete.
+# Advised target stripts that the initial upload deploy is complete.``
 EXECUTE_COMMANDS+=(
-	"echo 1 > ${DLOOP_ENABLE_FILE}"
+	"@echo 1 > ${DLOOP_ENABLE_FILE}"
 )
 
 # Enable vet & staticcheck on build workspace.

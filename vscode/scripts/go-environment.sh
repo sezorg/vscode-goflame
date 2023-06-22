@@ -75,6 +75,8 @@ PI="\`"
 PO="'"
 xunreferenced_variables "${DT}" "${CE}" "${EP}"
 
+TARGET_ARCH="arm64"
+TARGET_GOCXX="aarch64-buildroot-linux-gnu"
 TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
@@ -147,14 +149,14 @@ EXPORT_GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
 EXPORT_GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
 EXPORT_GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
 EXPORT_GOMODCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-path/pkg/mod"
-EXPORT_GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_arm64"
+EXPORT_GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_${TARGET_ARCH}"
 EXPORT_GOCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-cache"
 
 EXPORT_GOPROXY="direct"
 EXPORT_GO111MODULE="on"
 EXPORT_GOWORK="off"
 EXPORT_GOVCS="*:all"
-EXPORT_GOARCH="arm64"
+EXPORT_GOARCH="${TARGET_ARCH}"
 #EXPORT_GOFLAGS="-mod=vendor"
 EXPORT_GOFLAGS="-mod=mod"
 
@@ -164,8 +166,8 @@ EXPORT_CGO_ENABLED="1"
 EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_LDFLAGS=""
-EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-gcc"
-EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/aarch64-buildroot-linux-gnu-g++"
+EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-gcc"
+EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-g++"
 
 GOLANG_EXPORTS=(
 	"EXPORT_DLVBIN"
@@ -423,7 +425,7 @@ function xssh() {
 SSH_HOST_STDIO=""
 SSH_HOST_POST=""
 SSH_TARGET_STDIO=""
-SSH_TARGET_PREF=""
+SSH_TARGET_PREF="" # mount -o remount,rw /;
 SSH_TARGET_POST=""
 
 function xflash_pending_commands() {
@@ -643,8 +645,8 @@ function xfiles_copy() {
 		if [[ "${uploading}" != "" ]]; then
 			if [[ "${elements}" != "" ]]; then
 				xecho "Uploading ${count} files: ${elements:2}"
-				SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -6 - | "
-				SSH_TARGET_STDIO="tar --no-same-owner --no-same-permissions -xzf - -C \"/\"; "
+				SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -5 - | "
+				SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			fi
 		else
 			xecho "Downloading ${#list[@]} files: ${elements:2}"
@@ -790,10 +792,16 @@ function xexecute_commands_vargs() {
 	if [[ "${#list[@]}" != "0" ]]; then
 		local elements=""
 		for command in "${list[@]}"; do
-			elements="${elements}, ${command%% *}"
+			if [[ "${command:0:1}" == "@" ]]; then
+				command="${command:1}"
+			else
+				elements="${elements}, ${command%% *}"
+			fi
 			SSH_TARGET_POST="${SSH_TARGET_POST}(${command}); "
 		done
-		xecho "Executing ${#list[@]} target commands: ${elements:2}"
+		if [[ "$elements" != "" ]]; then
+			xecho "Executing ${#list[@]} target commands: ${elements:2}"
+		fi
 	fi
 }
 
