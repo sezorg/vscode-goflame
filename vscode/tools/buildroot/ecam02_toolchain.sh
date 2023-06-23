@@ -1,8 +1,8 @@
 #!/bin/sh
 
-BUILD_DIRNAME=ecam02_buildroot
-BUILD_TARGETS=(all)
-BUILD_POSTFIX=
+BUILD_DIRNAME=ecam02_toolchain
+BUILD_TARGETS=(host-go libxml2 onvifd)
+BUILD_POSTFIX=-reconfigure
 
 start_time="$(date +%s.%N)"
 trap exit_trap EXIT
