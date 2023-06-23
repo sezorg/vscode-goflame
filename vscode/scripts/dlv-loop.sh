@@ -9,8 +9,12 @@ if [[ "$instance_guard" == "" ]]; then
 	while true; do
 		if [[ -f "$0" ]]; then
 			"$0"
+			status="$?"
+			if [[ "${status}" != "155" ]]; then
+				exit "${status}"
+			fi
 		else
-			sleep 1
+			usleep 500000
 		fi
 	done
 fi
@@ -28,12 +32,16 @@ BLUE=$(printf "\e[34m")
 GRAY=$(printf "\e[90m")
 NC=$(printf "\e[0m")
 
+function log() {
+	echo "${BLUE}|| $*${NC}"
+}
+
 function unused() { :; }
 unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
 PATTERN="TARGET_IPPORT"
-if [[ "[[TARGET_IPPORT]]" == "[[$PATTERN]]" ]]; then
-	echo "${RED}IP port number is not set. Do not run this script directly.${NC}"
+if [[ "__TARGET_IPPORT__" == "__${PATTERN}__" ]]; then
+	log "${RED}IP port number is not set. Do not run this script directly.${NC}"
 	exit "1"
 fi
 
@@ -81,7 +89,7 @@ function safe() {
 
 function digest() {
 	if [[ -f "${1}" ]]; then
-		echo "$(md5sum "${1}")$(date -r "${1}" "+%m-%d-%Y %H:%M:%S")"
+		date -r "${1}" "+%m-%d-%Y %H:%M:%S"
 	else
 		echo "no-file"
 	fi
@@ -90,8 +98,8 @@ function digest() {
 function seltest() {
 	s2=$(digest "$0")
 	if [[ "${s1}" != "${s2}" ]]; then
-		echo "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
-		exit 1
+		log "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
+		exit 155
 	fi
 }
 
@@ -99,11 +107,16 @@ s1=$(digest "$0")
 first_time_run="1"
 additional_sleep=
 while :; do
+	if [[ "${first_time_run}" == "" ]]; then
+		log " "
+		log " "
+		log " "
+	fi
 
 	if [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; then
 		additional_sleep=1
-		echo "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.${NC}"
-		echo "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
+		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.${NC}"
+		log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
 		while [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; do
 			seltest
 			sleep 1
@@ -115,10 +128,10 @@ while :; do
 	if [[ "${dlv_binary}" == "" ]] || [[ ! -f "$0" ]]; then
 		additional_sleep=1
 		if [[ "${first_time_run}" != "" ]]; then
-			echo "${YELLOW}Unable to locate Delve/DLV binary.${YELLOW}"
-			echo "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for deploy...${NC}"
+			log "${YELLOW}Unable to locate Delve/DLV binary.${YELLOW}"
+			log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for deploy...${NC}"
 		else
-			echo "Waiting for the Build&Deploy process to complete..."
+			log "Waiting for the Build&Deploy process to complete..."
 		fi
 		while [[ "${dlv_binary}" == "" ]] || [[ ! -f "$0" ]]; do
 			seltest
@@ -140,9 +153,9 @@ while :; do
 	fi
 
 	seltest
-	echo "Starting Delve headless server loop in DAP mode."
-	#echo "${GREEN}Ignore pattern: ${PRINT_PATTERNS}${NC}"
-	sh -c "${dlv_binary} dap --listen=:[[TARGET_IPPORT]] --api-version=2 --log 2>&1 | grep -v \"${IGNORE_PATTERN}\"" &
+	log "Starting Delve headless server loop in DAP mode."
+	#log "${GREEN}Ignore pattern: ${PRINT_PATTERNS}${NC}"
+	sh -c "${dlv_binary} dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"${IGNORE_PATTERN}\"" &
 	dlv_pid="$!"
 
 	echo "${dlv_pid}" >"${DLOOP_STATUS_FILE}"
@@ -157,8 +170,5 @@ while :; do
 		sleep 0.2
 	done
 
-	echo " "
-	echo " "
-	echo " "
 	first_time_run=""
 done

@@ -42,7 +42,7 @@
                 "/root/onvifd.settings"
             ],
             "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-deploy-attach",
+			"preLaunchTask": "launch-deploy-debug",
             "console": "internalConsole",
         },
         {

@@ -53,7 +53,7 @@ function xval() {
 }
 
 # To omit shellcheck warnings
-function xunreferenced_variables() {
+function xunreferenced() {
 	return 0
 }
 
@@ -74,7 +74,7 @@ CE=$'\u1B' # Color escape
 EP=""
 PI="\`"
 PO="'"
-xunreferenced_variables "${DT}" "${CE}" "${EP}"
+xunreferenced "${DT}" "${CE}" "${EP}"
 
 TARGET_ARCH="arm64"
 TARGET_GOCXX="aarch64-buildroot-linux-gnu"
@@ -162,7 +162,7 @@ DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
-xunreferenced_variables \
+xunreferenced \
 	"${BUILDROOT_HOST_DIR}" \
 	"${BUILDROOT_TARGET_DIR}" \
 	"${TARGET_BIN_SOURCE}" \
@@ -232,7 +232,7 @@ GOLANG_EXPORTS=(
 	"EXPORT_CXX"
 )
 
-xunreferenced_variables \
+xunreferenced \
 	"${EXPORT_DLVBIN}" \
 	"${EXPORT_GOBIN}" \
 	"${EXPORT_GOROOT}" \
@@ -491,7 +491,7 @@ function xflash_pending_commands() {
 }
 
 function xperform_build_and_deploy() {
-	local fbuild=""
+	local fbuild="" fdebug="" fexec=""
 
 	while :; do
 		if [[ "$1" == "[BUILD]" ]]; then
@@ -499,6 +499,10 @@ function xperform_build_and_deploy() {
 		elif [[ "$1" == "[ECHO]" ]]; then
 			xval XECHO_ENABLED=y
 			clear
+		elif [[ "$1" == "[DEBUG]" ]]; then
+			fdebug="yes"
+		elif [[ "$1" == "[EXEC]" ]]; then
+			fexec="yes"
 		else
 			break
 		fi
@@ -512,8 +516,13 @@ function xperform_build_and_deploy() {
 		xcheck_project
 	fi
 
-	if [[ "$TARGET_ARCH" == "arm" ]]; then
+	xunreferenced "${fexec}"
+
+	if ! xis_true "${fdebug}"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_RESTART_FILE}\"); "
+		EXECUTE_COMMANDS+=(
+			"@echo 1 > ${DLOOP_RESTART_FILE}"
+		)
 	fi
 
 	xservices_stop
@@ -985,9 +994,9 @@ function xprepare_runtime_scripts() {
 	done
 	xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
 	xexec cp "${PWD}/.vscode/scripts/dlv-exec.sh" "/var/tmp/dlv-exec.sh"
-	xsed_replace "[[TARGET_IPPORT]]" "${TARGET_IPPORT}" "/var/tmp/dlv-loop.sh"
-	xsed_replace "[[TARGET_BINARY_PATH]]" "${TARGET_BIN_DESTIN}" "/var/tmp/dlv-exec.sh"
-	xsed_replace "[[TARGET_BINARY_ARGS]]" "${args:1}" "/var/tmp/dlv-exec.sh"
+	xsed_replace "__TARGET_IPPORT__" "${TARGET_IPPORT}" "/var/tmp/dlv-loop.sh"
+	xsed_replace "__TARGET_BINARY_PATH__" "${TARGET_BIN_DESTIN}" "/var/tmp/dlv-exec.sh"
+	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "/var/tmp/dlv-exec.sh"
 	COPY_FILES+=(
 		"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
 		"/var/tmp/dlv-exec.sh|:/usr/bin/de"

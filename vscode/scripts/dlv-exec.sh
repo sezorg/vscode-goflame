@@ -8,8 +8,12 @@ if [[ "$instance_guard" == "" ]]; then
 	while true; do
 		if [[ -f "$0" ]]; then
 			"$0"
+			status="$?"
+			if [[ "${status}" != "155" ]]; then
+				exit "${status}"
+			fi
 		else
-			sleep 1
+			usleep 500000
 		fi
 	done
 fi
@@ -27,14 +31,19 @@ BLUE=$(printf "\e[34m")
 GRAY=$(printf "\e[90m")
 NC=$(printf "\e[0m")
 
+function log() {
+	echo "${BLUE}|| $*${NC}"
+}
+
 function unused() { :; }
 unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
-PATTERN="TARGET_BINARY"
-EXE_BINARY_PATH="[[TARGET_BINARY_PATH]]"
-EXE_BINARY_ARGS=([[TARGET_BINARY_ARGS]])
-if [[ "${EXE_BINARY_PATH}" == "[[$PATTERN]]" ]]; then
-	echo "${RED}Target binary path is not set. Do not run this script directly.${NC}"
+EXE_BINARY_PATH="__TARGET_BINARY_PATH__"
+EXE_BINARY_ARGS=(__TARGET_BINARY_ARGS__)
+
+PATTERN="TARGET_BINARY_PATH"
+if [[ "$EXE_BINARY_PATH" == "__${PATTERN}__" ]]; then
+	log "${RED}Target binary path is not set. Do not run this script directly.${NC}"
 	exit "1"
 fi
 
@@ -42,15 +51,16 @@ EXE_PROCESS_PID=""
 
 function cleanup() {
 	set +e
-	local processes
+	local processes running
 	processes=$(ps -a)
-	running=$(grep "\"root     ${EXE_BINARY_PATH}\"" <<<"${processes}")
+	running=$(awk "{if(\$3==\"${EXE_BINARY_PATH}\"){print \$3;exit}}" <<<"${processes}")
 	if [[ "$running" != "" ]]; then
-		echo "Terminating ${EXE_BINARY_PATH}..."
+		#log "Terminating ${EXE_BINARY_PATH}..."
 		killall "$(basename -- "${EXE_BINARY_PATH}")" >/dev/null 2>&1
 	fi
 	if [[ "${EXE_PROCESS_PID}" != "" ]]; then
-		wait "${EXE_PROCESS_PID}"
+		kill "${EXE_PROCESS_PID}" >/dev/null 2>&1
+		wait "${EXE_PROCESS_PID}" >/dev/null 2>&1
 		EXE_PROCESS_PID=""
 	fi
 	set -e
@@ -60,7 +70,7 @@ trap cleanup EXIT
 
 function digest() {
 	if [[ -f "${1}" ]]; then
-		echo "$(md5sum "${1}")$(date -r "${1}" "+%m-%d-%Y %H:%M:%S" 2>/dev/null)"
+		date -r "${1}" "+%m-%d-%Y %H:%M:%S"
 	else
 		echo "no-file"
 	fi
@@ -69,8 +79,8 @@ function digest() {
 function seltest() {
 	s2=$(digest "$0")
 	if [[ "${s1}" != "${s2}" ]]; then
-		echo "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
-		exit 1
+		log "${YELLOW}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
+		exit 155
 	fi
 }
 
@@ -78,71 +88,77 @@ s1=$(digest "$0")
 first_time_run="1"
 additional_sleep=""
 while true; do
+	if [[ "${first_time_run}" == "" ]]; then
+		log " "
+		log " "
+		log " "
+	fi
 
 	if [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; then
 		additional_sleep="1"
-		echo "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.${NC}"
-		echo "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
+		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.${NC}"
+		log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
 		while [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; do
 			seltest
-			sleep 1
+			usleep 500000
 		done
 	fi
 
 	if [[ "${first_time_run}" != "" ]]; then
 		first_time_run=""
-		echo "Beginning ${EXE_BINARY_PATH} execution loop..."
+		log "Beginning ${EXE_BINARY_PATH} execution loop..."
 	fi
 
 	if [[ ! -f "${DLOOP_RESTART_FILE}" ]]; then
-		echo "Waiting for application to be started (Run/Start Debugging)..."
+		log "Waiting for application to be started (Run/Start Debugging)..."
 		while [[ ! -f "${DLOOP_RESTART_FILE}" ]]; do
 			seltest
-			sleep 1
+			usleep 100000
 		done
 	fi
 
 	if [[ ! -f "${EXE_BINARY_PATH}" ]]; then
 		additional_sleep="1"
-		echo "${YELLOW}Unable to run application: target binary file ${EXE_BINARY_PATH} not found.${NC}"
-		echo "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
+		log "${YELLOW}Unable to run application: target binary file ${EXE_BINARY_PATH} not found.${NC}"
+		log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
 		while [[ ! -f "${EXE_BINARY_PATH}" ]]; do
 			seltest
-			sleep 1
+			usleep 500000
 		done
 	fi
 
 	if [[ "${additional_sleep}" != "" ]]; then
 		additional_sleep=""
-		sleep 2
+		usleep 2000000
 		continue
 	fi
+
+	while [[ -f "${EXE_BINARY_PATH}" ]] && [[ ! -r "${EXE_BINARY_PATH}" ]]; do
+		seltest
+		usleep 100000
+	done
 
 	t1=$(digest "${DLOOP_RESTART_FILE}")
 	m1=$(digest "${EXE_BINARY_PATH}")
 	status=$?
 	if [[ $status -ne 0 ]]; then
-		sleep 1
+		usleep 1000000
 		continue
 	fi
 
 	cleanup
-	echo "Starting ${EXE_BINARY_PATH}..."
+	log "Starting ${EXE_BINARY_PATH}..."
 	exec "${EXE_BINARY_PATH}" "${EXE_BINARY_ARGS[@]}" &
 	EXE_PROCESS_PID="$!"
 
 	while true; do
 		seltest
-		sleep 1
-		t2=$(digest "${DLOOP_RESTART_FILE}")
-		m2=$(digest "${EXE_BINARY_PATH}")
-		if [[ "$t1" != "$t2" ]] || [[ "$m1" != "$m2" ]]; then
+		usleep 100000
+		if [[ "$t1" != "$(digest "${DLOOP_RESTART_FILE}")" ]] ||
+			[[ "$m1" != "$(digest "${EXE_BINARY_PATH}")" ]]; then
 			break
 		fi
 	done
 	cleanup
 
-	echo " " #
-	echo " "
-	echo " "
 done

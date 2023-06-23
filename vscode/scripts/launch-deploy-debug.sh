@@ -10,7 +10,7 @@ set -euo pipefail
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/go-runtime.sh"
-xmessage_source "launch-deploy-attach"
+xmessage_source "launch-deploy-debug"
 
 DEPLOY_DELVE=n
 DEPLOY_NGINX=n
@@ -45,12 +45,9 @@ if xis_true "${DEPLOY_DELVE}"; then
 	)
 fi
 
-# Advised target stripts that the initial upload deploy is complete.``
-if [[ "$TARGET_ARCH" == "arm" ]]; then
-	EXECUTE_COMMANDS+=(
-		"@echo 1 > ${DLOOP_RESTART_FILE}"
-	)
-fi
+# Advised target stripts that the initial upload deploy is complete.
+EXECUTE_COMMANDS+=(
+)
 
 if xis_true "${DEPLOY_NGINX}"; then
 	SERVICES_STOP+=("nginx")
@@ -70,10 +67,10 @@ if xis_true "${DEPLOY_MEDIAD}"; then
 	COPY_FILES+=("${BUILDROOT_TARGET_DIR}/usr/bin/mediad|:/usr/bin/mediad")
 fi
 
-xunreferenced_variables \
+xunreferenced \
 	"${SERVICES_STOP[@]}" \
 	"${PROCESSES_STOP[@]}" \
 	"${COPY_FILES[@]}"
 
-xperform_build_and_deploy "[ECHO]" "[BUILD]" \
+xperform_build_and_deploy "[ECHO]" "[BUILD]" "[DEBUG]" \
 	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"

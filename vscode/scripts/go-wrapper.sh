@@ -79,17 +79,15 @@ CAMERA_FEATURES_ON+=(
 CAMERA_FEATURES_OFF+=(
 )
 
-# Advised target stripts that the initial upload deploy is complete.``
+# Advised target stripts that the initial upload deploy is complete.
 EXECUTE_COMMANDS+=(
-	"@rm -f > ${DLOOP_RESTART_FILE}"
-	"@echo 1 > ${DLOOP_ENABLE_FILE}"
 )
 
 # Enable vet & staticcheck on build workspace.
 #RUN_GO_VET=yes
 #RUN_STATICCHECK=yes
 
-xunreferenced_variables \
+xunreferenced \
 	"${SERVICES_STOP[@]}" \
 	"${SERVICES_START[@]}" \
 	"${PROCESSES_STOP[@]}" \

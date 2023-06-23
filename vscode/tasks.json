@@ -4,9 +4,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-            "label": "launch-deploy-attach",
+			"label": "launch-deploy-debug",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-attach.sh",
+			"command": "${workspaceFolder}/.vscode/scripts/launch-deploy-debug.sh",
             "echoCommand": false,
             "hide": true
         },
