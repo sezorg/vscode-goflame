@@ -154,6 +154,10 @@ while true; do
 	while true; do
 		seltest
 		usleep 100000
+		if [ ! -f "/proc/${EXE_PROCESS_PID}/status" ]; then
+			rm -f "${DLOOP_RESTART_FILE}"
+			break
+		fi
 		if [[ "$t1" != "$(digest "${DLOOP_RESTART_FILE}")" ]] ||
 			[[ "$m1" != "$(digest "${EXE_BINARY_PATH}")" ]]; then
 			break

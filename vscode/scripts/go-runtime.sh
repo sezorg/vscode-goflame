@@ -91,7 +91,7 @@ PO="'"
 xunreferenced "${DT}" "${CE}" "${EP}"
 
 TARGET_ARCH="arm64"
-TARGET_GOCXX="aarch64-buildroot-linux-gnu"
+TARGET_GOCXX=""
 TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
@@ -218,6 +218,15 @@ EXPORT_CGO_ENABLED="1"
 EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_LDFLAGS=""
+
+if [[ "${TARGET_GOCXX}" == "" ]]; then
+	case "${TARGET_ARCH}" in
+	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
+	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
+	*) xecho "Fatal: Can not determine compiler for TARGET_ARCH=\"${TARGET_ARCH}\"" ;;
+	esac
+fi
+
 EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-gcc"
 EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-g++"
 
@@ -539,13 +548,9 @@ function xperform_build_and_deploy() {
 		xcheck_project
 	fi
 
-	xunreferenced "${fexec}"
-
-	if ! xis_true "${fdebug}"; then
+	if ! xis_true "${fdebug}" && xis_true "${fexec}"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_RESTART_FILE}\"); "
-		EXECUTE_COMMANDS+=(
-			"@echo 1 > ${DLOOP_RESTART_FILE}"
-		)
+		EXECUTE_COMMANDS+=("@echo 1 > ${DLOOP_RESTART_FILE}")
 	fi
 
 	xservices_stop
@@ -556,9 +561,10 @@ function xperform_build_and_deploy() {
 	xservices_start
 	xprocesses_start
 
-	EXECUTE_COMMANDS+=(
-		"@echo 1 > ${DLOOP_ENABLE_FILE}"
-	)
+	if ! xis_true "${fexec}" && ! xis_true "${fdebug}"; then
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_ENABLE_FILE}\"); "
+		EXECUTE_COMMANDS+=("@echo 1 > ${DLOOP_ENABLE_FILE}")
+	fi
 
 	xexecute_commands
 	xflash_pending_commands
@@ -629,7 +635,7 @@ function xclean_directory() {
 	fi
 }
 
-P_CACHE_SALT=$(echo -n "${TARGET_ARCH}${TARGET_GOCXX}${BUILDROOT_DIR}${TARGET_IPADDR}" | md5sum)
+P_CACHE_SALT=$(echo -n "${PWD}${TARGET_ARCH}${TARGET_GOCXX}${BUILDROOT_DIR}${TARGET_IPADDR}" | md5sum)
 P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
 function xcache_hash() {
@@ -926,7 +932,7 @@ function xcamera_features() {
 	if [[ "${feature_args}" == "" ]]; then
 		return 0
 	fi
-	local timeout=2
+	local timeout=5
 	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
 		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"

@@ -26,6 +26,26 @@
                 "default": "[UNKNOWN-TARGET_IPPORT]"
             }
         },
+        {
+            "id": "TARGET_USER",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "key": "TARGET_USER",
+                "default": "[UNKNOWN-TARGET_USER]"
+            }
+        },
+        {
+            "id": "TARGET_PASS",
+            "type": "command",
+            "command": "extension.commandvariable.file.content",
+            "args": {
+                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "key": "TARGET_PASS",
+                "default": "[UNKNOWN-TARGET_PASS]"
+            }
+        },
     ],
     "configurations": [
         {
@@ -51,6 +71,11 @@
             "request": "launch",
             "mode": "exec",
             "program": "/var/tmp/delve_scp/go-execute-stub",
+            "args": [
+                "${input:TARGET_IPADDR}",
+                "${input:TARGET_USER}",
+                "${input:TARGET_PASS}",
+            ],
             "preLaunchTask": "launch-deploy-execute",
             "postDebugTask": "launch-deploy-terminate",
         },
