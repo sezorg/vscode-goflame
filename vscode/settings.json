@@ -1,7 +1,7 @@
 {
     "go.alternateTools": {
         "go": "${workspaceFolder}/.vscode/scripts/go-wrapper.sh",
-        "dlv": "${workspaceFolder}/.vscode/scripts/dlv-wrapper.sh",
+        //"dlv": "${workspaceFolder}/.vscode/scripts/dlv-wrapper.sh",
     },
     "go.delveConfig": {
         "debugAdapter": "legacy",
@@ -14,5 +14,6 @@
     "[python]": {
         "editor.defaultFormatter": "ms-python.autopep8"
     },
-    "python.formatting.provider": "none"
+    "git.enabled": false,
+    "git.autofetch": false,
 }

@@ -46,34 +46,13 @@
             "console": "internalConsole",
         },
         {
-            "request": "launch",
             "name": "Deploy and Execute",
-            "type": "bashdb",
-            "cwd": "${workspaceFolder}/.vscode/scripts/",
-            "program": "${workspaceFolder}/.vscode/scripts/go-exe-stub.sh",
-            "args": [],
-            "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-deploy-execute",
-            //"showDebugOutput": true,
-            "terminalKind": "integrated",
-        },
-        /*{
-            "request": "launch",
-            "name": "Deploy and Execute (CPP)",
-            "type": "cppdbg",
-            "cwd": "${workspaceFolder}/.vscode/scripts/",
-            "program": "${workspaceFolder}/.vscode/scripts/go-exe-stub",
-            "args": [],
-            "internalConsoleOptions": "openOnSessionStart",
-            "preLaunchTask": "launch-deploy-execute",
-            "miDebuggerPath": "/usr/libexec/gdb"
-        },
-        {
-            "name": "Local Launch Package",
             "type": "go",
             "request": "launch",
-            "mode": "debug",
-            "program": "${workspaceFolder}/cmd/onvifd/onvifd.go"
-        }*/
+            "mode": "exec",
+            "program": "/var/tmp/delve_scp/go-execute-stub",
+            "preLaunchTask": "launch-deploy-execute",
+            "postDebugTask": "launch-deploy-terminate",
+        },
     ],
 }

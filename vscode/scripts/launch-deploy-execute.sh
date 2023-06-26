@@ -68,6 +68,14 @@ if xis_true "${DEPLOY_MEDIAD}"; then
 	COPY_FILES+=("${BUILDROOT_TARGET_DIR}/usr/bin/mediad|:/usr/bin/mediad")
 fi
 
+EXECUTE_STUB_PATH="/var/tmp/delve_scp"
+EXECUTE_STUB_NAME="${EXECUTE_STUB_PATH}/go-execute-stub"
+if [[ ! -f "${EXECUTE_STUB_NAME}" ]]; then
+	xexec mkdir -p "${EXECUTE_STUB_PATH}"
+	xexec go build -o "${EXECUTE_STUB_NAME}" \
+		"$PWD/.vscode/scripts/go-execute-stub.go"
+fi
+
 xunreferenced \
 	"${SERVICES_STOP[@]}" \
 	"${PROCESSES_STOP[@]}" \

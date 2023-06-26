@@ -44,6 +44,20 @@ function xat_exit_trap() {
 	return 0
 }
 
+function xat_error() {
+	local parent_lineno="$1"
+	local message="$2"
+	local code="${3:-1}"
+	if [[ -n "$message" ]]; then
+		xecho "Error on or near line ${parent_lineno}: ${message}; exiting with status ${code}"
+	else
+		xecho "Error on or near line ${parent_lineno}; exiting with status ${code}"
+	fi
+	exit "${code}"
+}
+
+trap 'xat_error ${LINENO}' ERR
+
 if [[ ! -f "${HOME}/.shellcheckrc" ]]; then
 	echo "external-sources=true" >"${HOME}/.shellcheckrc"
 fi
@@ -268,7 +282,7 @@ function xexport() {
 		return 0
 	fi
 	P_EXPORTED_STATE=y
-	#xecho "Exports: $*"
+	xdebug "Exports: $*"
 	for variable in "$@"; do
 		local name="${variable}"
 		local value="${!name}"
@@ -288,6 +302,16 @@ function xexport() {
 			: #xecho "INFO: Unexported variable: ${name}=\"${actual}\""
 		fi
 	done
+}
+
+function xprint_export() {
+	xfset "+u"
+	for variable in "$@"; do
+		local name="${variable:7}"
+		local value="${!name}"
+		xdebug "Exports: ${name}=\"${value}\""
+	done
+	xfunset
 }
 
 P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
@@ -350,8 +374,6 @@ function xdebug() {
 	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
 }
 
-xdebug "Script has been started..."
-
 EXEC_STDOUT=
 EXEC_STDERR=
 EXEC_STATUS=
@@ -385,7 +407,6 @@ function xexestat() {
 }
 
 P_CANFAIL="[CANFAIL]"
-P_OPTIONS_STACK=()
 
 # Execute command which can not fail
 function xexec() {
@@ -439,6 +460,8 @@ function xexit() {
 	fi
 	exit "${EXEC_STATUS}"
 }
+
+P_OPTIONS_STACK=()
 
 function xfset() {
 	local oldopts
@@ -532,6 +555,11 @@ function xperform_build_and_deploy() {
 	xfiles_copy
 	xservices_start
 	xprocesses_start
+
+	EXECUTE_COMMANDS+=(
+		"@echo 1 > ${DLOOP_ENABLE_FILE}"
+	)
+
 	xexecute_commands
 	xflash_pending_commands
 	xcamera_features

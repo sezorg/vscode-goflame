@@ -17,5 +17,19 @@
             "echoCommand": false,
             "hide": true
         },
+        {
+            "label": "launch-deploy-execute",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-execute.sh",
+            "echoCommand": false,
+            "hide": true
+        },
+        {
+            "label": "launch-deploy-terminate",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/go-execute-stop.sh",
+            "echoCommand": false,
+            "hide": true
+        },
     ]
 }
