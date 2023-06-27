@@ -45,6 +45,7 @@ function xat_exit_trap() {
 }
 
 function xat_error() {
+	set +u
 	local parent_lineno="$1"
 	local message="$2"
 	local code="${3:-1}"
@@ -101,10 +102,10 @@ TARGET_BIN_SOURCE="onvifd"
 TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-RUN_GO_VET=""
-RUN_GO_VET_FLAGS=("-composites=false")
-RUN_STATICCHECK=""
-RUN_STATICCHECK_ALL=""
+GO_VET_ENABLE=""
+GO_VET_FLAGS=("-composites=false")
+STATICCHECK_ENABLE=""
+STATICCHECK_CHECKS=""
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -159,13 +160,9 @@ if [[ "${TARGET_BUILD_LAUNCHER}" != "" ]]; then
 fi
 
 TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
-TARGET_LOGFILE="/var/tmp/${TARGET_BIN_NAME}.log"
-
-DELVE_LOGFILE="/var/tmp/dlv.log"
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
-
-WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
 BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
+WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
 
 LOCAL_DLVBIN="$(which dlv)"
 LOCAL_GOBIN="$(which go)"
@@ -183,8 +180,6 @@ xunreferenced \
 	"${TARGET_BIN_DESTIN}" \
 	"${TARGET_BIN_NAME}" \
 	"${TARGET_EXEC_ARGS[@]}" \
-	"${TARGET_LOGFILE}" \
-	"${DELVE_LOGFILE}" \
 	"${DELVE_DAP_START}" \
 	"${WRAPPER_LOGFILE}" \
 	"${BUILDROOT_GOBIN}" \
@@ -286,7 +281,7 @@ function xcontains() {
 
 P_EXPORTED_STATE=
 
-function xexport() {
+function xexport_apply() {
 	if xis_true "${P_EXPORTED_STATE}"; then
 		return 0
 	fi
@@ -304,16 +299,32 @@ function xexport() {
 		set +u
 		local actual="${!name}"
 		set -u
+		export "P_SAVED_${name}"="${actual}"
 		if [[ "${actual}" == "" ]]; then
-			# shellcheck disable=SC2086
-			export ${name}="${value}"
+			export "${name}"="${value}"
 		else
 			: #xecho "INFO: Unexported variable: ${name}=\"${actual}\""
 		fi
 	done
 }
 
-function xprint_export() {
+function xexport_clean() {
+	if ! xis_true "${P_EXPORTED_STATE}"; then
+		return 0
+	fi
+	P_EXPORTED_STATE=n
+	xdebug "Cleaning: $*"
+	for variable in "$@"; do
+		local name="${variable:7}"
+		local save_name="P_SAVED_${name}"
+		set +u
+		local save_value="${!save_name}"
+		set -u
+		export "${name}"="${save_value}"
+	done
+}
+
+function xexport_print() {
 	xfset "+u"
 	for variable in "$@"; do
 		local name="${variable:7}"
@@ -371,6 +382,9 @@ function xecho() {
 }
 
 function xtext() {
+	if [[ "$*" == "" ]]; then
+		return 0
+	fi
 	local text
 	readarray -t text <<<"$@"
 	for line in "${text[@]}"; do
@@ -440,12 +454,8 @@ EOF
 	if [[ "${EXEC_STATUS}" != "0" ]] && [[ "${canfail}" == "" ]]; then
 		#xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
 		xecho "ERROR: Failed to execute: ${command}"
-		if [[ "${EXEC_STDERR}" != "" ]]; then
-			xtext "${EXEC_STDERR}"
-		fi
-		if [[ "${EXEC_STDOUT}" != "" ]]; then
-			xtext "${EXEC_STDOUT}"
-		fi
+		xtext "${EXEC_STDERR}"
+		xtext "${EXEC_STDOUT}"
 		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
 		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
 		exit ${EXEC_STATUS}
@@ -879,26 +889,28 @@ function xexecute_commands_vargs() {
 }
 
 function xcheck_project() {
-	xexport "${GOLANG_EXPORTS[@]}"
-	if xis_true "${RUN_GO_VET}"; then
+	if xis_true "${GO_VET_ENABLE}"; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${P_CANFAIL}" "go" "vet" "${RUN_GO_VET_FLAGS[@]}" "./..."
-		if [[ "${EXEC_STDERR}" != "" ]]; then
-			xtext "${EXEC_STDERR}"
-		fi
-		xecho "Go vet finished with status ${EXEC_STATUS}"
+		xexec "${P_CANFAIL}" "${BUILDROOT_GOBIN}" "vet" "${GO_VET_FLAGS[@]}" "./..."
+		xtext "${EXEC_STDOUT}"
+		xtext "${EXEC_STDERR}"
+		#xecho "Go vet finished with status ${EXEC_STATUS}"
 	fi
-	if xis_true "${RUN_STATICCHECK}"; then
-		local flags=()
-		if xis_true "${RUN_STATICCHECK_ALL}"; then
-			flags+=("-checks=all")
+	if xis_true "${STATICCHECK_ENABLE}"; then
+		xexport_clean "${GOLANG_EXPORTS[@]}"
+		local flags=() go_version
+		go_version=$("${BUILDROOT_GOBIN}" version)
+		go_version=$(awk '{print $3}' <<<"${go_version}")
+		go_version="${go_version%.*}"
+		flags+=("-go" "${go_version:2}")
+		if [[ "${STATICCHECK_CHECKS}" != "" ]]; then
+			flags+=("-checks" "${STATICCHECK_CHECKS}")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
 		xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
-		if [[ "${EXEC_STDOUT}" != "" ]]; then
-			xtext "${EXEC_STDOUT}"
-		fi
-		xecho "Staticcheck finished with status ${EXEC_STATUS}"
+		xtext "${EXEC_STDOUT}"
+		xtext "${EXEC_STDERR}"
+		#xecho "Staticcheck finished with status ${EXEC_STATUS}"
 	fi
 }
 
@@ -909,6 +921,7 @@ function xbuild_project() {
 	#flags+=("-race")
 	#flags+=("-msan")
 	#flags+=("-asan")
+	xexport_apply "${GOLANG_EXPORTS[@]}"
 	xexec "${BUILDROOT_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
 	if [[ "${EXEC_STATUS}" != "0" ]]; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"

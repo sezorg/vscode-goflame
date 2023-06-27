@@ -147,7 +147,7 @@ while true; do
 	fi
 
 	cleanup
-	log "Starting ${EXE_BINARY_PATH}..."
+	log "Starting ${EXE_BINARY_PATH} ${EXE_BINARY_ARGS[*]}..."
 	exec "${EXE_BINARY_PATH}" "${EXE_BINARY_ARGS[@]}" &
 	EXE_PROCESS_PID="$!"
 

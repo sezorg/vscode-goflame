@@ -32,7 +32,6 @@ PROCESSES_STOP+=(
 
 # List of processed to be started, executable with args
 PROCESSES_START+=(
-	#"nohup dlv exec ${TARGET_BIN_DESTIN} --listen=:2345 --headless=true --log=true --allow-non-terminal-interactive --log-output=debugger,debuglineerr,gdbwire,lldbout,rpc --accept-multiclient --api-version=2 -- ${TARGET_EXEC_ARGS[@]} >${DELVE_LOGFILE} 2>&1 &"
 )
 
 DIRECTORIES_CREATE+=(
@@ -42,8 +41,6 @@ DIRECTORIES_CREATE+=(
 # List of files to be deleted
 DELETE_FILES+=(
 	"${TARGET_BIN_DESTIN}"
-	"${TARGET_LOGFILE}"
-	"${DELVE_LOGFILE}"
 )
 
 # List of files to be copied, "source|target"
@@ -183,7 +180,7 @@ if [[ ! -f "${BUILDROOT_GOBIN}" ]]; then
 fi
 
 # Execute original Golang command
-xexport "${GOLANG_EXPORTS[@]}"
+xexport_apply "${GOLANG_EXPORTS[@]}"
 xexec "${BUILDROOT_GOBIN}" "$@"
 
 if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then

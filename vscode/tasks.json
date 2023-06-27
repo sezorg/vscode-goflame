@@ -31,5 +31,12 @@
             "echoCommand": false,
             "hide": true
         },
+        {
+            "label": "launch-go-staticcheck",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-go-staticcheck.sh",
+            "echoCommand": false,
+            "hide": false
+        },
     ]
 }

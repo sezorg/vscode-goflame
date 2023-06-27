@@ -49,13 +49,13 @@
     ],
     "configurations": [
         {
+            "name": "GO Deploy & Debug",
             "request": "launch",
-            "name": "Deploy and Debug",
             "type": "go",
+            "mode": "exec",
             "debugAdapter": "dlv-dap",
             "port": "${input:TARGET_IPPORT}",
             "host": "${input:TARGET_IPADDR}",
-            "mode": "exec",
             "program": "/usr/bin/onvifd_debug",
             "args": [
                 "-settings",
@@ -66,9 +66,9 @@
             "console": "internalConsole",
         },
         {
-            "name": "Deploy and Execute",
-            "type": "go",
+            "name": "GO Deploy & Execute",
             "request": "launch",
+            "type": "go",
             "mode": "exec",
             "program": "/var/tmp/delve_scp/go-execute-stub",
             "args": [
@@ -78,6 +78,17 @@
             ],
             "preLaunchTask": "launch-deploy-execute",
             "postDebugTask": "launch-deploy-terminate",
+        },
+        {
+            "name": "GO Run StaticCheck",
+            "request": "launch",
+            "type": "go",
+            "mode": "exec",
+            "program": "${env:HOME}/go/bin/staticcheck",
+            "cwd": "${workspaceFolder}",
+            "args": [".vscode/scripts/go-execute-stub.go"],
+            "console": "internalConsole",
+            "preLaunchTask": "launch-go-staticcheck",
         },
     ],
 }

@@ -276,7 +276,7 @@ class GerritTags:
             if pos < 0:
                 continue
             host_and_project = line[pos+10:].strip()
-            exp = r'^ssh:\/\/([\w@.]+)(:(\d+))?\/([\w\/]+)$'
+            exp = r'^ssh:\/\/([\w@.]+)(:(\d+))?\/([\w\/\-\+\_]+)$'
             match = re.search(exp, host_and_project)
             if match:
                 self.gerrit_host = match.group(1)

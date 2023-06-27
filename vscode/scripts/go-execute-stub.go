@@ -27,10 +27,9 @@ func pollTerminationState() {
 	sourceFile := "/tmp/dlv-loop-restart"
 	targetFile := "/var/tmp/delve_scp/go-execute-marker"
 	os.Remove(targetFile)
-	commandString := fmt.Sprintf("sshpass -p %s scp %s@%s:%s %s",
-		pass, user, host, sourceFile, targetFile)
-	command := exec.Command("bash", `-c`, commandString)
-	err := command.Run()
+	err := exec.Command("bash", `-c`,
+		fmt.Sprintf("sshpass -p %s scp %s@%s:%s %s",
+			pass, user, host, sourceFile, targetFile)).Run()
 	if exitErr, ok := err.(*exec.ExitError); ok {
 		exitCode := exitErr.ExitCode()
 		if exitCode == 1 {

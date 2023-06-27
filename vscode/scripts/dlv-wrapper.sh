@@ -13,8 +13,6 @@ source "${SCRIPT_DIR}/go-runtime.sh"
 xmessage_source "dlv-wrapper"
 
 xdebug "Dlv Args: $*"
-xprint_export "${GOLANG_EXPORTS[@]}"
-
 xflash_pending_commands
 xexec "${LOCAL_DLVBIN}" "$@"
 xexit
