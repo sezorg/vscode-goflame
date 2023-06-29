@@ -10,7 +10,6 @@ set -euo pipefail
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/go-runtime.sh"
-xmessage_source "launch-deploy-debug"
 
 DEPLOY_DELVE=n
 DEPLOY_NGINX=n
@@ -36,7 +35,7 @@ DIRECTORIES_CREATE+=()
 # List of files to be copied, "source|target"
 COPY_FILES+=(
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
-	#"init/onvifd.conf|:/etc/onvifd.conf"
+	"init/onvifd.conf|:/etc/onvifd.conf"
 )
 
 if xis_true "${DEPLOY_DELVE}"; then

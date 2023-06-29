@@ -10,7 +10,6 @@ set -euo pipefail
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "${SCRIPT_DIR}/go-runtime.sh"
-xmessage_source "launch-go-staticcheck"
 
 xval XECHO_ENABLED=y
 checks=()

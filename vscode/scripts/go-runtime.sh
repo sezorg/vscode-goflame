@@ -17,22 +17,22 @@ function xtime() {
 }
 
 function xelapsed() {
-	local dt dd dt2 dh dt3 dm ds
-	dt=$(echo "$(date +%s.%N) - $1" | bc)
-	dd=$(echo "$dt/86400" | bc)
-	dt2=$(echo "$dt-86400*$dd" | bc)
-	dh=$(echo "$dt2/3600" | bc)
-	dt3=$(echo "$dt2-3600*$dh" | bc)
-	dm=$(echo "$dt3/60" | bc)
-	ds=$(echo "$dt3-60*$dm" | bc)
-	if [[ "$dd" != "0" ]]; then
-		xecho "$(printf "Total runtime: %dd %02dh %02dm %02.4fs\n" "$dd" "$dh" "$dm" "$ds")"
-	elif [[ "$dh" != "0" ]]; then
-		xecho "$(printf "Total runtime: %dh %02dm %02.4fs\n" "$dh" "$dm" "$ds")"
-	elif [[ "$dm" != "0" ]]; then
-		xecho "$(printf "Total runtime: %dm %02.4f\n" "$dm" "$ds")"
+	local time days days_frac hours hours_frac mins secs
+	time=$(echo "$(date +%s.%N) - $1" | bc)
+	days=$(echo "$time/86400" | bc)
+	days_frac=$(echo "$time-86400*$days" | bc)
+	hours=$(echo "$days_frac/3600" | bc)
+	hours_frac=$(echo "$days_frac-3600*$hours" | bc)
+	mins=$(echo "$hours_frac/60" | bc)
+	secs=$(echo "$hours_frac-60*$mins" | bc)
+	if [[ "$days" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dd %02dh %02dm %02.3fs" "$days" "$hours" "$mins" "$secs")"
+	elif [[ "$hours" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dh %02dm %02.3fs" "$hours" "$mins" "$secs")"
+	elif [[ "$mins" != "0" ]]; then
+		xecho "$(printf "Total runtime: %dm %02.3fs" "$mins" "$secs")"
 	else
-		xecho "$(printf "Total runtime: %02.4fs\n" "$ds")"
+		xecho "$(printf "Total runtime: %02.3fs" "$secs")"
 	fi
 }
 
@@ -91,7 +91,7 @@ PI="\`"
 PO="'"
 xunreferenced "${DT}" "${CE}" "${EP}"
 
-TARGET_ARCH="arm64"
+TARGET_ARCH=""
 TARGET_GOCXX=""
 TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
@@ -143,6 +143,69 @@ CAMERA_FEATURES_OFF=()
 
 source "${SCRIPT_DIR}/../config.ini"
 
+P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
+P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
+P_FIRST_ECHO=y
+P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
+P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
+
+function xemit() {
+	local echo_flag="$1"
+	shift
+	local stamp message input="$*"
+	if [[ "${input}" != "" ]]; then
+		input=$(grep -v "${P_IGNORE_PATTERN}" <<<"$input")
+		if [[ "${input}" == "" ]]; then
+			return 0
+		fi
+	fi
+	stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
+	message="${stamp:0:-6} [${P_MESSAGE_SOURCE}] ${input}"
+	if [[ "${P_FIRST_ECHO}" == "" ]]; then
+		if [[ "${echo_flag}" != "" ]]; then
+			echo >&2 "${EP}${message}"
+		fi
+		echo "${message}" >>"${WRAPPER_LOGFILE}"
+	else
+		P_FIRST_ECHO=
+		if [[ "${XECHO_ENABLED}" != "" ]] ||
+			[[ "${XDEBUG_ENABLED}" != "" ]]; then
+			echo >&2
+		fi
+		if [[ "${echo_flag}" != "" ]]; then
+			echo >&2 "${EP}${message}"
+		fi
+		echo >>"${WRAPPER_LOGFILE}"
+		echo "${message}" >>"${WRAPPER_LOGFILE}"
+	fi
+}
+
+function xecho() {
+	# Echo message
+	xemit "${XECHO_ENABLED}" "$*"
+}
+
+function xfatal() {
+	xemit "1" "FATAL: $*"
+	exit 1
+}
+
+function xdebug() {
+	# Debug message
+	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
+}
+
+function xtext() {
+	if [[ "$*" == "" ]]; then
+		return 0
+	fi
+	local text
+	readarray -t text <<<"$@"
+	for line in "${text[@]}"; do
+		xecho "${line}"
+	done
+}
+
 BUILDROOT_HOST_DIR="${BUILDROOT_DIR}/output/host"
 BUILDROOT_TARGET_DIR="${BUILDROOT_DIR}/output/target"
 
@@ -190,6 +253,24 @@ xunreferenced \
 	"${DLOOP_STATUS_FILE}" \
 	"${DLOOP_RESTART_FILE}"
 
+if [[ "${TARGET_ARCH}" == "" ]]; then
+	if [[ -f "${BUILDROOT_DIR}/output/host/bin/arm-buildroot-linux-gnueabihf-gcc" ]]; then
+		TARGET_ARCH="arm"
+	elif [[ -f "${BUILDROOT_DIR}/output/host/bin/aarch64-buildroot-linux-gnu-gcc" ]]; then
+		TARGET_ARCH="arm64"
+	else
+		xfatal "Can not determine target architecture from BUILDROOT_DIR: ${BUILDROOT_DIR}."
+	fi
+fi
+
+if [[ "${TARGET_GOCXX}" == "" ]]; then
+	case "${TARGET_ARCH}" in
+	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
+	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
+	*) xfatal "Can not determine compiler for TARGET_ARCH=\"${TARGET_ARCH}\"" ;;
+	esac
+fi
+
 EXPORT_DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
 EXPORT_GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
 
@@ -213,14 +294,6 @@ EXPORT_CGO_ENABLED="1"
 EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_LDFLAGS=""
-
-if [[ "${TARGET_GOCXX}" == "" ]]; then
-	case "${TARGET_ARCH}" in
-	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
-	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
-	*) xecho "Fatal: Can not determine compiler for TARGET_ARCH=\"${TARGET_ARCH}\"" ;;
-	esac
-fi
 
 EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-gcc"
 EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-g++"
@@ -332,69 +405,6 @@ function xexport_print() {
 		xdebug "Exports: ${name}=\"${value}\""
 	done
 	xfunset
-}
-
-P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
-P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
-P_FIRST_ECHO=y
-P_MESSAGE_SOURCE="unknown-wrapper-script"
-
-function xmessage_source() {
-	P_MESSAGE_SOURCE="$*"
-	if [[ "$P_MESSAGE_SOURCE" == "" ]]; then
-		P_MESSAGE_SOURCE="unknown-wrapper-script"
-	fi
-}
-
-function xemit() {
-	local echo_flag="$1"
-	shift
-	local message input="$*"
-	if [[ "${input}" != "" ]]; then
-		input=$(grep -v "${P_IGNORE_PATTERN}" <<<"$input")
-		if [[ "${input}" == "" ]]; then
-			return 0
-		fi
-	fi
-	message="$(date '+%d/%m/%Y %H:%M:%S') [${P_MESSAGE_SOURCE}] ${input}"
-	if [[ "${P_FIRST_ECHO}" == "" ]]; then
-		if [[ "${echo_flag}" != "" ]]; then
-			echo >&2 "${EP}${message}"
-		fi
-		echo "${message}" >>"${WRAPPER_LOGFILE}"
-	else
-		P_FIRST_ECHO=
-		if [[ "${XECHO_ENABLED}" != "" ]] ||
-			[[ "${XDEBUG_ENABLED}" != "" ]]; then
-			echo >&2
-		fi
-		if [[ "${echo_flag}" != "" ]]; then
-			echo >&2 "${EP}${message}"
-		fi
-		echo >>"${WRAPPER_LOGFILE}"
-		echo "${message}" >>"${WRAPPER_LOGFILE}"
-	fi
-}
-
-function xecho() {
-	# Echo message
-	xemit "${XECHO_ENABLED}" "$*"
-}
-
-function xtext() {
-	if [[ "$*" == "" ]]; then
-		return 0
-	fi
-	local text
-	readarray -t text <<<"$@"
-	for line in "${text[@]}"; do
-		xecho "${line}"
-	done
-}
-
-function xdebug() {
-	# Debug message
-	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
 }
 
 EXEC_STDOUT=
@@ -731,7 +741,7 @@ function xfiles_copy() {
 						xexec mkdir -p "${backup_subdir}"
 					fi
 					xexec ln -s "${fileA}" "${backup_target}"
-					P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
+					#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
 					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
 				else
 					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
