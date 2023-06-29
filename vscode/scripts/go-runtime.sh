@@ -104,8 +104,15 @@ TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 GO_VET_ENABLE=""
 GO_VET_FLAGS=("-composites=false")
+GO_VET_FAIL=yes
 STATICCHECK_ENABLE=""
-STATICCHECK_CHECKS=""
+STATICCHECK_CHECKS="all"
+STATICCHECK_SUPRESS=""
+STATICCHECK_FAIL=yes
+LLENCHECK_ENABLE=""
+LLENCHECK_TABWIDTH=4
+LLENCHECK_LIMIT=100
+LLENCHECK_FAIL=yes
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -658,11 +665,18 @@ function xclean_directory() {
 P_CACHE_SALT=$(echo -n "${PWD}${TARGET_ARCH}${TARGET_GOCXX}${BUILDROOT_DIR}${TARGET_IPADDR}" | md5sum)
 P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
-function xcache_hash() {
-	local fileSum
-	fileSum=$(md5sum "${fileA}")
-	fileSum="${fileSum:0:32}"
-	echo "${fileSum}-${P_CACHE_SALT}"
+function xcache_shash() {
+	local string_hash
+	string_hash=$(md5sum <<<"${1}${P_CACHE_SALT}")
+	string_hash="${string_hash:0:32}"
+	echo "${string_hash}"
+}
+
+function xcache_fhash() {
+	local file_hash
+	file_hash=$(md5sum "${1}")
+	file_hash="${file_hash:0:32}"
+	echo "${file_hash}-${P_CACHE_SALT}"
 }
 
 function xcache_put() {
@@ -723,12 +737,12 @@ function xfiles_copy() {
 					exit "1"
 				fi
 
-				local nameSum fileSum
-				nameSum=$(xcache_hash <<<"${fileA}")
-				fileSum=$(xcache_hash "${fileA}")
-				#xecho "${nameSum} :: ${fileSum}"
+				local name_hash file_hash
+				name_hash=$(xcache_shash "${fileA}")
+				file_hash=$(xcache_fhash "${fileA}")
+				#xecho "${name_hash} :: ${file_hash}"
 
-				if ! xis_true "${COPY_CACHE}" || [[ "$(xcache_get "${nameSum}")" != "${fileSum}" ]]; then
+				if ! xis_true "${COPY_CACHE}" || [[ "$(xcache_get "${name_hash}")" != "${file_hash}" ]]; then
 					if [[ "${directories[*]}" == "" ]]; then
 						xclean_directory "${backup_source}"
 					fi
@@ -742,9 +756,9 @@ function xfiles_copy() {
 					fi
 					xexec ln -s "${fileA}" "${backup_target}"
 					#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
-					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"${nameSum}\" \"${fileSum}\"; "
+					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"${name_hash}\" \"${file_hash}\"; "
 				else
-					xdebug "Skipping upload ${fileA} :: ${nameSum} :: ${fileSum}"
+					xdebug "Skipping upload ${fileA} :: ${name_hash} :: ${file_hash}"
 					fileB=""
 				fi
 			fi
@@ -898,13 +912,39 @@ function xexecute_commands_vargs() {
 	fi
 }
 
+P_LAST_CHECK_FAILED=""
+
+function xcheck_results() {
+	xtext "${EXEC_STDOUT}"
+	xtext "${EXEC_STDERR}"
+	if [[ "${EXEC_STATUS}" != "0" ]]; then
+		P_LAST_CHECK_FAILED=yes
+		if xis_true "${1}"; then
+			xecho "ERROR: $2 warnings has been detected. Fix before continue (${EXEC_STATUS})."
+			exit "${EXEC_STATUS}"
+		fi
+	fi
+}
+
 function xcheck_project() {
-	if xis_true "${GO_VET_ENABLE}"; then
-		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${P_CANFAIL}" "${BUILDROOT_GOBIN}" "vet" "${GO_VET_FLAGS[@]}" "./..."
+	local name_hash file_hash dir_hash="/var/tmp/delve_scp/project_checklist.txt"
+	if xis_true "${STATICCHECK_ENABLE}" ||
+		xis_true "${GO_VET_ENABLE}" ||
+		xis_true "${LLENCHECK_ENABLE}"; then
+		P_LAST_CHECK_FAILED=""
+		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"${TARGET_BIN_SOURCE}\"" "\)" \
+			-not -path "\"./.git/*\"" -exec date -r {} \
+			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "${dir_hash}"
+		#xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "${TARGET_BIN_SOURCE}" "\)" \
+		#	-exec md5sum {} "\;" ">" "${dir_hash}"
 		xtext "${EXEC_STDOUT}"
 		xtext "${EXEC_STDERR}"
-		#xecho "Go vet finished with status ${EXEC_STATUS}"
+		name_hash=$(xcache_shash "${dir_hash}")
+		file_hash=$(xcache_fhash "${dir_hash}")
+		#xecho "${name_hash} :: ${file_hash}"
+		if [[ "$(xcache_get "${name_hash}")" == "${file_hash}" ]]; then
+			return 0
+		fi
 	fi
 	if xis_true "${STATICCHECK_ENABLE}"; then
 		xexport_clean "${GOLANG_EXPORTS[@]}"
@@ -917,10 +957,26 @@ function xcheck_project() {
 			flags+=("-checks" "${STATICCHECK_CHECKS}")
 		fi
 		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
-		xtext "${EXEC_STDOUT}"
-		xtext "${EXEC_STDERR}"
-		#xecho "Staticcheck finished with status ${EXEC_STATUS}"
+		local scheck="/var/tmp/delve_scp/project_scheck.txt"
+		xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..." "2>&1" ">" "${scheck}"
+		xexec "${P_CANFAIL}" cat "${scheck}" "|" \
+			"./.vscode/scripts/py-diff-check.py" -p -e="\"${STATICCHECK_SUPRESS}\""
+		xcheck_results "${STATICCHECK_FAIL}" "Staticcheck"
+	fi
+	if xis_true "${GO_VET_ENABLE}"; then
+		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
+		xexec "${P_CANFAIL}" "${BUILDROOT_GOBIN}" "vet" "${GO_VET_FLAGS[@]}" "./..."
+		xcheck_results "${GO_VET_FAIL}" "Go-vet"
+	fi
+	if xis_true "${LLENCHECK_ENABLE}"; then
+		local project_name="$(basename -- "$PWD")"
+		xecho "Running line length limit check on '${project_name}'"
+		xexec "${P_CANFAIL}" "./.vscode/scripts/py-diff-check.py" \
+			-l="${LLENCHECK_LIMIT}" -t="${LLENCHECK_TABWIDTH}"
+		xcheck_results "${LLENCHECK_FAIL}" "Line-length-limit"
+	fi
+	if ! xis_true "${P_LAST_CHECK_FAILED}"; then
+		xcache_put "${name_hash}" "${file_hash}"
 	fi
 }
 

@@ -79,10 +79,6 @@ CAMERA_FEATURES_OFF+=(
 EXECUTE_COMMANDS+=(
 )
 
-# Enable vet & staticcheck on build workspace.
-#RUN_GO_VET=yes
-#RUN_STATICCHECK=yes
-
 xunreferenced \
 	"${SERVICES_STOP[@]}" \
 	"${SERVICES_START[@]}" \
