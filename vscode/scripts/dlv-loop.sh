@@ -10,8 +10,8 @@ if [[ "$instance_guard" == "" ]]; then
 		if [[ -f "$0" ]]; then
 			"$0"
 			status="$?"
-			if [[ "${status}" != "155" ]]; then
-				exit "${status}"
+			if [[ "$status" != "155" ]]; then
+				exit "$status"
 			fi
 		else
 			usleep 500000
@@ -33,7 +33,7 @@ GRAY=$(printf "\e[90m")
 NC=$(printf "\e[0m")
 
 function log() {
-	echo "${BLUE}|| $*${NC}"
+	echo "$BLUE|| $*$NC"
 }
 
 function unused() { :; }
@@ -41,7 +41,7 @@ unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
 PATTERN="TARGET_IPPORT"
 if [[ "__TARGET_IPPORT__" == "__${PATTERN}__" ]]; then
-	log "${RED}IP port number is not set. Do not run this script directly.${NC}"
+	log "${RED}IP port number is not set. Do not run this script directly.$NC"
 	exit "1"
 fi
 
@@ -63,18 +63,18 @@ PRINT_PATTERNS="$(printf ",\"%s\"" "${IGNORE_LIST[@]}")"
 PRINT_PATTERNS="${PRINT_PATTERNS:1}"
 
 function cleanup() {
-	if [[ -f "${DLOOP_STATUS_FILE}" ]]; then
-		rm -f "${DLOOP_STATUS_FILE}"
+	if [[ -f "$DLOOP_STATUS_FILE" ]]; then
+		rm -f "$DLOOP_STATUS_FILE"
 	fi
 }
 trap cleanup EXIT
 
-if [[ -f "${DLOOP_STATUS_FILE}" ]]; then
-	dlv_pid="$(cat "${DLOOP_STATUS_FILE}")"
-	rm -f "${DLOOP_STATUS_FILE}"
+if [[ -f "$DLOOP_STATUS_FILE" ]]; then
+	dlv_pid="$(cat "$DLOOP_STATUS_FILE")"
+	rm -f "$DLOOP_STATUS_FILE"
 	function xnull() { return 0; }
-	xnull "$(pkill -P "${dlv_pid} >/dev/null")"
-	xnull "$(kill "${dlv_pid} >/dev/null")"
+	xnull "$(pkill -P "$dlv_pid >/dev/null")"
+	xnull "$(kill "$dlv_pid >/dev/null")"
 	unset dlv_pid
 fi
 
@@ -88,8 +88,8 @@ function safe() {
 }
 
 function digest() {
-	if [[ -f "${1}" ]]; then
-		date -r "${1}" "+%m-%d-%Y %H:%M:%S"
+	if [[ -f "$1" ]]; then
+		date -r "$1" "+%m-%d-%Y %H:%M:%S"
 	else
 		echo "no-file"
 	fi
@@ -97,8 +97,8 @@ function digest() {
 
 function seltest() {
 	s2=$(digest "$0")
-	if [[ "${s1}" != "${s2}" ]]; then
-		log "${GREEN}INFORMATION: The script has been updated via external upload. Restarting...${NC}"
+	if [[ "$s1" != "$s2" ]]; then
+		log "${GREEN}INFORMATION: The script has been updated via external upload. Restarting...$NC"
 		exit 155
 	fi
 }
@@ -107,17 +107,17 @@ s1=$(digest "$0")
 first_time_run="1"
 additional_sleep=
 while :; do
-	if [[ "${first_time_run}" == "" ]]; then
+	if [[ "$first_time_run" == "" ]]; then
 		log " "
 		log " "
 		log " "
 	fi
 
-	if [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; then
+	if [[ ! -f "$DLOOP_ENABLE_FILE" ]]; then
 		additional_sleep=1
-		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.${NC}"
-		log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for completion...${NC}"
-		while [[ ! -f "${DLOOP_ENABLE_FILE}" ]]; do
+		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"
+		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
+		while [[ ! -f "$DLOOP_ENABLE_FILE" ]]; do
 			seltest
 			sleep 1
 		done
@@ -125,15 +125,15 @@ while :; do
 
 	dlv_binary=""
 	safe dlv_binary="$(which dlv)"
-	if [[ "${dlv_binary}" == "" ]] || [[ ! -f "$0" ]]; then
+	if [[ "$dlv_binary" == "" ]] || [[ ! -f "$0" ]]; then
 		additional_sleep=1
-		if [[ "${first_time_run}" != "" ]]; then
-			log "${YELLOW}Unable to locate Delve/DLV binary.${YELLOW}"
-			log "${YELLOW}Please run ${BLUE}\"Go: Build Workspace\"${YELLOW} befor continue. Waiting for deploy...${NC}"
+		if [[ "$first_time_run" != "" ]]; then
+			log "${YELLOW}Unable to locate Delve/DLV binary.$YELLOW"
+			log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for deploy...$NC"
 		else
 			log "Waiting for the Build&Deploy process to complete..."
 		fi
-		while [[ "${dlv_binary}" == "" ]] || [[ ! -f "$0" ]]; do
+		while [[ "$dlv_binary" == "" ]] || [[ ! -f "$0" ]]; do
 			seltest
 			sleep 1
 			safe dlv_binary="$(which dlv)"
@@ -141,12 +141,12 @@ while :; do
 		continue
 	fi
 
-	if ! safe "dlv_version='$("${dlv_binary}" "version")'"; then
+	if ! safe "dlv_version='$("$dlv_binary" "version")'"; then
 		sleep 1
 		continue
 	fi
 
-	if [[ "${additional_sleep}" != "" ]]; then
+	if [[ "$additional_sleep" != "" ]]; then
 		additional_sleep=
 		sleep 2
 		continue
@@ -154,17 +154,17 @@ while :; do
 
 	seltest
 	log "Starting Delve headless server loop in DAP mode."
-	#log "${GREEN}Ignore pattern: ${PRINT_PATTERNS}${NC}"
-	sh -c "${dlv_binary} dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"${IGNORE_PATTERN}\"" &
+	#log "${GREEN}Ignore pattern: $PRINT_PATTERNS${NC}"
+	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$IGNORE_PATTERN\"" &
 	dlv_pid="$!"
 
-	echo "${dlv_pid}" >"${DLOOP_STATUS_FILE}"
-	wait "${dlv_pid}" >/dev/null 2>&1
+	echo "$dlv_pid" >"$DLOOP_STATUS_FILE"
+	wait "$dlv_pid" >/dev/null 2>&1
 
 	count="5"
-	while [[ "${count}" != "0" ]]; do
+	while [[ "$count" != "0" ]]; do
 		count=$((count - 1))
-		if [[ ! -f "${DLOOP_STATUS_FILE}" ]]; then
+		if [[ ! -f "$DLOOP_STATUS_FILE" ]]; then
 			exit "0"
 		fi
 		sleep 0.2

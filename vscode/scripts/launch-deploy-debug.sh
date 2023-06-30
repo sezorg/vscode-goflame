@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/go-runtime.sh"
+source "$SCRIPT_DIR/go-runtime.sh"
 
 DEPLOY_DELVE=n
 DEPLOY_NGINX=n
@@ -25,8 +25,8 @@ SERVICES_START+=()
 
 # List of process names to be stopped
 PROCESSES_STOP+=(
-	#"${TARGET_BIN_SOURCE}"
-	#"${TARGET_BIN_NAME}"
+	#"$TARGET_BIN_SOURCE"
+	#"$TARGET_BIN_NAME"
 )
 
 # List of directories to be created
@@ -34,13 +34,13 @@ DIRECTORIES_CREATE+=()
 
 # List of files to be copied, "source|target"
 COPY_FILES+=(
-	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
+	"$TARGET_BIN_SOURCE|:$TARGET_BIN_DESTIN"
 	"init/onvifd.conf|:/etc/onvifd.conf"
 )
 
-if xis_true "${DEPLOY_DELVE}"; then
+if xis_true "$DEPLOY_DELVE"; then
 	COPY_FILES+=(
-		"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
 	)
 fi
 
@@ -48,11 +48,11 @@ fi
 EXECUTE_COMMANDS+=(
 )
 
-if xis_true "${DEPLOY_NGINX}"; then
+if xis_true "$DEPLOY_NGINX"; then
 	SERVICES_STOP+=("nginx")
 	SERVICES_START+=("nginx")
 	COPY_FILES+=(
-		"${BUILDROOT_TARGET_DIR}/usr/sbin/nginx|:/usr/sbin/nginx"
+		"$BUILDROOT_TARGET_DIR/usr/sbin/nginx|:/usr/sbin/nginx"
 		"init/ipcam.conf|:/etc/nginx/ipcam.conf"
 		"init/ipcam.tmpl|:/var/lib/onvifd/ipcam.tmpl"
 		"?init/users.digest|:/var/lib/onvifd/users.digest"
@@ -60,10 +60,10 @@ if xis_true "${DEPLOY_NGINX}"; then
 
 fi
 
-if xis_true "${DEPLOY_MEDIAD}"; then
+if xis_true "$DEPLOY_MEDIAD"; then
 	SERVICES_STOP+=("mediad")
 	SERVICES_START+=("mediad")
-	COPY_FILES+=("${BUILDROOT_TARGET_DIR}/usr/bin/mediad|:/usr/bin/mediad")
+	COPY_FILES+=("$BUILDROOT_TARGET_DIR/usr/bin/mediad|:/usr/bin/mediad")
 fi
 
 xunreferenced \
@@ -72,4 +72,4 @@ xunreferenced \
 	"${COPY_FILES[@]}"
 
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[DEBUG]" \
-	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
+	"Building & deploying $(xdecodate "${TARGET_BIN_NAME}") to remote host http://$TARGET_IPADDR"

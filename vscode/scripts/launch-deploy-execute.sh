@@ -10,18 +10,18 @@ set -euo pipefail
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/go-runtime.sh"
+source "$SCRIPT_DIR/go-runtime.sh"
 
 # List of files to be copied, "source|target"
 COPY_FILES+=(
-	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
+	"$TARGET_BIN_SOURCE|:$TARGET_BIN_DESTIN"
 )
 
-EXECUTE_STUB_PATH="${TEMP_DIR}"
-EXECUTE_STUB_NAME="${EXECUTE_STUB_PATH}/go-execute-stub"
-if [[ ! -f "${EXECUTE_STUB_NAME}" ]]; then
-	xexec mkdir -p "${EXECUTE_STUB_PATH}"
-	xexec go build -o "${EXECUTE_STUB_NAME}" \
+EXECUTE_STUB_PATH="$TEMP_DIR"
+EXECUTE_STUB_NAME="$EXECUTE_STUB_PATH/go-execute-stub"
+if [[ ! -f "$EXECUTE_STUB_NAME" ]]; then
+	xexec mkdir -p "$EXECUTE_STUB_PATH"
+	xexec go build -o "$EXECUTE_STUB_NAME" \
 		"$PWD/.vscode/scripts/go-execute-stub.go"
 fi
 
@@ -32,4 +32,4 @@ xunreferenced \
 
 xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[EXEC]" \
-	"Building & deploying ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
+	"Building & deploying $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"

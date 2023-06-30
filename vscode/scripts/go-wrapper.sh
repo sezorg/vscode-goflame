@@ -9,7 +9,7 @@ set -euo pipefail
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/go-runtime.sh"
+source "$SCRIPT_DIR/go-runtime.sh"
 
 # List of services to be stopped
 SERVICES_STOP+=(
@@ -25,8 +25,8 @@ SERVICES_START+=(
 # List of process names to be stopped
 PROCESSES_STOP+=(
 	"dlv"
-	"${TARGET_BIN_SOURCE}"
-	"${TARGET_BIN_NAME}"
+	"$TARGET_BIN_SOURCE"
+	"$TARGET_BIN_NAME"
 )
 
 # List of processed to be started, executable with args
@@ -39,18 +39,18 @@ DIRECTORIES_CREATE+=(
 
 # List of files to be deleted
 DELETE_FILES+=(
-	"${TARGET_BIN_DESTIN}"
+	"$TARGET_BIN_DESTIN"
 )
 
 # List of files to be copied, "source|target"
 if [[ "$TARGET_ARCH" != "arm" ]]; then
 	COPY_FILES+=(
-		"${BUILDROOT_TARGET_DIR}/usr/bin/dlv|:/usr/bin/dlv"
+		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
 	)
 fi
 COPY_FILES+=(
 	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
-	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
+	"$TARGET_BIN_SOURCE|:$TARGET_BIN_DESTIN"
 	#"init/onvifd.conf|:/etc/onvifd.conf"
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	#"init/users.toml|:/var/lib/onvifd/users.toml"
@@ -98,48 +98,48 @@ function xparse_go_arguments() {
 	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		item="${SRCIPT_ARGS[$i]}"
-		if [[ "${item}" == "${EXPORT_DLVBIN}" ]]; then
-			result+=("${LOCAL_DLVBIN}")
+		if [[ "$item" == "$EXPORT_DLVBIN" ]]; then
+			result+=("$LOCAL_DLVBIN")
 			dirty="y"
-		elif [[ "${item}" == "build" ]]; then
-			xval XECHO_ENABLED=y
-			xecho "Building \`${TARGET_BUILD_LAUNCHER}'"
-			result+=("${item}")
+		elif [[ "$item" == "build" ]]; then
+			XECHO_ENABLED=true
+			xecho "Building \`$TARGET_BUILD_LAUNCHER'"
+			result+=("$item")
 			dirty="y"
 			HAVE_BUILD_COMMAND="y"
-		elif [[ "${item}" == "install" ]]; then
-			xval HAVE_LOCAL_COMMAND="${item}"
-			result+=("${item}")
-		elif [[ "${item}" == "env" ]]; then
-			xval HAVE_LOCAL_COMMAND="${item}"
-			result+=("${item}")
-		elif [[ "${item}" == "version" ]]; then
-			xval HAVE_LOCAL_COMMAND="${item}"
-			result+=("${item}")
-		elif [[ "${item}" == "list" ]]; then
-			xval HAVE_LOCAL_COMMAND="${item}"
-			result+=("${item}")
-		elif [[ "${item}" == "--echo" ]]; then
-			xval XECHO_ENABLED="y"
+		elif [[ "$item" == "install" ]]; then
+			xset HAVE_LOCAL_COMMAND="$item"
+			result+=("$item")
+		elif [[ "$item" == "env" ]]; then
+			xset HAVE_LOCAL_COMMAND="$item"
+			result+=("$item")
+		elif [[ "$item" == "version" ]]; then
+			xset HAVE_LOCAL_COMMAND="$item"
+			result+=("$item")
+		elif [[ "$item" == "list" ]]; then
+			xset HAVE_LOCAL_COMMAND="$item"
+			result+=("$item")
+		elif [[ "$item" == "--echo" ]]; then
+			xset XECHO_ENABLED="y"
 			dirty="y"
-		elif [[ "${item}" == "--debug" ]]; then
-			xval XDEBUG_ENABLED="y"
+		elif [[ "$item" == "--debug" ]]; then
+			xset XDEBUG_ENABLED="y"
 			dirty="y"
-		elif [[ "${item}" == "--trace" ]]; then
+		elif [[ "$item" == "--trace" ]]; then
 			set -x
 			dirty="y"
 		else
-			result+=("${item}")
+			result+=("$item")
 		fi
 	done
 
-	if [[ "${dirty}" != "" ]]; then
-		if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then
+	if xis_set "$dirty"; then
+		if xis_set "$HAVE_BUILD_COMMAND"; then
 			# force debug build
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
 		SRCIPT_ARGS=("${result[@]}")
-		xdebug "Dirty args: ${BUILDROOT_GOBIN} ${SRCIPT_ARGS[*]}"
+		xdebug "Dirty args: $BUILDROOT_GOBIN ${SRCIPT_ARGS[*]}"
 		return 0
 	fi
 	return 1
@@ -150,25 +150,25 @@ if xparse_go_arguments; then
 	xdebug "New Args: $*"
 fi
 
-if [[ "${HAVE_LOCAL_COMMAND}" != "" ]]; then
-	xdebug "Executing \"${HAVE_LOCAL_COMMAND}\" command on local Go."
-	xexec "${LOCAL_GOBIN}" "$@"
+if xis_set "$HAVE_LOCAL_COMMAND"; then
+	xdebug "Executing \"$HAVE_LOCAL_COMMAND\" command on local Go."
+	xexec "$LOCAL_GOBIN" "$@"
 	xexit
 fi
 
 # Check configuration.
-if [[ ! -f "${BUILDROOT_GOBIN}" ]]; then
-	xecho "ERROR: Can not find Go executable at \"${BUILDROOT_GOBIN}\"."
+if [[ ! -f "$BUILDROOT_GOBIN" ]]; then
+	xecho "ERROR: Can not find Go executable at \"$BUILDROOT_GOBIN\"."
 	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
-	if [[ -d "${BUILDROOT_DIR}" ]]; then
-		lookup_dir=$(find "${BUILDROOT_DIR}" -name "using-buildroot-toolchain.txt" -maxdepth 5)
-		xdebug "Actual BUILDROOT_DIR=\"${BUILDROOT_DIR}\""
-		xdebug "Found buildroot doc file: ${lookup_dir}"
-		if [[ "${lookup_dir}" != "" ]]; then
-			lookup_dir="$(dirname "${lookup_dir}")"
-			lookup_dir="$(dirname "${lookup_dir}")"
-			lookup_dir="$(dirname "${lookup_dir}")"
-			xecho "HINT: Set BUILDROOT_DIR=\"${lookup_dir}\"."
+	if [[ -d "$BUILDROOT_DIR" ]]; then
+		lookup_dir=$(find "$BUILDROOT_DIR" -name "using-buildroot-toolchain.txt" -maxdepth 5)
+		xdebug "Actual BUILDROOT_DIR=\"$BUILDROOT_DIR\""
+		xdebug "Found buildroot doc file: $lookup_dir"
+		if xis_set "$lookup_dir"; then
+			lookup_dir="$(dirname "$lookup_dir")"
+			lookup_dir="$(dirname "$lookup_dir")"
+			lookup_dir="$(dirname "$lookup_dir")"
+			xecho "HINT: Set BUILDROOT_DIR=\"$lookup_dir\"."
 		fi
 	fi
 	exit "1"
@@ -176,16 +176,16 @@ fi
 
 # Execute original Golang command
 xexport_apply "${GOLANG_EXPORTS[@]}"
-xexec "${BUILDROOT_GOBIN}" "$@"
+xexec "$BUILDROOT_GOBIN" "$@"
 
-if [[ "${HAVE_BUILD_COMMAND}" != "" ]]; then
-	if [[ "${EXEC_STATUS}" == "0" ]]; then
-		if [[ -f "./${TARGET_BIN_SOURCE}" ]]; then
+if xis_set "$HAVE_BUILD_COMMAND"; then
+	if [[ "$EXEC_STATUS" == "0" ]]; then
+		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 			xprepare_runtime_scripts
-			xperform_build_and_deploy "Installing ${PI}${TARGET_BIN_NAME}${PO} to remote host http://${TARGET_IPADDR}"
+			xperform_build_and_deploy "Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
 			exit "0"
 		else
-			xecho "ERROR: Main executable ${PI}${TARGET_BIN_SOURCE}${PO} does not exist"
+			xecho "ERROR: Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"
 			exit "1"
 		fi
 	fi
