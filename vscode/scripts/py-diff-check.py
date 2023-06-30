@@ -32,6 +32,7 @@ class Config:
     tabWidth = 0
     parseInput = False
     excludeList = ""
+    gitCommit = ""
     exitCode = 0
 
 
@@ -137,6 +138,13 @@ def parse_arguments():
         type=str,
         default="",
     )
+    parser.add_argument(
+        '-c', '--commit',
+        help='Use specified commit for git diff',
+        required=False,
+        type=str,
+        default="",
+    )
     arguments, unknown_args = parser.parse_known_args()
     Config.debugLevel = arguments.debug
     debug(f'arguments={arguments}')
@@ -153,6 +161,7 @@ def parse_arguments():
     Config.tabWidth = arguments.tab_width
     Config.parseInput = arguments.parse_input
     Config.excludeList = arguments.exclude_list
+    Config.gitCommit = arguments.commit
     return arguments
 
 
@@ -182,51 +191,38 @@ class Shell:
         debug(f'Shell status: {self.status}, succed {self.succed()}')
 
 
+class GitChangeSet:
+    def __init__(self, file_path, appended_lines, deleted_lines):
+        self.file_path = file_path
+        self.deleted_lines = deleted_lines
+        self.appended_lines = appended_lines
+        return
+
+
 class GitDiff:
     def __init__(self):
         self.data = {}
-        config = Shell(['git', 'diff'])
+        argumens = ['git', 'diff']
+        if Config.gitCommit != "":
+            argumens.append(Config.gitCommit+'~')
+            argumens.append(Config.gitCommit)
+        config = Shell(argumens)
         if not config.succed():
             fatal('Unable to run \'git diff\' on project')
         text = io.StringIO(config.stdout)
         patch_set = unidiff.PatchSet(text)
         self.change_list = []
         for patched_file in patch_set:
-            deleted_lines = [line.target_line_no
-                             for hunk in patched_file for line in hunk
-                             if line.is_added and
-                             line.value.strip() != '']
-            appended_lines = [line.source_line_no for hunk in patched_file
-                              for line in hunk if line.is_removed and
-                              line.value.strip() != '']
+            appended_lines = [line for hunk in patched_file for line in hunk
+                              if line.is_added and line.value.strip() != '']
+            # deleted_lines = [line for hunk in patched_file
+            #                  for line in hunk if line.is_removed and
+            #                  line.value.strip() != '']
+            debug(f'{appended_lines}')
             file_path = patched_file.path
-            self.change_list.append((file_path, deleted_lines, appended_lines))
-        return
-
-
-class GitPatchSet:
-    def __init__(self, git_diff):
-        self.patched_files = []
-        for change_set in git_diff.change_list:
-            self.patched_files.append(GitPatchedFile(change_set))
-        return
-
-
-class GitPatchedFile:
-    def __init__(self, change_set):
-        debug(f'{change_set}')
-        self.file_path = change_set[0]
-        text = []
-        with open(self.file_path, encoding="utf-8") as handle:
-            text = handle.readlines()
-        self.appended_lines = []
-        for line_no in change_set[1]:
-            self.appended_lines.append((line_no, text[line_no-1]))
-        self.deleted_lines = []
-        for line_no in change_set[2]:
-            self.deleted_lines.append((line_no, text[line_no-1]))
-        debug(f'appended_lines={self.appended_lines}')
-        debug(f'deleted_lines={self.deleted_lines}')
+            change_set = GitChangeSet(file_path, appended_lines, None)
+            self.change_list.append(change_set)
+        # debug(f'change_list={self.change_list}')
         return
 
 
@@ -234,9 +230,9 @@ class GitPatchLines:
     def __init__(self, git_diff):
         self.patched_lines = {}
         for change_set in git_diff.change_list:
-            file_path = change_set[0]
-            for line_no in change_set[1]:
-                key = f'{file_path}:{line_no}:'
+            file_path = change_set.file_path
+            for line in change_set.appended_lines:
+                key = f'{file_path}:{line.target_line_no}:'
                 self.patched_lines[key] = True
         return
 
@@ -250,17 +246,15 @@ class LineLengthLimit:
         return
 
     def run(self):
-        for patched_file in GitPatchSet(self.git_diff).patched_files:
-            for line_info in patched_file.appended_lines:
-                line = line_info[1].rstrip('\r\n').expandtabs(Config.tabWidth)
-                length = len(line)
+        for change_set in self.git_diff.change_list:
+            for line in change_set.appended_lines:
+                text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
+                length = len(text)
                 if length > Config.lineLengthLimit:
-                    prefix = f'{patched_file.file_path}:{line_info[0]}: '
-                    spacer = ' '*(length-1)
+                    prefix = f'{change_set.file_path}:{line.target_line_no}: '
                     print(f'{prefix}Maximum line length exceeded '
                           f'({length} > {Config.lineLengthLimit})')
-                    print(f'{prefix}{line}')
-                    print(f'{prefix}{spacer}^')
+                    print(f'{prefix}{text}')
                     Config.exitCode = 1
         return
 

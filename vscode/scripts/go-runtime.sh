@@ -936,6 +936,7 @@ function xcheck_results() {
 
 function xcheck_project() {
 	local name_hash file_hash dir_hash="${TEMP_DIR}/project_checklist.log" project_name
+	local diff_filter_args=() #("-c=6d8be903")
 	project_name="$(basename -- "$PWD")"
 	if xis_true "${STATICCHECK_ENABLE}" ||
 		xis_true "${GO_VET_ENABLE}" ||
@@ -952,6 +953,7 @@ function xcheck_project() {
 		if [[ "$(xcache_get "${name_hash}")" == "${file_hash}" ]]; then
 			return 0
 		fi
+		export PYTHONPYCACHEPREFIX="${TEMP_DIR}"
 	fi
 	if xis_true "${STATICCHECK_ENABLE}"; then
 		xexport_clean "${GOLANG_EXPORTS[@]}"
@@ -968,7 +970,9 @@ function xcheck_project() {
 			xecho "Running ${PI}staticcheck${PO} (details: file://${scheck})"
 			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..." "2>&1" ">" "${scheck}"
 			xexec "${P_CANFAIL}" cat "${scheck}" "|" \
-				"./.vscode/scripts/py-diff-check.py" -p -e="\"${STATICCHECK_SUPRESS}\""
+				"python3" -X pycache_prefix="${PYTHONPYCACHEPREFIX}" \
+				"./.vscode/scripts/py-diff-check.py" \
+				-p -e="\"${STATICCHECK_SUPRESS}\"" "${diff_filter_args[@]}"
 		else
 			xecho "Running ${PI}staticcheck${PO} on '${project_name}'"
 			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
@@ -982,8 +986,9 @@ function xcheck_project() {
 	fi
 	if xis_true "${LLENCHECK_ENABLE}"; then
 		xecho "Running 'line-length-limit' check on '${project_name}'"
-		xexec "${P_CANFAIL}" "./.vscode/scripts/py-diff-check.py" \
-			-l="${LLENCHECK_LIMIT}" -t="${LLENCHECK_TABWIDTH}"
+		xexec "${P_CANFAIL}" "python3" -X pycache_prefix="${PYTHONPYCACHEPREFIX}" \
+			"./.vscode/scripts/py-diff-check.py" \
+			-l="${LLENCHECK_LIMIT}" -t="${LLENCHECK_TABWIDTH}" "${diff_filter_args[@]}"
 		xcheck_results "${LLENCHECK_FAIL}" "Line-length-limit"
 	fi
 	if ! xis_true "${P_LAST_CHECK_FAILED}"; then
