@@ -70,7 +70,7 @@
             "request": "launch",
             "type": "go",
             "mode": "exec",
-            "program": "/var/tmp/delve_scp/go-execute-stub",
+			"program": "/var/tmp/goflame/go-execute-stub",
             "args": [
                 "${input:TARGET_IPADDR}",
                 "${input:TARGET_USER}",

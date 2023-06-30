@@ -3,7 +3,7 @@
 #
 # GO compiler wrapper environment
 #
-# Log messages are stored into file:///var/tmp/go-wrapper.log
+# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
 #set -x
@@ -76,10 +76,10 @@ SSH_FLAGS=(-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
 	-o ConnectionAttempts=1)
-CACHE_DIR="/var/tmp/delve_scp"
 
-if [[ ! -d "${CACHE_DIR}" ]]; then
-	mkdir -p "${CACHE_DIR}"
+TEMP_DIR="/var/tmp/goflame"
+if [[ ! -d "${TEMP_DIR}" ]]; then
+	mkdir -p "${TEMP_DIR}"
 fi
 
 XECHO_ENABLED=
@@ -102,13 +102,14 @@ TARGET_BIN_SOURCE="onvifd"
 TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-GO_VET_ENABLE=""
-GO_VET_FLAGS=("-composites=false")
-GO_VET_FAIL=yes
 STATICCHECK_ENABLE=""
 STATICCHECK_CHECKS="all"
+STATICCHECK_FILTER=yes
 STATICCHECK_SUPRESS=""
 STATICCHECK_FAIL=yes
+GO_VET_ENABLE=""
+GO_VET_FLAGS=("-composites=true")
+GO_VET_FAIL=yes
 LLENCHECK_ENABLE=""
 LLENCHECK_TABWIDTH=4
 LLENCHECK_LIMIT=100
@@ -232,7 +233,7 @@ fi
 TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
-WRAPPER_LOGFILE="/var/tmp/go-wrapper.log"
+WRAPPER_LOGFILE="${TEMP_DIR}/go-wrapper.log"
 
 LOCAL_DLVBIN="$(which dlv)"
 LOCAL_GOBIN="$(which go)"
@@ -595,7 +596,9 @@ function xperform_build_and_deploy() {
 
 	xexecute_commands
 	xflash_pending_commands
-	xcamera_features
+	if ! xis_true "${fbuild}"; then
+		xcamera_features
+	fi
 }
 
 function xkill() {
@@ -679,12 +682,17 @@ function xcache_fhash() {
 	echo "${file_hash}-${P_CACHE_SALT}"
 }
 
+P_CACHE_DIR="${TEMP_DIR}"
+
 function xcache_put() {
-	echo "$2" >"${CACHE_DIR}/cachedb/${1}"
+	if [[ ! -d "${P_CACHE_DIR}/cachedb" ]]; then
+		xexec mkdir -p "${P_CACHE_DIR}/cachedb"
+	fi
+	echo "$2" >"${P_CACHE_DIR}/cachedb/${1}"
 }
 
 function xcache_get() {
-	cat "${CACHE_DIR}/cachedb/${1}" 2>/dev/null
+	cat "${P_CACHE_DIR}/cachedb/${1}" 2>/dev/null
 }
 
 # shellcheck disable=SC2120
@@ -701,11 +709,11 @@ function xfiles_copy() {
 		list=("${COPY_FILES[@]}")
 	fi
 	if [[ "${#list[@]}" != "0" ]]; then
-		local backup_source="${CACHE_DIR}/data"
+		local backup_source="${P_CACHE_DIR}/data"
 		if ! xis_true "${COPY_CACHE}"; then
-			xclean_directory "${CACHE_DIR}/cachedb"
-		elif [[ ! -d "${CACHE_DIR}/cachedb" ]]; then
-			xexec mkdir -p "${CACHE_DIR}/cachedb"
+			xclean_directory "${P_CACHE_DIR}/cachedb"
+		elif [[ ! -d "${P_CACHE_DIR}/cachedb" ]]; then
+			xexec mkdir -p "${P_CACHE_DIR}/cachedb"
 		fi
 
 		local elements=""
@@ -927,7 +935,8 @@ function xcheck_results() {
 }
 
 function xcheck_project() {
-	local name_hash file_hash dir_hash="/var/tmp/delve_scp/project_checklist.txt"
+	local name_hash file_hash dir_hash="${TEMP_DIR}/project_checklist.log" project_name
+	project_name="$(basename -- "$PWD")"
 	if xis_true "${STATICCHECK_ENABLE}" ||
 		xis_true "${GO_VET_ENABLE}" ||
 		xis_true "${LLENCHECK_ENABLE}"; then
@@ -935,8 +944,6 @@ function xcheck_project() {
 		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"${TARGET_BIN_SOURCE}\"" "\)" \
 			-not -path "\"./.git/*\"" -exec date -r {} \
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "${dir_hash}"
-		#xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "${TARGET_BIN_SOURCE}" "\)" \
-		#	-exec md5sum {} "\;" ">" "${dir_hash}"
 		xtext "${EXEC_STDOUT}"
 		xtext "${EXEC_STDERR}"
 		name_hash=$(xcache_shash "${dir_hash}")
@@ -956,12 +963,17 @@ function xcheck_project() {
 		if [[ "${STATICCHECK_CHECKS}" != "" ]]; then
 			flags+=("-checks" "${STATICCHECK_CHECKS}")
 		fi
-		xecho "Running ${PI}staticcheck${PO} on of ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		local scheck="/var/tmp/delve_scp/project_scheck.txt"
-		xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..." "2>&1" ">" "${scheck}"
-		xexec "${P_CANFAIL}" cat "${scheck}" "|" \
-			"./.vscode/scripts/py-diff-check.py" -p -e="\"${STATICCHECK_SUPRESS}\""
-		xcheck_results "${STATICCHECK_FAIL}" "Staticcheck"
+		if xis_true "${STATICCHECK_FILTER}"; then
+			local scheck="${TEMP_DIR}/staticcheck.log"
+			xecho "Running ${PI}staticcheck${PO} (details: file://${scheck})"
+			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..." "2>&1" ">" "${scheck}"
+			xexec "${P_CANFAIL}" cat "${scheck}" "|" \
+				"./.vscode/scripts/py-diff-check.py" -p -e="\"${STATICCHECK_SUPRESS}\""
+		else
+			xecho "Running ${PI}staticcheck${PO} on '${project_name}'"
+			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
+		fi
+		xcheck_results "${STATICCHECK_FAIL}" "Static-check"
 	fi
 	if xis_true "${GO_VET_ENABLE}"; then
 		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
@@ -969,8 +981,7 @@ function xcheck_project() {
 		xcheck_results "${GO_VET_FAIL}" "Go-vet"
 	fi
 	if xis_true "${LLENCHECK_ENABLE}"; then
-		local project_name="$(basename -- "$PWD")"
-		xecho "Running line length limit check on '${project_name}'"
+		xecho "Running 'line-length-limit' check on '${project_name}'"
 		xexec "${P_CANFAIL}" "./.vscode/scripts/py-diff-check.py" \
 			-l="${LLENCHECK_LIMIT}" -t="${LLENCHECK_TABWIDTH}"
 		xcheck_results "${LLENCHECK_FAIL}" "Line-length-limit"
@@ -1105,13 +1116,13 @@ function xprepare_runtime_scripts() {
 	for arg in "${TARGET_EXEC_ARGS[@]}"; do
 		args="${args} \"${arg}\""
 	done
-	xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "/var/tmp/dlv-loop.sh"
-	xexec cp "${PWD}/.vscode/scripts/dlv-exec.sh" "/var/tmp/dlv-exec.sh"
-	xsed_replace "__TARGET_IPPORT__" "${TARGET_IPPORT}" "/var/tmp/dlv-loop.sh"
-	xsed_replace "__TARGET_BINARY_PATH__" "${TARGET_BIN_DESTIN}" "/var/tmp/dlv-exec.sh"
-	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "/var/tmp/dlv-exec.sh"
+	xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "${TEMP_DIR}/dlv-loop.sh"
+	xexec cp "${PWD}/.vscode/scripts/dlv-exec.sh" "${TEMP_DIR}/dlv-exec.sh"
+	xsed_replace "__TARGET_IPPORT__" "${TARGET_IPPORT}" "${TEMP_DIR}/dlv-loop.sh"
+	xsed_replace "__TARGET_BINARY_PATH__" "${TARGET_BIN_DESTIN}" "${TEMP_DIR}/dlv-exec.sh"
+	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "${TEMP_DIR}/dlv-exec.sh"
 	COPY_FILES+=(
-		"/var/tmp/dlv-loop.sh|:/usr/bin/dl"
-		"/var/tmp/dlv-exec.sh|:/usr/bin/de"
+		"${TEMP_DIR}/dlv-loop.sh|:/usr/bin/dl"
+		"${TEMP_DIR}/dlv-exec.sh|:/usr/bin/de"
 	)
 }

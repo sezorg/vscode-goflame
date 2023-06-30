@@ -3,7 +3,7 @@
 #
 # Deploy binary to remote host (Delve should run in infinite loop)
 #
-# Log messages are stored into file:///var/tmp/go-wrapper.log
+# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
 #set -x
@@ -17,7 +17,7 @@ COPY_FILES+=(
 	"${TARGET_BIN_SOURCE}|:${TARGET_BIN_DESTIN}"
 )
 
-EXECUTE_STUB_PATH="/var/tmp/delve_scp"
+EXECUTE_STUB_PATH="${TEMP_DIR}"
 EXECUTE_STUB_NAME="${EXECUTE_STUB_PATH}/go-execute-stub"
 if [[ ! -f "${EXECUTE_STUB_NAME}" ]]; then
 	xexec mkdir -p "${EXECUTE_STUB_PATH}"

@@ -3,7 +3,7 @@
 #
 # GO Delve debugger wrapper.
 #
-# Log messages are stored into file:///var/tmp/go-wrapper.log
+# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
 

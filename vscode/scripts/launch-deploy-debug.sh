@@ -3,7 +3,7 @@
 #
 # Deploy binary to remote host (Delve should run in infinite loop)
 #
-# Log messages are stored into file:///var/tmp/go-wrapper.log
+# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
 
