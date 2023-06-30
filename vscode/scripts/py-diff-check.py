@@ -33,6 +33,8 @@ class Config:
     parseInput = False
     excludeList = ""
     gitCommit = ""
+    excludeNonPrefixed = False
+    printAll = False
     exitCode = 0
 
 
@@ -145,6 +147,20 @@ def parse_arguments():
         type=str,
         default="",
     )
+    parser.add_argument(
+        '-x', '--exclude-non-prefixed',
+        help='Exclude strings without proper `file:line:` prefix',
+        required=False,
+        action='store_true',
+        default=False,
+    )
+    parser.add_argument(
+        '-a', '--print-all',
+        help='Print all messages regardless of changeset or commint',
+        required=False,
+        action='store_true',
+        default=False,
+    )
     arguments, unknown_args = parser.parse_known_args()
     Config.debugLevel = arguments.debug
     debug(f'arguments={arguments}')
@@ -162,6 +178,8 @@ def parse_arguments():
     Config.parseInput = arguments.parse_input
     Config.excludeList = arguments.exclude_list
     Config.gitCommit = arguments.commit
+    Config.excludeNonPrefixed = arguments.exclude_non_prefixed
+    Config.printAll = arguments.print_all
     return arguments
 
 
@@ -226,6 +244,15 @@ class GitDiff:
         return
 
 
+class GitFiles:
+    def __init__(self):
+        self.data = {}
+        config = Shell(['git', 'ls-tree', '-r', 'master', '--name-only'])
+        if not config.succed():
+            fatal('Unable to run \'git diff\' on project')
+        self.files = config.stdout.split('\n')
+
+
 class GitPatchLines:
     def __init__(self, git_diff):
         self.patched_lines = {}
@@ -246,25 +273,48 @@ class LineLengthLimit:
         return
 
     def run(self):
+        if Config.printAll:
+            self.process_all()
+            return
         for change_set in self.git_diff.change_list:
             for line in change_set.appended_lines:
                 text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
-                length = len(text)
-                if length > Config.lineLengthLimit:
-                    prefix = f'{change_set.file_path}:{line.target_line_no}: '
-                    print(f'{prefix}Maximum line length exceeded '
-                          f'({length} > {Config.lineLengthLimit})')
-                    print(f'{prefix}{text}')
-                    Config.exitCode = 1
+                self.process_line(change_set.file_path,
+                                  line.target_line_no, text)
         return
+
+    def process_all(self):
+        git_files = GitFiles()
+        for file_path in git_files.files:
+            file_path = file_path.strip()
+            if file_path == "":
+                continue
+            lines = open(file_path, 'r', encoding='utf-8').readlines()
+            for line_index, line in enumerate(lines):
+                self.process_line(file_path, line_index+1, line)
+        return
+
+    def process_line(self, file_path, line_index, line):
+        text = line.expandtabs(Config.tabWidth)
+        length = len(text)
+        if length > Config.lineLengthLimit:
+            prefix = f'{file_path}:{line_index}: '
+            print(f'{prefix}Maximum line length exceeded '
+                  f'({length} > {Config.lineLengthLimit})')
+            if not Config.excludeNonPrefixed:
+                print(f'{prefix}{text}')
+            Config.exitCode = 1
 
 
 class WarningsSupressor:
     def __init__(self, git_diff):
         self.git_diff = git_diff
+        self.previous_line = ''
+        self.output_next = False
         return
 
     def run(self):
+        have_exclude_list = Config.excludeList != ""
         identifiers = Config.excludeList.split(',')
         debug(f'supression list={identifiers}')
         supress_list = {}
@@ -272,19 +322,48 @@ class WarningsSupressor:
             supress_list[identifier] = True
         patched_lines = GitPatchLines(self.git_diff).get()
         input_lines = sys.stdin.readlines()
-
+        self.previous_line = ''
+        self.output_next = False
         for line in input_lines:
+            line = line.rstrip('\r\n')
+            if line == self.previous_line:
+                continue
+            prefixed = line.startswith('level=')
+            if self.output_next or prefixed:
+                self.output(line, prefixed, 1)
+                continue
             words = line.split()
-            for word in words:
-                match = re.match(r'([^:]*):([^:]*):([^:]*):', word)
-                if match:
-                    words.append(f'{match.group(1)}:{match.group(2)}')
+            if len(words) == 0:
+                continue
+            match = re.match(r'([^:]*):([0-9]+):([0-9]+):', words[0])
+            if match:
+                words[0] = f'{match.group(1)}:{match.group(2)}:'
             if self.in_dictionary(words, patched_lines):
-                print(f'{line}')
-                Config.exitCode = 1
-            elif not self.in_dictionary(words, supress_list):
-                print(f'{line}')
-                Config.exitCode = 2
+                self.output(line, prefixed, 2)
+            elif (Config.printAll or (
+                    have_exclude_list and not self.in_dictionary(words, supress_list))):
+                if not Config.excludeNonPrefixed:
+                    self.output(line, prefixed, 3)
+                elif re.match(r'([^:]*):([0-9]+):', words[0]):
+                    self.output(line, prefixed, 4)
+        return
+
+    def output(self, line, prefixed, exit_code):
+        if self.previous_line == line:
+            return
+        output = line
+        if prefixed:
+            prefixes = ['WARNING: ', 'ERROR: ']
+            for index, prefix in enumerate(['level=warning msg="', 'level=error msg="']):
+                if output.startswith(prefix):
+                    output = prefixes[index] + output[len(prefix):-1]
+                    output = output.replace('\\n', '\n')
+                    output = output.replace('\\r', '\n')
+                    output = output.replace('\\t', '\t')
+        print(output)
+        self.previous_line = line
+        self.output_next = line.endswith(':')
+        Config.exitCode = exit_code
         return
 
     def in_dictionary(self, words, dictionary):

@@ -9,19 +9,14 @@ set -euo pipefail
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-source "${SCRIPT_DIR}/go-runtime.sh"
+source "$SCRIPT_DIR/go-runtime.sh"
 
-xval XECHO_ENABLED=y
-checks=()
-if [[ "${STATICCHECK_CHECKS}" != "" ]]; then
-	xecho "Running static checks: \"${STATICCHECK_CHECKS}\"."
-	checks+=("-checks" "${STATICCHECK_CHECKS}")
-else
-	xecho "Running default static checks..."
-fi
+XECHO_ENABLED=true
+GOLANGCI_LINT_ENABLE=true
+STATICCHECK_ENABLE=true
+GO_VET_ENABLE=true
+LLENCHECK_ENABLE=true
+LAST_CHECK_FAILED=true
 
-xexec staticcheck "${checks[@]}" "./..."
-if [[ "${EXEC_STATUS}" == "0" ]]; then
-	xecho "Finished. No issues reported."
-fi
+xcheck_project
 xexit

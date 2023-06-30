@@ -12,6 +12,26 @@ function xis_true() {
 	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
 }
 
+function xis_false() {
+	[[ ! "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
+}
+
+function xis_set() {
+	[[ "$1" != "" ]]
+}
+
+function xis_unset() {
+	[[ "$1" == "" ]]
+}
+
+function xis_eq() {
+	[[ "$1" == "$2" ]]
+}
+
+function xis_ne() {
+	[[ "$1" != "$2" ]]
+}
+
 function xtime() {
 	date +%s.%N
 }
@@ -25,11 +45,11 @@ function xelapsed() {
 	hours_frac=$(echo "$days_frac-3600*$hours" | bc)
 	mins=$(echo "$hours_frac/60" | bc)
 	secs=$(echo "$hours_frac-60*$mins" | bc)
-	if [[ "$days" != "0" ]]; then
+	if xis_ne "$days" "0"; then
 		xecho "$(printf "Total runtime: %dd %02dh %02dm %02.3fs" "$days" "$hours" "$mins" "$secs")"
-	elif [[ "$hours" != "0" ]]; then
+	elif xis_ne "$hours" "0"; then
 		xecho "$(printf "Total runtime: %dh %02dm %02.3fs" "$hours" "$mins" "$secs")"
-	elif [[ "$mins" != "0" ]]; then
+	elif xis_ne "$mins" "0"; then
 		xecho "$(printf "Total runtime: %dm %02.3fs" "$mins" "$secs")"
 	else
 		xecho "$(printf "Total runtime: %02.3fs" "$secs")"
@@ -40,7 +60,7 @@ xstart="$(xtime)"
 trap xat_exit_trap EXIT
 
 function xat_exit_trap() {
-	xelapsed "${xstart}"
+	xelapsed "$xstart"
 	return 0
 }
 
@@ -50,20 +70,20 @@ function xat_error() {
 	local message="$2"
 	local code="${3:-1}"
 	if [[ -n "$message" ]]; then
-		xecho "Error on or near line ${parent_lineno}: ${message}; exiting with status ${code}"
+		xecho "Error on or near line $parent_lineno: $message; exiting with status $code"
 	else
-		xecho "Error on or near line ${parent_lineno}; exiting with status ${code}"
+		xecho "Error on or near line $parent_lineno; exiting with status $code"
 	fi
-	exit "${code}"
+	exit "$code"
 }
 
-trap 'xat_error ${LINENO}' ERR
+trap 'xat_error $LINENO' ERR
 
-if [[ ! -f "${HOME}/.shellcheckrc" ]]; then
-	echo "external-sources=true" >"${HOME}/.shellcheckrc"
+if [[ ! -f "$HOME/.shellcheckrc" ]]; then
+	echo "external-sources=true" >"$HOME/.shellcheckrc"
 fi
 
-function xval() {
+function xset() {
 	eval "$*"
 }
 
@@ -78,8 +98,8 @@ SSH_FLAGS=(-o StrictHostKeyChecking=no
 	-o ConnectionAttempts=1)
 
 TEMP_DIR="/var/tmp/goflame"
-if [[ ! -d "${TEMP_DIR}" ]]; then
-	mkdir -p "${TEMP_DIR}"
+if [[ ! -d "$TEMP_DIR" ]]; then
+	mkdir -p "$TEMP_DIR"
 fi
 
 XECHO_ENABLED=
@@ -89,7 +109,7 @@ CE=$'\u1B' # Color escape
 EP=""
 PI="\`"
 PO="'"
-xunreferenced "${DT}" "${CE}" "${EP}"
+xunreferenced "$DT" "$CE" "$EP"
 
 TARGET_ARCH=""
 TARGET_GOCXX=""
@@ -102,18 +122,36 @@ TARGET_BIN_SOURCE="onvifd"
 TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-STATICCHECK_ENABLE=""
+GIT_COMMIT_FILTER="" # HEAD
+GOLANGCI_LINT_ENABLE=false
+GOLANGCI_LINT_LINTERS="all,-depguard"
+GOLANGCI_LINT_FILTER=true
+GOLANGCI_LINT_FAIL=true
+GOLANGCI_LINT_DEPRECATED=(
+	"deadcode"
+	"exhaustivestruct"
+	"golint"
+	"ifshort"
+	"interfacer"
+	"maligned"
+	"nosnakecase"
+	"scopelint"
+	"structcheck"
+	"varcheck"
+)
+STATICCHECK_ENABLE=false
 STATICCHECK_CHECKS="all"
-STATICCHECK_FILTER=yes
+STATICCHECK_FILTER=true
 STATICCHECK_SUPRESS=""
-STATICCHECK_FAIL=yes
-GO_VET_ENABLE=""
+STATICCHECK_FAIL=true
+GO_VET_ENABLE=false
 GO_VET_FLAGS=("-composites=true")
-GO_VET_FAIL=yes
-LLENCHECK_ENABLE=""
+GO_VET_FAIL=true
+LLENCHECK_ENABLE=false
 LLENCHECK_TABWIDTH=4
 LLENCHECK_LIMIT=100
-LLENCHECK_FAIL=yes
+LLENCHECK_FILTER=true
+LLENCHECK_FAIL=true
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -125,7 +163,7 @@ DELETE_FILES=()
 
 # List of files to be copied, "source|target"
 COPY_FILES=()
-COPY_CACHE=y
+COPY_CACHE=true
 
 # List of services to be stopped
 SERVICES_STOP=()
@@ -149,11 +187,11 @@ EXECUTE_COMMANDS=()
 CAMERA_FEATURES_ON=()
 CAMERA_FEATURES_OFF=()
 
-source "${SCRIPT_DIR}/../config.ini"
+source "$SCRIPT_DIR/../config.ini"
 
 P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
 P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
-P_FIRST_ECHO=y
+P_FIRST_ECHO=true
 P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
 P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 
@@ -161,36 +199,35 @@ function xemit() {
 	local echo_flag="$1"
 	shift
 	local stamp message input="$*"
-	if [[ "${input}" != "" ]]; then
-		input=$(grep -v "${P_IGNORE_PATTERN}" <<<"$input")
-		if [[ "${input}" == "" ]]; then
+	if xis_set "$input"; then
+		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
+		if xis_unset "$input"; then
 			return 0
 		fi
 	fi
 	stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
-	message="${stamp:0:-6} [${P_MESSAGE_SOURCE}] ${input}"
-	if [[ "${P_FIRST_ECHO}" == "" ]]; then
-		if [[ "${echo_flag}" != "" ]]; then
-			echo >&2 "${EP}${message}"
+	message="${stamp:0:-6} [$P_MESSAGE_SOURCE] $input"
+	if xis_unset "$P_FIRST_ECHO"; then
+		if xis_set "$echo_flag"; then
+			echo >&2 "$EP${message}"
 		fi
-		echo "${message}" >>"${WRAPPER_LOGFILE}"
+		echo "$message" >>"$WRAPPER_LOGFILE"
 	else
 		P_FIRST_ECHO=
-		if [[ "${XECHO_ENABLED}" != "" ]] ||
-			[[ "${XDEBUG_ENABLED}" != "" ]]; then
+		if xis_set "$XECHO_ENABLED" || xis_set "$XDEBUG_ENABLED"; then
 			echo >&2
 		fi
-		if [[ "${echo_flag}" != "" ]]; then
-			echo >&2 "${EP}${message}"
+		if xis_set "$echo_flag"; then
+			echo >&2 "$EP${message}"
 		fi
-		echo >>"${WRAPPER_LOGFILE}"
-		echo "${message}" >>"${WRAPPER_LOGFILE}"
+		echo >>"$WRAPPER_LOGFILE"
+		echo "$message" >>"$WRAPPER_LOGFILE"
 	fi
 }
 
 function xecho() {
 	# Echo message
-	xemit "${XECHO_ENABLED}" "$*"
+	xemit "$XECHO_ENABLED" "$*"
 }
 
 function xfatal() {
@@ -200,22 +237,26 @@ function xfatal() {
 
 function xdebug() {
 	# Debug message
-	xemit "${XDEBUG_ENABLED}" "DEBUG: $*"
+	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
 }
 
 function xtext() {
-	if [[ "$*" == "" ]]; then
+	if xis_unset "$*"; then
 		return 0
 	fi
 	local text
 	readarray -t text <<<"$@"
 	for line in "${text[@]}"; do
-		xecho "${line}"
+		xecho "$line"
 	done
 }
 
-BUILDROOT_HOST_DIR="${BUILDROOT_DIR}/output/host"
-BUILDROOT_TARGET_DIR="${BUILDROOT_DIR}/output/target"
+function xdecodate() {
+	echo "$PI$*$PO"
+}
+
+BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
+BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
 
 TARGET_BUILD_GOFLAGS=("-gcflags=\"-N -l\"")
 TARGET_BUILD_LDFLAGS=("-X main.currentVersion=custom")
@@ -223,76 +264,77 @@ TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
 TARGET_BUILD_LDFLAGS+=("-X main.localStateDir=/var")
 
 TARGET_BUILD_FLAGS=("${TARGET_BUILD_GOFLAGS[@]}")
-if [[ "${#TARGET_BUILD_LDFLAGS[@]}" != "0" ]]; then
+if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
 	TARGET_BUILD_FLAGS+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
 fi
-if [[ "${TARGET_BUILD_LAUNCHER}" != "" ]]; then
-	TARGET_BUILD_FLAGS+=("${TARGET_BUILD_LAUNCHER}")
+if xis_set "$TARGET_BUILD_LAUNCHER"; then
+	TARGET_BUILD_FLAGS+=("$TARGET_BUILD_LAUNCHER")
 fi
 
-TARGET_BIN_NAME=$(basename -- "${TARGET_BIN_DESTIN}")
+TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
-BUILDROOT_GOBIN="${BUILDROOT_HOST_DIR}/bin/go"
-WRAPPER_LOGFILE="${TEMP_DIR}/go-wrapper.log"
+BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
+WRAPPER_LOGFILE="$TEMP_DIR/go-wrapper.log"
 
 LOCAL_DLVBIN="$(which dlv)"
 LOCAL_GOBIN="$(which go)"
 LOCAL_GOPATH="$(go env GOPATH)"
-LOCAL_STATICCHECK="${LOCAL_GOPATH}/bin/staticcheck"
+LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
+LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
 DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
 xunreferenced \
-	"${BUILDROOT_HOST_DIR}" \
-	"${BUILDROOT_TARGET_DIR}" \
-	"${TARGET_BIN_SOURCE}" \
-	"${TARGET_BIN_DESTIN}" \
-	"${TARGET_BIN_NAME}" \
+	"$BUILDROOT_HOST_DIR" \
+	"$BUILDROOT_TARGET_DIR" \
+	"$TARGET_BIN_SOURCE" \
+	"$TARGET_BIN_DESTIN" \
+	"$TARGET_BIN_NAME" \
 	"${TARGET_EXEC_ARGS[@]}" \
-	"${DELVE_DAP_START}" \
-	"${WRAPPER_LOGFILE}" \
-	"${BUILDROOT_GOBIN}" \
-	"${LOCAL_GOBIN}" \
-	"${LOCAL_DLVBIN}" \
+	"$DELVE_DAP_START" \
+	"$WRAPPER_LOGFILE" \
+	"$BUILDROOT_GOBIN" \
+	"$LOCAL_GOBIN" \
+	"$LOCAL_DLVBIN" \
 	"${GOLANG_EXPORTS[@]}" \
-	"${DLOOP_ENABLE_FILE}" \
-	"${DLOOP_STATUS_FILE}" \
-	"${DLOOP_RESTART_FILE}"
+	"$DLOOP_ENABLE_FILE" \
+	"$DLOOP_STATUS_FILE" \
+	"$DLOOP_RESTART_FILE"
 
-if [[ "${TARGET_ARCH}" == "" ]]; then
-	if [[ -f "${BUILDROOT_DIR}/output/host/bin/arm-buildroot-linux-gnueabihf-gcc" ]]; then
+if xis_unset "$TARGET_ARCH"; then
+	if [[ -f "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc" ]]; then
 		TARGET_ARCH="arm"
-	elif [[ -f "${BUILDROOT_DIR}/output/host/bin/aarch64-buildroot-linux-gnu-gcc" ]]; then
+	elif [[ -f "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc" ]]; then
 		TARGET_ARCH="arm64"
 	else
-		xfatal "Can not determine target architecture from BUILDROOT_DIR: ${BUILDROOT_DIR}."
+		xfatal "Can not determine target architecture from BUILDROOT_DIR: $BUILDROOT_DIR."
 	fi
 fi
 
-if [[ "${TARGET_GOCXX}" == "" ]]; then
-	case "${TARGET_ARCH}" in
+if xis_unset "$TARGET_GOCXX"; then
+	case "$TARGET_ARCH" in
 	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
 	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
-	*) xfatal "Can not determine compiler for TARGET_ARCH=\"${TARGET_ARCH}\"" ;;
+	*) xfatal "Can not determine compiler for TARGET_ARCH=\"$TARGET_ARCH\"" ;;
 	esac
 fi
 
-EXPORT_DLVBIN="${SCRIPT_DIR}/dlv-wrapper.sh"
-EXPORT_GOBIN="${SCRIPT_DIR}/go-wrapper.sh"
+EXPORT_DLVBIN="$SCRIPT_DIR/dlv-wrapper.sh"
+EXPORT_GOBIN="$SCRIPT_DIR/go-wrapper.sh"
 
-EXPORT_GOROOT="${BUILDROOT_HOST_DIR}/lib/go"
-EXPORT_GOPATH="${BUILDROOT_HOST_DIR}/usr/share/go-path"
-EXPORT_GOMODCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-path/pkg/mod"
-EXPORT_GOTOOLDIR="${BUILDROOT_HOST_DIR}/lib/go/pkg/tool/linux_${TARGET_ARCH}"
-EXPORT_GOCACHE="${BUILDROOT_HOST_DIR}/usr/share/go-cache"
+EXPORT_GOROOT="$BUILDROOT_HOST_DIR/lib/go"
+EXPORT_GOPATH="$BUILDROOT_HOST_DIR/usr/share/go-path"
+EXPORT_GOMODCACHE="$BUILDROOT_HOST_DIR/usr/share/go-path/pkg/mod"
+EXPORT_GOTOOLDIR="$BUILDROOT_HOST_DIR/lib/go/pkg/tool/linux_$TARGET_ARCH"
+EXPORT_GOCACHE="$BUILDROOT_HOST_DIR/usr/share/go-cache"
 
 EXPORT_GOPROXY="direct"
 EXPORT_GO111MODULE="on"
 EXPORT_GOWORK="off"
 EXPORT_GOVCS="*:all"
-EXPORT_GOARCH="${TARGET_ARCH}"
+EXPORT_GOARCH="$TARGET_ARCH"
 #EXPORT_GOFLAGS="-mod=vendor"
 EXPORT_GOFLAGS="-mod=mod"
 
@@ -303,8 +345,8 @@ EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS
 EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
 EXPORT_CGO_LDFLAGS=""
 
-EXPORT_CC="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-gcc"
-EXPORT_CXX="${BUILDROOT_HOST_DIR}/bin/${TARGET_GOCXX}-g++"
+EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
+EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
 
 GOLANG_EXPORTS=(
 	"EXPORT_DLVBIN"
@@ -332,76 +374,76 @@ GOLANG_EXPORTS=(
 )
 
 xunreferenced \
-	"${EXPORT_DLVBIN}" \
-	"${EXPORT_GOBIN}" \
-	"${EXPORT_GOROOT}" \
-	"${EXPORT_GOPATH}" \
-	"${EXPORT_GOMODCACHE}" \
-	"${EXPORT_GOTOOLDIR}" \
-	"${EXPORT_GOCACHE}" \
-	"${EXPORT_GOPROXY}" \
-	"${EXPORT_GO111MODULE}" \
-	"${EXPORT_GOWORK}" \
-	"${EXPORT_GOVCS}" \
-	"${EXPORT_GOARCH}" \
-	"${EXPORT_GOFLAGS}" \
-	"${EXPORT_GOFLAGS}" \
-	"${EXPORT_CGO_ENABLED}" \
-	"${EXPORT_CGO_CFLAGS}" \
-	"${EXPORT_CGO_CXXFLAGS}" \
-	"${EXPORT_CGO_LDFLAGS}" \
-	"${EXPORT_CC}" \
-	"${EXPORT_CXX}"
+	"$EXPORT_DLVBIN" \
+	"$EXPORT_GOBIN" \
+	"$EXPORT_GOROOT" \
+	"$EXPORT_GOPATH" \
+	"$EXPORT_GOMODCACHE" \
+	"$EXPORT_GOTOOLDIR" \
+	"$EXPORT_GOCACHE" \
+	"$EXPORT_GOPROXY" \
+	"$EXPORT_GO111MODULE" \
+	"$EXPORT_GOWORK" \
+	"$EXPORT_GOVCS" \
+	"$EXPORT_GOARCH" \
+	"$EXPORT_GOFLAGS" \
+	"$EXPORT_GOFLAGS" \
+	"$EXPORT_CGO_ENABLED" \
+	"$EXPORT_CGO_CFLAGS" \
+	"$EXPORT_CGO_CXXFLAGS" \
+	"$EXPORT_CGO_LDFLAGS" \
+	"$EXPORT_CC" \
+	"$EXPORT_CXX"
 
 function xcontains() {
 	local value="$1"
 	shift
-	for element; do [[ "$element" == "$value" ]] && return 0; done
+	for element; do xis_eq "$element" "$value" && return 0; done
 	return 1
 }
 
-P_EXPORTED_STATE=
+P_EXPORTED_STATE=false
 
 function xexport_apply() {
-	if xis_true "${P_EXPORTED_STATE}"; then
+	if xis_true "$P_EXPORTED_STATE"; then
 		return 0
 	fi
-	P_EXPORTED_STATE=y
+	P_EXPORTED_STATE=true
 	xdebug "Exports: $*"
 	for variable in "$@"; do
-		local name="${variable}"
+		local name="$variable"
 		local value="${!name}"
-		if [[ "${value}" == "" ]]; then
-			if ! xcontains "${variable}" "EXPORT_CGO_LDFLAGS"; then
-				xecho "WARNING: An empty exported variable ${variable}"
+		if xis_unset "$value"; then
+			if ! xcontains "$variable" "EXPORT_CGO_LDFLAGS"; then
+				xecho "WARNING: An empty exported variable $variable"
 			fi
 		fi
 		name=${name:7}
 		set +u
 		local actual="${!name}"
 		set -u
-		export "P_SAVED_${name}"="${actual}"
-		if [[ "${actual}" == "" ]]; then
-			export "${name}"="${value}"
+		export "P_SAVED_$name"="$actual"
+		if xis_unset "$actual"; then
+			export "$name"="$value"
 		else
-			: #xecho "INFO: Unexported variable: ${name}=\"${actual}\""
+			: #xecho "INFO: Unexported variable: $name=\"$actual\""
 		fi
 	done
 }
 
 function xexport_clean() {
-	if ! xis_true "${P_EXPORTED_STATE}"; then
+	if xis_false "$P_EXPORTED_STATE"; then
 		return 0
 	fi
 	P_EXPORTED_STATE=n
 	xdebug "Cleaning: $*"
 	for variable in "$@"; do
 		local name="${variable:7}"
-		local save_name="P_SAVED_${name}"
+		local save_name="P_SAVED_$name"
 		set +u
 		local save_value="${!save_name}"
 		set -u
-		export "${name}"="${save_value}"
+		export "$name"="$save_value"
 	done
 }
 
@@ -410,7 +452,7 @@ function xexport_print() {
 	for variable in "$@"; do
 		local name="${variable:7}"
 		local value="${!name}"
-		xdebug "Exports: ${name}=\"${value}\""
+		xdebug "Exports: $name=\"$value\""
 	done
 	xfunset
 }
@@ -420,82 +462,86 @@ EXEC_STDERR=
 EXEC_STATUS=
 
 function xexestat() {
-	local prefix="${1}"
-	local stdout="${2}"
-	local stderr="${3}"
-	local status="${4}"
-	if [[ "${status}" != "0" ]]; then
-		local needStatus="1"
-		if [[ "${stdout}" != "" ]]; then
-			xecho "${prefix} STATUS ${status}, STDOUT: ${stdout}"
-			needStatus="0"
+	local prefix="$1"
+	local stdout="$2"
+	local stderr="$3"
+	local status="$4"
+	if xis_ne "$status" "0"; then
+		local needStatus=true
+		if xis_set "$stdout"; then
+			xecho "$prefix STATUS $status, STDOUT: $stdout"
+			needStatus=false
 		fi
-		if [[ "${stderr}" != "" ]]; then
-			xecho "${prefix} STATUS ${status}, STDERR: ${stderr}"
-			needStatus="0"
+		if xis_set "$stderr"; then
+			xecho "$prefix STATUS $status, STDERR: $stderr"
+			needStatus=false
 		fi
-		if [[ "${needStatus}" == "1" ]]; then
-			xecho "${prefix} STATUS: ${status}"
+		if xis_true "$needStatus"; then
+			xecho "$prefix STATUS: $status"
 		fi
 	else
-		if [[ "${stdout}" != "" ]]; then
-			xdebug "${prefix} STDOUT: ${stdout}"
+		if xis_set "$stdout"; then
+			xdebug "$prefix STDOUT: $stdout"
 		fi
-		if [[ "${2}" != "" ]]; then
-			xdebug "${prefix} STDERR: ${stderr}"
+		if xis_set "$stderr"; then
+			xdebug "$prefix STDERR: $stderr"
 		fi
 	fi
 }
 
 P_CANFAIL="[CANFAIL]"
 
+function xis_canfail() {
+	[[ "$1" == "$P_CANFAIL" ]]
+}
+
 # Execute command which can not fail
 function xexec() {
 	xfset "+e"
 	local canfail=
-	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
+	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
 	local command="$*"
-	if [[ "${command}" == "" ]]; then
+	if xis_unset "$command"; then
 		return 0
 	fi
-	xdebug "Exec: ${command}"
+	xdebug "Exec: $command"
 	{
-		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "${command}" 2>/dev/fd/3)
+		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "$command" 2>/dev/fd/3)
 		EXEC_STATUS=$?
 		EXEC_STDERR=$(cat <&3)
 	} 3<<EOF
 EOF
 	xfunset
-	if [[ "${EXEC_STATUS}" != "0" ]] && [[ "${canfail}" == "" ]]; then
-		#xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
-		xecho "ERROR: Failed to execute: ${command}"
-		xtext "${EXEC_STDERR}"
-		xtext "${EXEC_STDOUT}"
-		xecho "ERROR: Terminating with status ${EXEC_STATUS}"
-		xecho "ERROR: More details in file://${WRAPPER_LOGFILE}"
+	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
+		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
+		xecho "ERROR: Failed to execute: $command"
+		xtext "$EXEC_STDERR"
+		xtext "$EXEC_STDOUT"
+		xecho "ERROR: Terminating with status $EXEC_STATUS"
+		xecho "ERROR: More details in file://$WRAPPER_LOGFILE"
 		exit ${EXEC_STATUS}
-	elif xis_true "0"; then
-		if [[ "${EXEC_STDOUT}" != "" ]]; then
-			xdebug "EXEC_STDOUT: ${EXEC_STDOUT}"
+	elif xis_true "false"; then
+		if xis_set "$EXEC_STDOUT"; then
+			xdebug "EXEC_STDOUT: $EXEC_STDOUT"
 		fi
-		if [[ "${EXEC_STDERR}" != "" ]]; then
-			xdebug "EXEC_STDERR: ${EXEC_STDERR}"
+		if xis_set "$EXEC_STDERR"; then
+			xdebug "EXEC_STDERR: $EXEC_STDERR"
 		fi
 	fi
 }
 
 function xexit() {
-	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=${EXEC_STATUS}"
-	if [[ "${EXEC_STDOUT}" != "" ]]; then
-		echo "${EXEC_STDOUT}"
+	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=$EXEC_STATUS"
+	if xis_set "$EXEC_STDOUT"; then
+		echo "$EXEC_STDOUT"
 	fi
-	if [[ "${EXEC_STDERR}" != "" ]]; then
-		echo "${EXEC_STDERR}" 1>&2
+	if xis_set "$EXEC_STDERR"; then
+		echo "$EXEC_STDERR" 1>&2
 	fi
-	exit "${EXEC_STATUS}"
+	exit "$EXEC_STATUS"
 }
 
 P_OPTIONS_STACK=()
@@ -503,27 +549,27 @@ P_OPTIONS_STACK=()
 function xfset() {
 	local oldopts
 	oldopts="$(set +o)"
-	P_OPTIONS_STACK+=("${oldopts}")
+	P_OPTIONS_STACK+=("$oldopts")
 	for opt in "$@"; do
-		set "${opt}"
+		set "$opt"
 	done
 }
 
 function xfunset() {
 	local oldopts="${P_OPTIONS_STACK[-1]}"
 	set +vx
-	eval "${oldopts}"
+	eval "$oldopts"
 	unset "P_OPTIONS_STACK[-1]"
 }
 
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
-	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
+	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
-	xexec "${canfail}" sshpass -p "${TARGET_PASS}" ssh "${SSH_FLAGS[@]}" "${TARGET_USER}@${TARGET_IPADDR}" "\"$*\""
+	xexec "$canfail" sshpass -p "$TARGET_PASS" ssh "${SSH_FLAGS[@]}" "$TARGET_USER@$TARGET_IPADDR" "\"$*\""
 }
 
 P_SSH_HOST_STDIO=""
@@ -533,15 +579,15 @@ P_SSH_TARGET_PREF="" # mount -o remount,rw /;
 P_SSH_TARGET_POST=""
 
 function xflash_pending_commands() {
-	if [[ "${P_SSH_HOST_STDIO}${P_SSH_HOST_POST}" != "" ]] ||
-		[[ "${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}" != "" ]]; then
-		if [[ "${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}" != "" ]]; then
-			local code="${P_SSH_HOST_STDIO}sshpass -p \"${TARGET_PASS}\" "
-			local code="${code}ssh ${SSH_FLAGS[*]} ${TARGET_USER}@${TARGET_IPADDR} "
-			local code="${code}\"${P_SSH_TARGET_PREF}${P_SSH_TARGET_STDIO}${P_SSH_TARGET_POST}\""
-			xexec "${code}"
+	if xis_set "$P_SSH_HOST_STDIO${P_SSH_HOST_POST}" ||
+		xis_set "$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST"; then
+		if xis_set "$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST"; then
+			local code="${P_SSH_HOST_STDIO}sshpass -p \"$TARGET_PASS\" "
+			local code="${code}ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR "
+			local code="$code\"$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST\""
+			xexec "$code"
 		fi
-		xexec "${P_SSH_HOST_POST}"
+		xexec "$P_SSH_HOST_POST"
 		P_SSH_HOST_STDIO=""
 		P_SSH_HOST_POST=""
 		P_SSH_TARGET_STDIO=""
@@ -551,18 +597,18 @@ function xflash_pending_commands() {
 }
 
 function xperform_build_and_deploy() {
-	local fbuild="" fdebug="" fexec=""
+	local fbuild=false fdebug=false fexec=false
 
 	while :; do
-		if [[ "$1" == "[BUILD]" ]]; then
-			fbuild="yes"
-		elif [[ "$1" == "[ECHO]" ]]; then
-			xval XECHO_ENABLED=y
+		if xis_eq "$1" "[BUILD]"; then
+			fbuild=true
+		elif xis_eq "$1" "[ECHO]"; then
+			xset XECHO_ENABLED=true
 			clear
-		elif [[ "$1" == "[DEBUG]" ]]; then
-			fdebug="yes"
-		elif [[ "$1" == "[EXEC]" ]]; then
-			fexec="yes"
+		elif xis_eq "$1" "[DEBUG]"; then
+			fdebug=true
+		elif xis_eq "$1" "[EXEC]"; then
+			fexec=true
 		else
 			break
 		fi
@@ -570,15 +616,15 @@ function xperform_build_and_deploy() {
 	done
 
 	xecho "$*"
-	if xis_true "${fbuild}"; then
+	if xis_true "$fbuild"; then
 		xbuild_project
 	else
 		xcheck_project
 	fi
 
-	if ! xis_true "${fdebug}" && xis_true "${fexec}"; then
-		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_RESTART_FILE}\"); "
-		EXECUTE_COMMANDS+=("@echo 1 > ${DLOOP_RESTART_FILE}")
+	if xis_false "$fdebug" && xis_true "$fexec"; then
+		P_SSH_TARGET_PREF="$P_SSH_TARGET_PREF(rm -f \"$DLOOP_RESTART_FILE\"); "
+		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
 	fi
 
 	xservices_stop
@@ -589,54 +635,54 @@ function xperform_build_and_deploy() {
 	xservices_start
 	xprocesses_start
 
-	if ! xis_true "${fexec}" && ! xis_true "${fdebug}"; then
-		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}(rm -f \"${DLOOP_ENABLE_FILE}\"); "
-		EXECUTE_COMMANDS+=("@echo 1 > ${DLOOP_ENABLE_FILE}")
+	if xis_false "$fexec" && xis_false "$fdebug"; then
+		P_SSH_TARGET_PREF="$P_SSH_TARGET_PREF(rm -f \"$DLOOP_ENABLE_FILE\"); "
+		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_ENABLE_FILE")
 	fi
 
 	xexecute_commands
 	xflash_pending_commands
-	if ! xis_true "${fbuild}"; then
+	if xis_false "$fbuild"; then
 		xcamera_features
 	fi
 }
 
 function xkill() {
 	local canfail=
-	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
+	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
 	for procname in "$@"; do
-		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep $procname > /dev/null; then pkill $procname; fi; "
 	done
 }
 
 function xscp() {
 	local canfail=
-	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
+	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
 
-	local dir="${TARGET_USER}@${TARGET_IPADDR}"
+	local dir="$TARGET_USER@$TARGET_IPADDR"
 
 	local one="$1"
 	if [[ "$one" =~ ^\:.* ]]; then
-		one="${dir}${one}"
+		one="$dir${one}"
 	elif [[ ! "$one" =~ ^\/.* ]]; then
-		one="./${one}"
+		one="./$one"
 	fi
 
 	local two="$2"
 	if [[ "$two" =~ ^\:.* ]]; then
-		two="${dir}${two}"
+		two="$dir${two}"
 	elif [[ ! "$two" =~ ^\/.* ]]; then
-		two="./${two}"
+		two="./$two"
 	fi
 
-	xdebug "Target copy: ${canfail} ${one} -> ${two}"
-	xexec "${canfail}" sshpass -p "${TARGET_PASS}" scp -C "${SSH_FLAGS[@]}" "${one}" "${two}"
+	xdebug "Target copy: $canfail $one -> $two"
+	xexec "$canfail" sshpass -p "$TARGET_PASS" scp -C "${SSH_FLAGS[@]}" "$one" "$two"
 }
 
 function xfiles_delete() {
@@ -647,73 +693,73 @@ function xfiles_delete() {
 # shellcheck disable=SC2120
 function xfiles_delete_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for filename in "${list[@]}"; do
-			elements="${elements}, $(basename -- "$filename")"
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${filename}\" ]]; then rm -f \"${filename}\"; fi; "
+			elements="$elements, $(basename -- "$filename")"
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"$filename\" ]]; then rm -f \"$filename\"; fi; "
 		done
 		xecho "Removing ${#list[@]} files: ${elements:2}"
 	fi
 }
 
 function xclean_directory() {
-	if [[ -d "${1}" ]]; then
-		xexec rm -rf "${1}/*"
+	if [[ -d "$1" ]]; then
+		xexec rm -rf "$1/*"
 	else
-		xexec mkdir -p "${1}"
+		xexec mkdir -p "$1"
 	fi
 }
 
-P_CACHE_SALT=$(echo -n "${PWD}${TARGET_ARCH}${TARGET_GOCXX}${BUILDROOT_DIR}${TARGET_IPADDR}" | md5sum)
+P_CACHE_SALT=$(echo -n "$PWD${TARGET_ARCH}$TARGET_GOCXX${BUILDROOT_DIR}$TARGET_IPADDR" | md5sum)
 P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
 function xcache_shash() {
 	local string_hash
-	string_hash=$(md5sum <<<"${1}${P_CACHE_SALT}")
+	string_hash=$(md5sum <<<"$1${P_CACHE_SALT}")
 	string_hash="${string_hash:0:32}"
-	echo "${string_hash}"
+	echo "$string_hash"
 }
 
 function xcache_fhash() {
 	local file_hash
-	file_hash=$(md5sum "${1}")
+	file_hash=$(md5sum "$1")
 	file_hash="${file_hash:0:32}"
-	echo "${file_hash}-${P_CACHE_SALT}"
+	echo "$file_hash-$P_CACHE_SALT"
 }
 
-P_CACHE_DIR="${TEMP_DIR}"
+P_CACHE_DIR="$TEMP_DIR"
 
 function xcache_put() {
-	if [[ ! -d "${P_CACHE_DIR}/cachedb" ]]; then
-		xexec mkdir -p "${P_CACHE_DIR}/cachedb"
+	if [[ ! -d "$P_CACHE_DIR/cachedb" ]]; then
+		xexec mkdir -p "$P_CACHE_DIR/cachedb"
 	fi
-	echo "$2" >"${P_CACHE_DIR}/cachedb/${1}"
+	echo "$2" >"$P_CACHE_DIR/cachedb/$1"
 }
 
 function xcache_get() {
-	cat "${P_CACHE_DIR}/cachedb/${1}" 2>/dev/null
+	cat "$P_CACHE_DIR/cachedb/$1" 2>/dev/null
 }
 
 # shellcheck disable=SC2120
 function xfiles_copy() {
 	# Copy files from COPY_FILES
 	local canfail=
-	if [[ "${1:-}" == "${P_CANFAIL}" ]]; then
+	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
 
 	local list=("$@")
-	if [[ "${#list[@]}" == "0" ]]; then
+	if xis_eq "${#list[@]}" "0"; then
 		list=("${COPY_FILES[@]}")
 	fi
-	if [[ "${#list[@]}" != "0" ]]; then
-		local backup_source="${P_CACHE_DIR}/data"
-		if ! xis_true "${COPY_CACHE}"; then
-			xclean_directory "${P_CACHE_DIR}/cachedb"
-		elif [[ ! -d "${P_CACHE_DIR}/cachedb" ]]; then
-			xexec mkdir -p "${P_CACHE_DIR}/cachedb"
+	if xis_ne "${#list[@]}" "0"; then
+		local backup_source="$P_CACHE_DIR/data"
+		if xis_false "$COPY_CACHE"; then
+			xclean_directory "$P_CACHE_DIR/cachedb"
+		elif [[ ! -d "$P_CACHE_DIR/cachedb" ]]; then
+			xexec mkdir -p "$P_CACHE_DIR/cachedb"
 		fi
 
 		local elements=""
@@ -730,55 +776,55 @@ function xfiles_copy() {
 			if [[ "$fileB" =~ ^\:.* ]]; then
 				uploading="1"
 				local prefA="${fileA:0:1}"
-				if [[ "${prefA}" == "?" ]]; then
+				if xis_eq "$prefA" "?"; then
 					fileA="${fileA:1}"
 				fi
-				if [[ -f "${PWD}/${fileA}" ]]; then
-					fileA="${PWD}/${fileA}"
-				elif [[ -f "${fileA}" ]]; then
+				if [[ -f "$PWD/$fileA" ]]; then
+					fileA="$PWD/$fileA"
+				elif [[ -f "$fileA" ]]; then
 					:
-				elif [[ "${prefA}" == "?" ]]; then
-					xecho "File \"${fileA}\" does not exists, skipping"
+				elif xis_eq "$prefA" "?"; then
+					xecho "File \"$fileA\" does not exists, skipping"
 					continue
 				else
-					xecho "ERROR: Unable to find \"${fileA}\" for upload"
+					xecho "ERROR: Unable to find \"$fileA\" for upload"
 					exit "1"
 				fi
 
 				local name_hash file_hash
-				name_hash=$(xcache_shash "${fileA}")
-				file_hash=$(xcache_fhash "${fileA}")
-				#xecho "${name_hash} :: ${file_hash}"
+				name_hash=$(xcache_shash "$fileA")
+				file_hash=$(xcache_fhash "$fileA")
+				#xecho "$name_hash :: $file_hash"
 
-				if ! xis_true "${COPY_CACHE}" || [[ "$(xcache_get "${name_hash}")" != "${file_hash}" ]]; then
-					if [[ "${directories[*]}" == "" ]]; then
-						xclean_directory "${backup_source}"
+				if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
+					if xis_unset "${directories[*]}"; then
+						xclean_directory "$backup_source"
 					fi
-					local backup_target="${backup_source}/${fileB:1}"
+					local backup_target="$backup_source/${fileB:1}"
 					backup_target="${backup_target//\/\//\/}"
 					local backup_subdir
-					backup_subdir=$(dirname "${backup_target}")
-					if ! xcontains "${backup_subdir}" "${directories[@]}"; then
-						directories+=("${backup_subdir}")
-						xexec mkdir -p "${backup_subdir}"
+					backup_subdir=$(dirname "$backup_target")
+					if ! xcontains "$backup_subdir" "${directories[@]}"; then
+						directories+=("$backup_subdir")
+						xexec mkdir -p "$backup_subdir"
 					fi
-					xexec ln -s "${fileA}" "${backup_target}"
+					xexec ln -s "$fileA" "$backup_target"
 					#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
-					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"${name_hash}\" \"${file_hash}\"; "
+					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"$name_hash\" \"$file_hash\"; "
 				else
-					xdebug "Skipping upload ${fileA} :: ${name_hash} :: ${file_hash}"
+					xdebug "Skipping upload $fileA :: $name_hash :: $file_hash"
 					fileB=""
 				fi
 			fi
-			if [[ "${fileB}" != "" ]]; then
-				elements="${elements}, $(basename -- "$fileB")"
+			if xis_set "$fileB"; then
+				elements="$elements, $(basename -- "$fileB")"
 				count=$((count + 1))
 			fi
 		done
-		if [[ "${uploading}" != "" ]]; then
-			if [[ "${elements}" != "" ]]; then
-				xecho "Uploading ${count} files: ${elements:2}"
-				P_SSH_HOST_STDIO="tar -cf - -C \"${backup_source}\" --dereference \".\" | gzip -5 - | "
+		if xis_set "$uploading"; then
+			if xis_set "$elements"; then
+				xecho "Uploading $count files: ${elements:2}"
+				P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | gzip -5 - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			fi
 		else
@@ -794,10 +840,10 @@ function xfiles_copy() {
 			local fileB="${files[1]}"
 			if [[ ! "$fileB" =~ ^\:.* ]]; then
 				xdebug "    ${fileB#":"}"
-				if [[ "${canfail}" != "" ]]; then
-					xscp "${P_CANFAIL}" "${fileA}" "${fileB}"
+				if xis_set "$canfail"; then
+					xscp "$P_CANFAIL" "$fileA" "$fileB"
 				else
-					xscp "${fileA}" "${fileB}"
+					xscp "$fileA" "$fileB"
 				fi
 			fi
 		done
@@ -812,12 +858,12 @@ function xservices_stop() {
 # shellcheck disable=SC2120
 function xservices_stop_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for service in "${list[@]}"; do
-			elements="${elements}, ${service}"
-			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"${service}\"; "
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"${service}\"; "
+			elements="$elements, $service"
+			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"$service\"; "
 		done
 		xecho "Stopping ${#list[@]} services: ${elements:2}"
 	fi
@@ -831,12 +877,12 @@ function xservices_start() {
 # shellcheck disable=SC2120
 function xservices_start_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for service in "${list[@]}"; do
-			elements="${elements}, ${service}"
-			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl unmask \"${service}\"; "
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"${service}\"; "
+			elements="$elements, $service"
+			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl unmask \"$service\"; "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"$service\"; "
 		done
 		xecho "Starting ${#list[@]} services: ${elements:2}"
 	fi
@@ -850,11 +896,11 @@ function xprocesses_stop() {
 # shellcheck disable=SC2120
 function xprocesses_stop_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for procname in "${list[@]}"; do
-			elements="${elements}, ${procname}"
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep ${procname} > /dev/null; then pkill ${procname}; fi; "
+			elements="$elements, $procname"
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep $procname > /dev/null; then pkill $procname; fi; "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
 	fi
@@ -868,11 +914,11 @@ function xprocesses_start() {
 # shellcheck disable=SC2120
 function xprocesses_start_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for procname in "${list[@]}"; do
-			elements="${elements}, ${procname}"
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}${procname}; "
+			elements="$elements, $procname"
+			P_SSH_TARGET_POST="$P_SSH_TARGET_POST${procname}; "
 		done
 		xecho "Starting ${#list[@]} processes: ${elements:2}"
 	fi
@@ -886,11 +932,11 @@ function xcreate_directories() {
 # shellcheck disable=SC2120
 function xcreate_directories_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for dirname in "${list[@]}"; do
-			elements="${elements}, ${dirname}"
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"${dirname}\"; "
+			elements="$elements, $dirname"
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"$dirname\"; "
 		done
 		xecho "Creating ${#list[@]} directories: ${elements:2}"
 	fi
@@ -904,95 +950,158 @@ function xexecute_commands() {
 # shellcheck disable=SC2120
 function xexecute_commands_vargs() {
 	local list=("$@")
-	if [[ "${#list[@]}" != "0" ]]; then
+	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for command in "${list[@]}"; do
-			if [[ "${command:0:1}" == "@" ]]; then
+			if xis_eq "${command:0:1}" "@"; then
 				command="${command:1}"
 			else
-				elements="${elements}, ${command%% *}"
+				elements="$elements, ${command%% *}"
 			fi
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}(${command}); "
+			P_SSH_TARGET_POST="$P_SSH_TARGET_POST($command); "
 		done
-		if [[ "$elements" != "" ]]; then
+		if xis_set "$elements"; then
 			xecho "Executing ${#list[@]} target commands: ${elements:2}"
 		fi
 	fi
 }
 
-P_LAST_CHECK_FAILED=""
+function xtest_installed() {
+	if [[ ! -f "$1" ]]; then
+		xerror "Reqired binary '$(basename -- "$1")' is not installed."
+		xfatal "Check installation instructions: $2"
+	fi
+}
+
+LAST_CHECK_FAILED=false
 
 function xcheck_results() {
-	xtext "${EXEC_STDOUT}"
-	xtext "${EXEC_STDERR}"
-	if [[ "${EXEC_STATUS}" != "0" ]]; then
-		P_LAST_CHECK_FAILED=yes
-		if xis_true "${1}"; then
-			xecho "ERROR: $2 warnings has been detected. Fix before continue (${EXEC_STATUS})."
-			exit "${EXEC_STATUS}"
+	xtext "$EXEC_STDOUT"
+	xtext "$EXEC_STDERR"
+	if xis_ne "$EXEC_STATUS" "0"; then
+		LAST_CHECK_FAILED=true
+		if xis_true "$1"; then
+			xecho "ERROR: $2 warnings has been detected. Fix before continue ($EXEC_STATUS)."
+			exit "$EXEC_STATUS"
 		fi
 	fi
 }
 
 function xcheck_project() {
-	local name_hash file_hash dir_hash="${TEMP_DIR}/project_checklist.log" project_name
-	local diff_filter_args=() #("-c=6d8be903")
+	local name_hash file_hash dir_hash="$TEMP_DIR/project_checklist.log" project_name
+	local diff_filter_args=() diff_filter_command=""
 	project_name="$(basename -- "$PWD")"
-	if xis_true "${STATICCHECK_ENABLE}" ||
-		xis_true "${GO_VET_ENABLE}" ||
-		xis_true "${LLENCHECK_ENABLE}"; then
-		P_LAST_CHECK_FAILED=""
-		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"${TARGET_BIN_SOURCE}\"" "\)" \
+	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
+		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE"; then
+		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
 			-not -path "\"./.git/*\"" -exec date -r {} \
-			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "${dir_hash}"
-		xtext "${EXEC_STDOUT}"
-		xtext "${EXEC_STDERR}"
-		name_hash=$(xcache_shash "${dir_hash}")
-		file_hash=$(xcache_fhash "${dir_hash}")
-		#xecho "${name_hash} :: ${file_hash}"
-		if [[ "$(xcache_get "${name_hash}")" == "${file_hash}" ]]; then
+			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
+		xtext "$EXEC_STDOUT"
+		xtext "$EXEC_STDERR"
+		name_hash=$(xcache_shash "$dir_hash")
+		file_hash=$(xcache_fhash "$dir_hash")
+		#xecho "$name_hash :: $file_hash"
+		if xis_false "$LAST_CHECK_FAILED" && xis_eq "$(xcache_get "$name_hash")" "$file_hash"; then
 			return 0
 		fi
-		export PYTHONPYCACHEPREFIX="${TEMP_DIR}"
+		LAST_CHECK_FAILED=""
+		export PYTHONPYCACHEPREFIX="$TEMP_DIR"
+		if xis_set "$GIT_COMMIT_FILTER"; then
+			diff_filter_args+=("-c=$GIT_COMMIT_FILTER")
+		fi
+		diff_filter_command=(
+			"python3" "-X" "pycache_prefix=\"$PYTHONPYCACHEPREFIX\""
+			"./.vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
+		)
 	fi
-	if xis_true "${STATICCHECK_ENABLE}"; then
+	if xis_true "$GOLANGCI_LINT_ENABLE"; then
+		xtest_installed "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
+		local linter_args=() linters_all="" linters_list=() linter=""
+		IFS=',' read -r -a linters_list <<<"$GOLANGCI_LINT_LINTERS"
+		for linter in "${linters_list[@]}"; do
+			if xis_eq "$linter" "all"; then
+				linters_all=true
+			fi
+		done
+		xunreferenced "$linters_all"
+		if xis_true "$linters_all"; then
+			linter_args+=("--enable-all")
+			for linter in "${GOLANGCI_LINT_DEPRECATED[@]}"; do
+				linter_args+=("-D" "$linter")
+			done
+			for linter in "${linters_list[@]}"; do
+				if [[ "$linter" == -* ]]; then
+					linter="${linter:1}"
+					for over in "${GOLANGCI_LINT_DEPRECATED[@]}"; do
+						if xis_eq "$linter" "$over"; then
+							linter=""
+							break
+						fi
+					done
+					if xis_set "$linter"; then
+						linter_args+=("-D" "$linter")
+					fi
+				fi
+			done
+		else
+			linter_args+=("--disable-all")
+			for linter in "${linters_list[@]}"; do
+				if [[ ! "$linter" == -* ]]; then
+					linter_args+=("-E" "$linter")
+				fi
+			done
+		fi
+		local scheck="$TEMP_DIR/golangci-lint.log"
+		xecho "Running $(xdecodate golangci-lint) (details: file://$scheck)"
+		xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
+			"./..." ">" "$scheck" "2>&1"
+		if xis_true "$GOLANGCI_LINT_FILTER"; then
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x
+		else
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
+		fi
+		xcheck_results "$GOLANGCI_LINT_FAIL" "Golangci-lint"
+	fi
+	if xis_true "$STATICCHECK_ENABLE"; then
+		xtest_installed "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
 		xexport_clean "${GOLANG_EXPORTS[@]}"
 		local flags=() go_version
-		go_version=$("${BUILDROOT_GOBIN}" version)
-		go_version=$(awk '{print $3}' <<<"${go_version}")
+		go_version=$("$BUILDROOT_GOBIN" version)
+		go_version=$(awk '{print $3}' <<<"$go_version")
 		go_version="${go_version%.*}"
 		flags+=("-go" "${go_version:2}")
-		if [[ "${STATICCHECK_CHECKS}" != "" ]]; then
-			flags+=("-checks" "${STATICCHECK_CHECKS}")
+		if xis_set "$STATICCHECK_CHECKS"; then
+			flags+=("-checks" "$STATICCHECK_CHECKS")
 		fi
-		if xis_true "${STATICCHECK_FILTER}"; then
-			local scheck="${TEMP_DIR}/staticcheck.log"
-			xecho "Running ${PI}staticcheck${PO} (details: file://${scheck})"
-			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..." "2>&1" ">" "${scheck}"
-			xexec "${P_CANFAIL}" cat "${scheck}" "|" \
-				"python3" -X pycache_prefix="${PYTHONPYCACHEPREFIX}" \
-				"./.vscode/scripts/py-diff-check.py" \
-				-p -e="\"${STATICCHECK_SUPRESS}\"" "${diff_filter_args[@]}"
+		local scheck="$TEMP_DIR/staticcheck.log"
+		xecho "Running $(xdecodate staticcheck) (details: file://$scheck)"
+		xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
+		if xis_true "$STATICCHECK_FILTER"; then
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
+				-e="\"$STATICCHECK_SUPRESS\""
 		else
-			xecho "Running ${PI}staticcheck${PO} on '${project_name}'"
-			xexec "${P_CANFAIL}" "${LOCAL_STATICCHECK}" "${flags[@]}" "./..."
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
 		fi
-		xcheck_results "${STATICCHECK_FAIL}" "Static-check"
+		xcheck_results "$STATICCHECK_FAIL" "Staticcheck"
 	fi
-	if xis_true "${GO_VET_ENABLE}"; then
-		xecho "Running ${PI}go vet${PO} on ${PI}${TARGET_BUILD_LAUNCHER}${PO}..."
-		xexec "${P_CANFAIL}" "${BUILDROOT_GOBIN}" "vet" "${GO_VET_FLAGS[@]}" "./..."
-		xcheck_results "${GO_VET_FAIL}" "Go-vet"
+	if xis_true "$GO_VET_ENABLE"; then
+		xecho "Running $(xdecodate go vet) on $(xdecodate ${TARGET_BUILD_LAUNCHER})..."
+		xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
+		xcheck_results "$GO_VET_FAIL" "Go-vet"
 	fi
-	if xis_true "${LLENCHECK_ENABLE}"; then
-		xecho "Running 'line-length-limit' check on '${project_name}'"
-		xexec "${P_CANFAIL}" "python3" -X pycache_prefix="${PYTHONPYCACHEPREFIX}" \
-			"./.vscode/scripts/py-diff-check.py" \
-			-l="${LLENCHECK_LIMIT}" -t="${LLENCHECK_TABWIDTH}" "${diff_filter_args[@]}"
-		xcheck_results "${LLENCHECK_FAIL}" "Line-length-limit"
+	if xis_true "$LLENCHECK_ENABLE"; then
+		xecho "Running $(xdecodate line-length-limit) check on $(xdecodate "$project_name")"
+		if xis_true "$LLENCHECK_FILTER"; then
+			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
+				-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+		else
+			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
+				-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+		fi
+		xcheck_results "$LLENCHECK_FAIL" "Line-length-limit"
 	fi
-	if ! xis_true "${P_LAST_CHECK_FAILED}"; then
-		xcache_put "${name_hash}" "${file_hash}"
+	if xis_false "$LAST_CHECK_FAILED"; then
+		xcache_put "$name_hash" "$file_hash"
 	fi
 }
 
@@ -1004,14 +1113,14 @@ function xbuild_project() {
 	#flags+=("-msan")
 	#flags+=("-asan")
 	xexport_apply "${GOLANG_EXPORTS[@]}"
-	xexec "${BUILDROOT_GOBIN}" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
-	if [[ "${EXEC_STATUS}" != "0" ]]; then
+	xexec "$BUILDROOT_GOBIN" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
+	if xis_ne "$EXEC_STATUS" "0"; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
 		xdebug "EXPORT_GOPATH=$EXPORT_GOPATH"
 		xdebug "EXPORT_GOROOT=$EXPORT_GOROOT"
 		xexit
 	else
-		xexestat "Exec" "${EXEC_STDOUT}" "${EXEC_STDERR}" "${EXEC_STATUS}"
+		xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 	fi
 }
 
@@ -1019,63 +1128,63 @@ function xbuild_project() {
 function xcamera_features() {
 	local feature_args=""
 	for feature in "${CAMERA_FEATURES_ON[@]}"; do
-		feature_args="${feature_args}&${feature}=true"
+		feature_args="$feature_args&$feature=true"
 	done
 	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
-		feature_args="${feature_args}&${feature}=false"
+		feature_args="$feature_args&$feature=false"
 	done
-	if [[ "${feature_args}" == "" ]]; then
+	if xis_unset "$feature_args"; then
 		return 0
 	fi
 	local timeout=5
-	local wget_command=(timeout "${timeout}" wget --no-proxy "--timeout=${timeout}"
-		-q -O - "\"http://${TARGET_IPADDR}/cgi/features.cgi?${feature_args:1}\"")
+	local wget_command=(timeout "$timeout" wget --no-proxy "--timeout=$timeout"
+		-q -O - "\"http://$TARGET_IPADDR/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"
 	local response="${EXEC_STDOUT//[$'\t\r\n']/}"
-	xdebug "WGET response: ${response}"
+	xdebug "WGET response: $response"
 
 	local features_on_set=""
 	local features_on_err=""
 	for feature in "${CAMERA_FEATURES_ON[@]}"; do
-		local pattern="\"${feature}\": set to True"
+		local pattern="\"$feature\": set to True"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_on_set="${features_on_set}, ${feature}"
+			features_on_set="$features_on_set, $feature"
 		else
-			features_on_err="${features_on_err}, ${feature}"
+			features_on_err="$features_on_err, $feature"
 		fi
 	done
 
 	local features_off_set=""
 	local features_off_err=""
 	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
-		local pattern="\"${feature}\": set to False"
+		local pattern="\"$feature\": set to False"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_off_set="${features_off_set}, ${feature}"
+			features_off_set="$features_off_set, $feature"
 		else
-			features_off_err="${features_off_err}, ${feature}"
+			features_off_err="$features_off_err, $feature"
 		fi
 	done
 
 	local features_set=""
-	if [[ "${features_on_set}" != "" ]]; then
-		features_set="${features_set}; true: ${features_on_set:2}"
+	if xis_set "$features_on_set"; then
+		features_set="$features_set; true: ${features_on_set:2}"
 	fi
-	if [[ "${features_off_set}" != "" ]]; then
-		features_set="${features_set}; false: ${features_off_set:2}"
+	if xis_set "$features_off_set"; then
+		features_set="$features_set; false: ${features_off_set:2}"
 	fi
 
 	local features_err=""
-	if [[ "${features_on_err}" != "" ]]; then
-		features_err="${features_err}; true: ${features_on_err:2}"
+	if xis_set "$features_on_err"; then
+		features_err="$features_err; true: ${features_on_err:2}"
 	fi
-	if [[ "${features_off_err}" != "" ]]; then
-		features_err="${features_err}; false: ${features_off_err:2}"
+	if xis_set "$features_off_err"; then
+		features_err="$features_err; false: ${features_off_err:2}"
 	fi
 
-	if [[ "${features_set}" != "" ]]; then
+	if xis_set "$features_set"; then
 		xecho "Camera features set to ${features_set:2}"
 	fi
-	if [[ "${features_err}" != "" ]]; then
+	if xis_set "$features_err"; then
 		xecho "WARNING: Failed to set camera features to ${features_err:2}"
 	fi
 }
@@ -1084,26 +1193,26 @@ function xtruncate_text_file() {
 	local name="$1"
 	local limit="$2"
 	local target="$3"
-	if [[ ! -f "${name}" ]]; then
+	if [[ ! -f "$name" ]]; then
 		return 0
 	fi
 	local actual
-	actual=$(wc -l "${name}")
+	actual=$(wc -l "$name")
 	actual=${actual%% *}
 	local truncate=$((actual > limit ? 1 : 0))
-	if ! xis_true "${truncate}"; then
+	if xis_false "$truncate"; then
 		return 0
 	fi
-	local tmp_name="${name}.tmp"
-	xdebug "Truncating ${WRAPPER_LOGFILE} from $actual to $target limit, thresold $limit."
-	xexec "cp \"${name}\" \"${tmp_name}\""
+	local tmp_name="$name.tmp"
+	xdebug "Truncating $WRAPPER_LOGFILE from $actual to $target limit, thresold $limit."
+	xexec "cp \"$name\" \"$tmp_name\""
 	local offset=$((actual - target))
-	xexec "tail -$offset \"${tmp_name}\" > \"${name}\""
-	xexec "rm -rf \"${tmp_name}\""
+	xexec "tail -$offset \"$tmp_name\" > \"$name\""
+	xexec "rm -rf \"$tmp_name\""
 }
 
 function xtruncate_log_file() {
-	xtruncate_text_file "${WRAPPER_LOGFILE}" 5000 300
+	xtruncate_text_file "$WRAPPER_LOGFILE" 5000 300
 }
 
 xtruncate_log_file
@@ -1119,15 +1228,15 @@ function xsed_replace() {
 function xprepare_runtime_scripts() {
 	local args=""
 	for arg in "${TARGET_EXEC_ARGS[@]}"; do
-		args="${args} \"${arg}\""
+		args="$args \"$arg\""
 	done
-	xexec cp "${PWD}/.vscode/scripts/dlv-loop.sh" "${TEMP_DIR}/dlv-loop.sh"
-	xexec cp "${PWD}/.vscode/scripts/dlv-exec.sh" "${TEMP_DIR}/dlv-exec.sh"
-	xsed_replace "__TARGET_IPPORT__" "${TARGET_IPPORT}" "${TEMP_DIR}/dlv-loop.sh"
-	xsed_replace "__TARGET_BINARY_PATH__" "${TARGET_BIN_DESTIN}" "${TEMP_DIR}/dlv-exec.sh"
-	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "${TEMP_DIR}/dlv-exec.sh"
+	xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$TEMP_DIR/dlv-loop.sh"
+	xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$TEMP_DIR/dlv-exec.sh"
+	xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$TEMP_DIR/dlv-loop.sh"
+	xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$TEMP_DIR/dlv-exec.sh"
+	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "$TEMP_DIR/dlv-exec.sh"
 	COPY_FILES+=(
-		"${TEMP_DIR}/dlv-loop.sh|:/usr/bin/dl"
-		"${TEMP_DIR}/dlv-exec.sh|:/usr/bin/de"
+		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
+		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"
 	)
 }
