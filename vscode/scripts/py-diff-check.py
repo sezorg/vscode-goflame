@@ -219,34 +219,45 @@ class GitChangeSet:
 
 class GitDiff:
     def __init__(self):
-        self.data = {}
-        argumens = ['git', 'diff']
-        if Config.gitCommit != "":
-            argumens.append(Config.gitCommit+'~')
-            argumens.append(Config.gitCommit)
-        config = Shell(argumens)
-        if not config.succed():
-            fatal('Unable to run \'git diff\' on project')
-        text = io.StringIO(config.stdout)
-        patch_set = unidiff.PatchSet(text)
         self.change_list = []
+        result = Shell(['git', 'status'])
+        if not result.succed():
+            fatal('Unable to run \'git status\' on project')
+        if 'interactive rebase in progress' in result.stdout:
+            expr = r'interactive rebase in progress; onto ([\w]+)'
+            match = re.match(expr, result.stdout)
+            if not match:
+                fatal('Unable to get \'git rebase\' commit')
+            commit = match.group(1)
+            self.run_on_commit(commit, '~', '', '')
+            return
+        commit = Config.gitCommit
+        self.run_on_commit(commit, '~', '', '')
+        return
+
+    def run_on_commit(self, commit_in, commit_in_post, commit_out, commit_out_post):
+        argumens = ['git', 'diff']
+        if commit_in != "":
+            argumens.append(commit_in + commit_in_post)
+        if commit_out != "":
+            argumens.append(commit_out + commit_out_post)
+        result = Shell(argumens)
+        if not result.succed():
+            fatal('Unable to run \'git diff\' on project')
+        text = io.StringIO(result.stdout)
+        patch_set = unidiff.PatchSet(text)
         for patched_file in patch_set:
             appended_lines = [line for hunk in patched_file for line in hunk
                               if line.is_added and line.value.strip() != '']
-            # deleted_lines = [line for hunk in patched_file
-            #                  for line in hunk if line.is_removed and
-            #                  line.value.strip() != '']
             debug(f'{appended_lines}')
             file_path = patched_file.path
             change_set = GitChangeSet(file_path, appended_lines, None)
             self.change_list.append(change_set)
-        # debug(f'change_list={self.change_list}')
         return
 
 
 class GitFiles:
     def __init__(self):
-        self.data = {}
         config = Shell(['git', 'ls-tree', '-r', 'master', '--name-only'])
         if not config.succed():
             fatal('Unable to run \'git diff\' on project')
@@ -343,9 +354,9 @@ class WarningsSupressor:
             elif (Config.printAll or (
                     have_exclude_list and not self.in_dictionary(words, supress_list))):
                 if not Config.excludeNonPrefixed:
-                    self.output(line, prefixed, 3)
+                    self.output(line + ' [not-in-diff]', prefixed, 3)
                 elif re.match(r'([^:]*):([0-9]+):', words[0]):
-                    self.output(line, prefixed, 4)
+                    self.output(line + ' [not-in-diff]', prefixed, 4)
         return
 
     def output(self, line, prefixed, exit_code):
