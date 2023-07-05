@@ -5,7 +5,7 @@ IP=10.113.11.65
 
 if [[ -f "$BASE/../../config.ini" ]]; then
 	source "$BASE/../../config.ini"
-	IP="$1"
+	IP="$TARGET_IPADDR"
 fi
 
 function log() {

@@ -2,8 +2,7 @@
 
 . "./../../CameraConfiguration.sh"
 
-JSON=$(
-	cat <<DELIMITER
+JSON=$(cat <<DELIMITER
 {
 }
 DELIMITER
