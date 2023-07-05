@@ -113,10 +113,17 @@ def parse_arguments():
     )
     parser.add_argument(
         '-p', '--patchsets',
-        help='List patchets',
+        help='List all patchets from Gerrit commits',
         required=False,
         action='count',
         default=0,
+    )
+    parser.add_argument(
+        '-j', '--subject',
+        help='Add subject/commit message to branches being created',
+        required=False,
+        action='store_true',
+        default=False,
     )
     parser.add_argument(
         '-c', '--command',
@@ -133,6 +140,7 @@ def parse_arguments():
         arguments.command = unknown_args[0]
     Config.debugLevel = arguments.debug
     Config.verboseLevel = arguments.verbose
+    Config.subjectEnabled = arguments.subject
     return arguments
 
 
@@ -386,6 +394,9 @@ class GerritTags:
         if self.email == '':
             entry_name += self.branch_separator + state.username
         branch_name = self.branch_prefix + entry_name + self.branch_postfix
+        if Config.subjectEnabled:
+            subject = re.sub(r'[^\w\s]', r'', ' ' + state.subject)
+            branch_name += re.sub(r'[\s]', r'-', subject)
         status = Shell(['git', 'branch', branch_name, state.revision], True)
         if not status.succed():
             status = Shell(['git', 'fetch', self.repository_url, state.ref])
