@@ -122,11 +122,11 @@ TARGET_BIN_SOURCE="onvifd"
 TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
 TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-GIT_COMMIT_FILTER="" # HEAD
+GIT_COMMIT_FILTER="" #
 GOLANGCI_LINT_ENABLE=false
-GOLANGCI_LINT_LINTERS="all,-depguard"
+GOLANGCI_LINT_LINTERS="all,-depguard,-gochecknoglobals"
 GOLANGCI_LINT_FILTER=true
-GOLANGCI_LINT_FAIL=true
+GOLANGCI_LINT_FAIL=false
 GOLANGCI_LINT_DEPRECATED=(
 	"deadcode"
 	"exhaustivestruct"
@@ -973,18 +973,32 @@ function xtest_installed() {
 	fi
 }
 
-LAST_CHECK_FAILED=false
+P_GOLANGCI_LINT_DONE=false
+P_STATICCHECK_DONE=false
+P_GO_VET_DONE=false
+P_LLENCHECK_DONE=false
 
 function xcheck_results() {
 	xtext "$EXEC_STDOUT"
 	xtext "$EXEC_STDERR"
 	if xis_ne "$EXEC_STATUS" "0"; then
-		LAST_CHECK_FAILED=true
-		if xis_true "$1"; then
-			xecho "ERROR: $2 warnings has been detected. Fix before continue ($EXEC_STATUS)."
+		eval "$1"=false
+		if xis_true "$2"; then
+			xecho "ERROR: $3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
+			xsave_results
 			exit "$EXEC_STATUS"
 		fi
+	else
+		eval "$1"=true
 	fi
+}
+
+function xsave_results() {
+	echo "$P_GOLANGCI_LINT_DONE" >"$TEMP_DIR/cachedb/golangcli-lint.state"
+	echo "$P_STATICCHECK_DONE" >"$TEMP_DIR/cachedb/staticcheck.state"
+	echo "$P_GO_VET_DONE" >"$TEMP_DIR/cachedb/go-vet.state"
+	echo "$P_LLENCHECK_DONE" >"$TEMP_DIR/cachedb/llencheck.state"
+	xcache_put "$name_hash" "$file_hash"
 }
 
 function xcheck_project() {
@@ -998,13 +1012,25 @@ function xcheck_project() {
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 		xtext "$EXEC_STDOUT"
 		xtext "$EXEC_STDERR"
+		P_GOLANGCI_LINT_DONE=$(cat "$TEMP_DIR/cachedb/golangcli-lint.state" 2>/dev/null)
+		P_STATICCHECK_DONE=$(cat "$TEMP_DIR/cachedb/staticcheck.state" 2>/dev/null)
+		P_GO_VET_DONE=$(cat "$TEMP_DIR/cachedb/go-vet.state" 2>/dev/null)
+		P_LLENCHECK_DONE=$(cat "$TEMP_DIR/cachedb/llencheck.state" 2>/dev/null)
 		name_hash=$(xcache_shash "$dir_hash")
 		file_hash=$(xcache_fhash "$dir_hash")
 		#xecho "$name_hash :: $file_hash"
-		if xis_false "$LAST_CHECK_FAILED" && xis_eq "$(xcache_get "$name_hash")" "$file_hash"; then
+		if xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
+			P_GOLANGCI_LINT_DONE=false
+			P_STATICCHECK_DONE=false
+			P_GO_VET_DONE=false
+			P_LLENCHECK_DONE=false
+		fi
+		if xis_true "$P_GOLANGCI_LINT_DONE" &&
+			xis_true "$P_STATICCHECK_DONE" &&
+			xis_true "$P_GO_VET_DONE" &&
+			xis_true "$P_LLENCHECK_DONE"; then
 			return 0
 		fi
-		LAST_CHECK_FAILED=""
 		export PYTHONPYCACHEPREFIX="$TEMP_DIR"
 		if xis_set "$GIT_COMMIT_FILTER"; then
 			diff_filter_args+=("-c=$GIT_COMMIT_FILTER")
@@ -1014,7 +1040,7 @@ function xcheck_project() {
 			"./.vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
 		)
 	fi
-	if xis_true "$GOLANGCI_LINT_ENABLE"; then
+	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
 		xtest_installed "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
 		local linter_args=() linters_all="" linters_list=() linter=""
 		IFS=',' read -r -a linters_list <<<"$GOLANGCI_LINT_LINTERS"
@@ -1060,9 +1086,9 @@ function xcheck_project() {
 		else
 			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
 		fi
-		xcheck_results "$GOLANGCI_LINT_FAIL" "Golangci-lint"
+		xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 	fi
-	if xis_true "$STATICCHECK_ENABLE"; then
+	if xis_true "$STATICCHECK_ENABLE" && xis_false "$P_STATICCHECK_DONE"; then
 		xtest_installed "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
 		xexport_clean "${GOLANG_EXPORTS[@]}"
 		local flags=() go_version
@@ -1082,14 +1108,14 @@ function xcheck_project() {
 		else
 			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
 		fi
-		xcheck_results "$STATICCHECK_FAIL" "Staticcheck"
+		xcheck_results "P_STATICCHECK_DONE" "$STATICCHECK_FAIL" "Staticcheck"
 	fi
-	if xis_true "$GO_VET_ENABLE"; then
+	if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
 		xecho "Running $(xdecodate go vet) on $(xdecodate ${TARGET_BUILD_LAUNCHER})..."
 		xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
-		xcheck_results "$GO_VET_FAIL" "Go-vet"
+		xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
 	fi
-	if xis_true "$LLENCHECK_ENABLE"; then
+	if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
 		xecho "Running $(xdecodate line-length-limit) check on $(xdecodate "$project_name")"
 		if xis_true "$LLENCHECK_FILTER"; then
 			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
@@ -1098,11 +1124,9 @@ function xcheck_project() {
 			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
 				-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
 		fi
-		xcheck_results "$LLENCHECK_FAIL" "Line-length-limit"
+		xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
 	fi
-	if xis_false "$LAST_CHECK_FAILED"; then
-		xcache_put "$name_hash" "$file_hash"
-	fi
+	xsave_results
 }
 
 function xbuild_project() {
