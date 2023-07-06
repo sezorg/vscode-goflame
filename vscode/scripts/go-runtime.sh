@@ -187,7 +187,17 @@ EXECUTE_COMMANDS=()
 CAMERA_FEATURES_ON=()
 CAMERA_FEATURES_OFF=()
 
-source "$SCRIPT_DIR/../config.ini"
+P_CONFIG_INI_LOADED=true
+if [[ -f "$SCRIPT_DIR/../config.ini" ]]; then
+	# shellcheck disable=SC1091
+	source "$SCRIPT_DIR/../config.ini"
+	P_CONFIG_INI_LOADED=true
+fi
+if [[ -f "$SCRIPT_DIR/../config-user.ini" ]]; then
+	# shellcheck disable=SC1091
+	source "$SCRIPT_DIR/../config-user.ini"
+	P_CONFIG_INI_LOADED=true
+fi
 
 P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
 P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
@@ -254,6 +264,19 @@ function xtext() {
 function xdecodate() {
 	echo "$PI$*$PO"
 }
+
+if xis_false "$P_CONFIG_INI_LOADED"; then
+	xerror "Unable to load configuration from \"config-user.ini\" or \"config.ini\"."
+	xfatal "See documentation for more details."
+fi
+
+cat <<EOF >"$TEMP_DIR/config-vscode.ini"
+# Machine generated file. Do not modify.
+TARGET_IPADDR=$TARGET_IPADDR
+TARGET_IPPORT=$TARGET_IPPORT
+TARGET_USER=$TARGET_USER
+TARGET_PASS=$TARGET_PASS
+EOF
 
 BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
 BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
@@ -994,11 +1017,11 @@ function xcheck_results() {
 }
 
 function xsave_results() {
+	xcache_put "$name_hash" "$file_hash"
 	echo "$P_GOLANGCI_LINT_DONE" >"$TEMP_DIR/cachedb/golangcli-lint.state"
 	echo "$P_STATICCHECK_DONE" >"$TEMP_DIR/cachedb/staticcheck.state"
 	echo "$P_GO_VET_DONE" >"$TEMP_DIR/cachedb/go-vet.state"
 	echo "$P_LLENCHECK_DONE" >"$TEMP_DIR/cachedb/llencheck.state"
-	xcache_put "$name_hash" "$file_hash"
 }
 
 function xcheck_project() {
@@ -1031,7 +1054,8 @@ function xcheck_project() {
 			xis_true "$P_LLENCHECK_DONE"; then
 			return 0
 		fi
-		export PYTHONPYCACHEPREFIX="$TEMP_DIR"
+		export PYTHONPYCACHEPREFIX="$TEMP_DIR/pycache"
+		xexec mkdir -p "$PYTHONPYCACHEPREFIX"
 		if xis_set "$GIT_COMMIT_FILTER"; then
 			diff_filter_args+=("-c=$GIT_COMMIT_FILTER")
 		fi
@@ -1160,7 +1184,7 @@ function xcamera_features() {
 	if xis_unset "$feature_args"; then
 		return 0
 	fi
-	local timeout=5
+	local timeout=10
 	local wget_command=(timeout "$timeout" wget --no-proxy "--timeout=$timeout"
 		-q -O - "\"http://$TARGET_IPADDR/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"

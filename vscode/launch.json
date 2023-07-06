@@ -11,7 +11,7 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "fileName": "/var/tmp/goflame/config-vscode.ini",
                 "key": "TARGET_IPADDR",
                 "default": "[UNKNOWN-TARGET_IPADDR]"
             }
@@ -21,7 +21,7 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "fileName": "/var/tmp/goflame/config-vscode.ini",
                 "key": "TARGET_IPPORT",
                 "default": "[UNKNOWN-TARGET_IPPORT]"
             }
@@ -31,7 +31,7 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "fileName": "/var/tmp/goflame/config-vscode.ini",
                 "key": "TARGET_USER",
                 "default": "[UNKNOWN-TARGET_USER]"
             }
@@ -41,7 +41,7 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "${workspaceFolder}/.vscode/config.ini",
+                "fileName": "/var/tmp/goflame/config-vscode.ini",
                 "key": "TARGET_PASS",
                 "default": "[UNKNOWN-TARGET_PASS]"
             }

@@ -17,6 +17,9 @@ SCRIPT_PATH="$SCRIPT_DIR/$SCRIPT_NAME"
 if [[ -f "$SCRIPT_DIR/config.ini" ]]; then
 	source "$SCRIPT_DIR/config.ini"
 fi
+if [[ -f "$SCRIPT_DIR/config-user.ini" ]]; then
+	source "$SCRIPT_DIR/config-user.ini"
+fi
 
 # Execute something like:
 # $ source ./test.sh

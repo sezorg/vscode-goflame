@@ -159,7 +159,7 @@ fi
 # Check configuration.
 if [[ ! -f "$BUILDROOT_GOBIN" ]]; then
 	xecho "ERROR: Can not find Go executable at \"$BUILDROOT_GOBIN\"."
-	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config.ini\"."
+	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config-user.ini\" or \"config.ini\"."
 	if [[ -d "$BUILDROOT_DIR" ]]; then
 		lookup_dir=$(find "$BUILDROOT_DIR" -name "using-buildroot-toolchain.txt" -maxdepth 5)
 		xdebug "Actual BUILDROOT_DIR=\"$BUILDROOT_DIR\""
