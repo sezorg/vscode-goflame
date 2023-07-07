@@ -117,10 +117,12 @@ TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
-TARGET_BUILD_LAUNCHER="cmd/onvifd/onvifd.go"
-TARGET_BIN_SOURCE="onvifd"
-TARGET_BIN_DESTIN="/usr/bin/onvifd_debug"
-TARGET_EXEC_ARGS=("-settings" "/root/onvifd.settings")
+TARGET_BUILD_LAUNCHER=""
+TARGET_BIN_SOURCE=""
+TARGET_BIN_DESTIN=""
+TARGET_EXEC_ARGS=()
+TARGET_SUPRESS_MSSGS=()
+
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 GIT_COMMIT_FILTER="" #
 GOLANGCI_LINT_ENABLE=false
@@ -1270,19 +1272,31 @@ function xsed_escape() {
 }
 
 function xsed_replace() {
-	xexec sed -i "\"s/$(xsed_escape "$1")/$(xsed_escape "$2")/g\"" "$3"
+	local in="$1" out="$2"
+	in="$(xsed_escape "$in")"
+	out="$(xsed_escape "$out")"
+	shift
+	shift
+	for file in "$@"; do
+		xexec sed -i "\"s/$in/$out/g\"" "$file"
+	done
 }
 
 function xprepare_runtime_scripts() {
-	local args=""
-	for arg in "${TARGET_EXEC_ARGS[@]}"; do
-		args="$args \"$arg\""
+	local exec_args=""
+	for item in "${TARGET_EXEC_ARGS[@]}"; do
+		exec_args="$exec_args \"$item\""
+	done
+	local supress=""
+	for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
+		supress="$supress \"$item\""
 	done
 	xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$TEMP_DIR/dlv-loop.sh"
 	xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$TEMP_DIR/dlv-exec.sh"
 	xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$TEMP_DIR/dlv-loop.sh"
 	xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$TEMP_DIR/dlv-exec.sh"
-	xsed_replace "__TARGET_BINARY_ARGS__" "${args:1}" "$TEMP_DIR/dlv-exec.sh"
+	xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$TEMP_DIR/dlv-exec.sh"
+	xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$TEMP_DIR/dlv-loop.sh" "$TEMP_DIR/dlv-exec.sh"
 	COPY_FILES+=(
 		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"

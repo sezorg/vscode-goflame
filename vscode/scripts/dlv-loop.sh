@@ -45,23 +45,6 @@ if [[ "__TARGET_IPPORT__" == "__${PATTERN}__" ]]; then
 	exit "1"
 fi
 
-IGNORE_LIST=()
-# -- Application startup messages
-IGNORE_LIST+=("warning layer=rpc Listening for remote connections")
-#IGNORE_LIST+=("concrete subprogram without address range at")
-#IGNORE_LIST+=("inlined call without address range at")
-IGNORE_LIST+=(" without address range at ")
-IGNORE_LIST+=("debug layer=debugger")
-IGNORE_LIST+=("info layer=debugger created breakpoint:")
-IGNORE_LIST+=("info layer=debugger cleared breakpoint:")
-# -- Interactive debuger related messages
-IGNORE_LIST+=("Failed to execute cursor closing: ERROR: cursor")
-
-IGNORE_PATTERN="$(printf "\n%s" "${IGNORE_LIST[@]}")"
-IGNORE_PATTERN="${IGNORE_PATTERN:1}"
-PRINT_PATTERNS="$(printf ",\"%s\"" "${IGNORE_LIST[@]}")"
-PRINT_PATTERNS="${PRINT_PATTERNS:1}"
-
 function cleanup() {
 	if [[ -f "$DLOOP_STATUS_FILE" ]]; then
 		rm -f "$DLOOP_STATUS_FILE"
@@ -102,6 +85,23 @@ function seltest() {
 		exit 155
 	fi
 }
+
+SUPRESS_LIST=()
+# -- Application startup messages
+SUPRESS_LIST+=("warning layer=rpc Listening for remote connections")
+#SUPRESS_LIST+=("concrete subprogram without address range at")
+#SUPRESS_LIST+=("inlined call without address range at")
+SUPRESS_LIST+=(" without address range at ")
+SUPRESS_LIST+=("debug layer=debugger")
+SUPRESS_LIST+=("info layer=debugger created breakpoint:")
+SUPRESS_LIST+=("info layer=debugger cleared breakpoint:")
+# -- Interactive debuger related messages
+SUPRESS_LIST+=("Failed to execute cursor closing: ERROR: cursor")
+# --- Annoying application messages
+SUPRESS_LIST+=(__TARGET_SUPRESS_MSSGS__)
+
+SUPRESS_PATTERN="$(printf "\n%s" "${SUPRESS_LIST[@]}")"
+SUPRESS_PATTERN="${SUPRESS_PATTERN:1}"
 
 s1=$(digest "$0")
 first_time_run="1"
@@ -154,8 +154,7 @@ while :; do
 
 	seltest
 	log "Starting Delve headless server loop in DAP mode."
-	#log "${GREEN}Ignore pattern: $PRINT_PATTERNS${NC}"
-	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$IGNORE_PATTERN\"" &
+	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
 	dlv_pid="$!"
 
 	echo "$dlv_pid" >"$DLOOP_STATUS_FILE"

@@ -38,11 +38,12 @@ function log() {
 function unused() { :; }
 unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
-EXE_BINARY_PATH="__TARGET_BINARY_PATH__"
-EXE_BINARY_ARGS=(__TARGET_BINARY_ARGS__)
+EXEC_BINARY_PATH="__TARGET_BINARY_PATH__"
+EXEC_BINARY_ARGS=(__TARGET_BINARY_ARGS__)
+EXEC_SUPRESS_MSSGS=(__TARGET_SUPRESS_MSSGS__)
 
 PATTERN="TARGET_BINARY_PATH"
-if [[ "$EXE_BINARY_PATH" == "__${PATTERN}__" ]]; then
+if [[ "$EXEC_BINARY_PATH" == "__${PATTERN}__" ]]; then
 	log "${RED}Target binary path is not set. Do not run this script directly.$NC"
 	exit "1"
 fi
@@ -53,10 +54,10 @@ function cleanup() {
 	set +e
 	local processes running
 	processes=$(ps -a)
-	running=$(awk "{if(\$3==\"$EXE_BINARY_PATH\"){print \$3;exit}}" <<<"$processes")
+	running=$(awk "{if(\$3==\"$EXEC_BINARY_PATH\"){print \$3;exit}}" <<<"$processes")
 	if [[ "$running" != "" ]]; then
-		#log "Terminating $EXE_BINARY_PATH..."
-		killall "$(basename -- "$EXE_BINARY_PATH")" >/dev/null 2>&1
+		#log "Terminating $EXEC_BINARY_PATH..."
+		killall "$(basename -- "$EXEC_BINARY_PATH")" >/dev/null 2>&1
 	fi
 	if [[ "$EXE_PROCESS_PID" != "" ]]; then
 		kill "$EXE_PROCESS_PID" >/dev/null 2>&1
@@ -84,6 +85,9 @@ function seltest() {
 	fi
 }
 
+SUPRESS_PATTERN="$(printf "\n%s" "${EXEC_SUPRESS_MSSGS[@]}")"
+SUPRESS_PATTERN="${SUPRESS_PATTERN:1}"
+
 s1=$(digest "$0")
 first_time_run="1"
 additional_sleep=""
@@ -106,7 +110,7 @@ while true; do
 
 	if [[ "$first_time_run" != "" ]]; then
 		first_time_run=""
-		log "Beginning $EXE_BINARY_PATH execution loop..."
+		log "Beginning $EXEC_BINARY_PATH execution loop..."
 	fi
 
 	if [[ ! -f "$DLOOP_RESTART_FILE" ]]; then
@@ -117,11 +121,11 @@ while true; do
 		done
 	fi
 
-	if [[ ! -f "$EXE_BINARY_PATH" ]]; then
+	if [[ ! -f "$EXEC_BINARY_PATH" ]]; then
 		additional_sleep="1"
-		log "${YELLOW}Unable to run application: target binary file $EXE_BINARY_PATH not found.$NC"
+		log "${YELLOW}Unable to run application: target binary file $EXEC_BINARY_PATH not found.$NC"
 		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
-		while [[ ! -f "$EXE_BINARY_PATH" ]]; do
+		while [[ ! -f "$EXEC_BINARY_PATH" ]]; do
 			seltest
 			usleep 500000
 		done
@@ -133,13 +137,13 @@ while true; do
 		continue
 	fi
 
-	while [[ -f "$EXE_BINARY_PATH" ]] && [[ ! -r "$EXE_BINARY_PATH" ]]; do
+	while [[ -f "$EXEC_BINARY_PATH" ]] && [[ ! -r "$EXEC_BINARY_PATH" ]]; do
 		seltest
 		usleep 100000
 	done
 
 	t1=$(digest "$DLOOP_RESTART_FILE")
-	m1=$(digest "$EXE_BINARY_PATH")
+	m1=$(digest "$EXEC_BINARY_PATH")
 	status=$?
 	if [[ $status -ne 0 ]]; then
 		usleep 1000000
@@ -147,8 +151,9 @@ while true; do
 	fi
 
 	cleanup
-	log "Starting $EXE_BINARY_PATH ${EXE_BINARY_ARGS[*]}..."
-	exec "$EXE_BINARY_PATH" "${EXE_BINARY_ARGS[@]}" &
+	log "Starting $EXEC_BINARY_PATH ${EXEC_BINARY_ARGS[*]}..."
+	sh -c "\"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
+
 	EXE_PROCESS_PID="$!"
 
 	while true; do
@@ -159,7 +164,7 @@ while true; do
 			break
 		fi
 		if [[ "$t1" != "$(digest "$DLOOP_RESTART_FILE")" ]] ||
-			[[ "$m1" != "$(digest "$EXE_BINARY_PATH")" ]]; then
+			[[ "$m1" != "$(digest "$EXEC_BINARY_PATH")" ]]; then
 			break
 		fi
 	done
