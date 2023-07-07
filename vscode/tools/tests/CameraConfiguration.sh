@@ -5,13 +5,10 @@ IP=10.113.11.65
 
 if [[ -f "$BASE/../../config.ini" ]]; then
 	source "$BASE/../../config.ini"
-	IP="config.ini"
+	IP="$TARGET_IPADDR"
 fi
 if [[ -f "$BASE/../../config-user.ini" ]]; then
 	source "$BASE/../../config-user.ini"
-	IP="config.ini"
-fi
-if [[ "$IP" == "config.ini" ]]; tnen
 	IP="$TARGET_IPADDR"
 fi
 
