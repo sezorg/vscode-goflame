@@ -181,6 +181,7 @@ xexec "$BUILDROOT_GOBIN" "$@"
 if xis_set "$HAVE_BUILD_COMMAND"; then
 	if [[ "$EXEC_STATUS" == "0" ]]; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
+			CLEAN_GOCACHE=true
 			xprepare_runtime_scripts
 			xperform_build_and_deploy "Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
 			exit "0"

@@ -151,7 +151,7 @@ while true; do
 	fi
 
 	cleanup
-	log "Starting $EXEC_BINARY_PATH ${EXEC_BINARY_ARGS[*]}..."
+	log "Starting $EXEC_BINARY_PATH [${EXEC_BINARY_ARGS[*]}]"
 	sh -c "\"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
 
 	EXE_PROCESS_PID="$!"

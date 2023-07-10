@@ -124,6 +124,7 @@ TARGET_EXEC_ARGS=()
 TARGET_SUPRESS_MSSGS=()
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
+CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
 GOLANGCI_LINT_ENABLE=false
 GOLANGCI_LINT_LINTERS="all,-depguard,-gochecknoglobals"
@@ -991,6 +992,18 @@ function xexecute_commands_vargs() {
 	fi
 }
 
+P_GOCACHE_CLEANED=false
+
+function xclean_gocache() {
+	if xis_false "$CLEAN_GOCACHE" || xis_true "$P_GOCACHE_CLEANED"; then
+		return 0
+	fi
+	P_GOCACHE_CLEANED=true
+	export GOCACHE="$TEMP_DIR/gocache"
+	xclean_directory "$GOCACHE"
+	xexec go clean -cache
+}
+
 function xtest_installed() {
 	if [[ ! -f "$1" ]]; then
 		xerror "Reqired binary '$(basename -- "$1")' is not installed."
@@ -1044,7 +1057,7 @@ function xcheck_project() {
 		name_hash=$(xcache_shash "$dir_hash")
 		file_hash=$(xcache_fhash "$dir_hash")
 		#xecho "$name_hash :: $file_hash"
-		if xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
+		if xis_ne "$(xcache_get "$name_hash")" "$file_hash" || xis_true "$CLEAN_GOCACHE"; then
 			P_GOLANGCI_LINT_DONE=false
 			P_STATICCHECK_DONE=false
 			P_GO_VET_DONE=false
@@ -1065,6 +1078,7 @@ function xcheck_project() {
 			"python3" "-X" "pycache_prefix=\"$PYTHONPYCACHEPREFIX\""
 			"./.vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
 		)
+		xclean_gocache
 	fi
 	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
 		xtest_installed "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
@@ -1156,6 +1170,7 @@ function xcheck_project() {
 }
 
 function xbuild_project() {
+	xclean_gocache
 	xcheck_project
 	local flags=()
 	flags+=("build")
