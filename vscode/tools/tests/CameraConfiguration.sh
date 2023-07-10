@@ -25,16 +25,8 @@ function fatal() {
 	exit 1
 }
 
-function json_test() {
-	local service method output status decoded
-	service="$(dirname "$1")"
-	method="$(basename -- "$1")"
-	log "$IP: $service.$method()"
-	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
-	status=$(echo "$output" | grep "No route to host")
-	if [[ "$status" != "" ]]; then
-		fatal "IP $IP: No route to host."
-	fi
+function json() {
+	local output="$*" decoded="" status=""
 	decoded=$(echo "$output" | jq 2>&1)
 	status=$(echo "$decoded" | grep "parse error:")
 	if [[ "$status" != "" ]]; then
@@ -43,4 +35,21 @@ function json_test() {
 		fatal "$output"
 	fi
 	echo "$output" | jq
+	return 0
+}
+
+function json_test() {
+	local service method output status decoded
+	service="$(dirname "$1")"
+	method="$(basename -- "$1")"
+	log "$IP: $service.$method()"
+	log "IN:"
+	json "$JSON"
+	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
+	status=$(echo "$output" | grep "No route to host")
+	if [[ "$status" != "" ]]; then
+		fatal "IP $IP: No route to host."
+	fi
+	log "OUT:"
+	json "$output"
 }
