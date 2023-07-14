@@ -56,6 +56,9 @@ COPY_FILES+=(
 	#"init/users.toml|:/var/lib/onvifd/users.toml"
 )
 
+# Очистка кеша Golang
+CLEAN_GOCACHE=true
+
 # Disable chache then building workspace.
 COPY_CACHE=n
 
@@ -68,11 +71,11 @@ CAMERA_FEATURES_ON+=(
 	"ipfiltering"
 	"mse"
 	"videoanalytics"
-	"webrtc"
 )
 
 # Disable camera feature
 CAMERA_FEATURES_OFF+=(
+	"webrtc"
 )
 
 # Advised target stripts that the initial upload deploy is complete.
@@ -181,9 +184,9 @@ xexec "$BUILDROOT_GOBIN" "$@"
 if xis_set "$HAVE_BUILD_COMMAND"; then
 	if [[ "$EXEC_STATUS" == "0" ]]; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
-			CLEAN_GOCACHE=true
 			xprepare_runtime_scripts
-			xperform_build_and_deploy "Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
+			xperform_build_and_deploy "[REBUILD]" \
+				"Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
 			exit "0"
 		else
 			xecho "ERROR: Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"

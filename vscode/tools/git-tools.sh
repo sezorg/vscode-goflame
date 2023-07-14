@@ -7,10 +7,14 @@
 
 #set -euo pipefail
 
-SSH_FLAGS=(-o StrictHostKeyChecking=no
+SSH_FLAGS=(
+	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
-	-o ConnectionAttempts=1)
+	-o ConnectionAttempts=1
+	-o ServerAliveInterval=1
+	-o ServerAliveCountMax=2
+)
 
 function gh() {
 	echo "gri: git rebase --interactive HEAD~\$1"

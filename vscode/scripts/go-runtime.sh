@@ -92,10 +92,14 @@ function xunreferenced() {
 	return 0
 }
 
-SSH_FLAGS=(-o StrictHostKeyChecking=no
+SSH_FLAGS=(
+	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
-	-o ConnectionAttempts=1)
+	-o ConnectionAttempts=1
+	-o ServerAliveInterval=1
+	-o ServerAliveCountMax=2
+)
 
 TEMP_DIR="/var/tmp/goflame"
 if [[ ! -d "$TEMP_DIR" ]]; then
@@ -623,18 +627,20 @@ function xflash_pending_commands() {
 }
 
 function xperform_build_and_deploy() {
-	local fbuild=false fdebug=false fexec=false
+	local fbuild=false frebuild=false fdebug=false fexec=false
 
 	while :; do
 		if xis_eq "$1" "[BUILD]"; then
 			fbuild=true
-		elif xis_eq "$1" "[ECHO]"; then
-			xset XECHO_ENABLED=true
-			clear
+		elif xis_eq "$1" "[REBUILD]"; then
+			frebuild=true
 		elif xis_eq "$1" "[DEBUG]"; then
 			fdebug=true
 		elif xis_eq "$1" "[EXEC]"; then
 			fexec=true
+		elif xis_eq "$1" "[ECHO]"; then
+			xset XECHO_ENABLED=true
+			clear
 		else
 			break
 		fi
@@ -666,9 +672,9 @@ function xperform_build_and_deploy() {
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_ENABLE_FILE")
 	fi
 
-	xexecute_commands
+	xexecute_target_commands
 	xflash_pending_commands
-	if xis_false "$fbuild"; then
+	if xis_true "$frebuild"; then
 		xcamera_features
 	fi
 }
@@ -968,13 +974,13 @@ function xcreate_directories_vargs() {
 	fi
 }
 
-function xexecute_commands() {
+function xexecute_target_commands() {
 	# Create directories from DIRECTORIES_CREATE
-	xexecute_commands_vargs "${EXECUTE_COMMANDS[@]}"
+	xexecute_target_commands_vargs "${EXECUTE_COMMANDS[@]}"
 }
 
 # shellcheck disable=SC2120
-function xexecute_commands_vargs() {
+function xexecute_target_commands_vargs() {
 	local list=("$@")
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
