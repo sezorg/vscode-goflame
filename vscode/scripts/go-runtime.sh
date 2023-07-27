@@ -99,12 +99,21 @@ SSH_FLAGS=(
 	-o ConnectionAttempts=1
 	-o ServerAliveInterval=1
 	-o ServerAliveCountMax=2
+	-o Compression=no
+	#-o CompressionLevel=9
+	-o Ciphers="aes128-ctr,aes192-ctr,aes256-ctr"
+	-o MACs="hmac-sha1"
+	-o ControlMaster=auto
+	-o ControlPersist=600
+	-o ControlPath=/var/tmp/ssh-%r@%h-%p
+	-o ForwardAgent=yes
+	-o PreferredAuthentications="password"
 )
 
 TEMP_DIR="/var/tmp/goflame"
-if [[ ! -d "$TEMP_DIR" ]]; then
-	mkdir -p "$TEMP_DIR"
-fi
+P_CACHE_DIR="$TEMP_DIR/cachedb"
+
+mkdir -p "$TEMP_DIR" "$P_CACHE_DIR"
 
 XECHO_ENABLED=
 XDEBUG_ENABLED=
@@ -134,6 +143,7 @@ GOLANGCI_LINT_ENABLE=false
 GOLANGCI_LINT_LINTERS="all,-depguard,-gochecknoglobals"
 GOLANGCI_LINT_FILTER=true
 GOLANGCI_LINT_FAIL=false
+GOLANGCI_LINT_SUPRESSED=()
 GOLANGCI_LINT_DEPRECATED=(
 	"deadcode"
 	"exhaustivestruct"
@@ -268,7 +278,7 @@ function xtext() {
 	done
 }
 
-function xdecodate() {
+function xdecorate() {
 	echo "$PI$*$PO"
 }
 
@@ -439,7 +449,7 @@ function xexport_apply() {
 		return 0
 	fi
 	P_EXPORTED_STATE=true
-	xdebug "Exports: $*"
+	#xdebug "Exports: $*"
 	for variable in "$@"; do
 		local name="$variable"
 		local value="${!name}"
@@ -760,17 +770,12 @@ function xcache_fhash() {
 	echo "$file_hash-$P_CACHE_SALT"
 }
 
-P_CACHE_DIR="$TEMP_DIR"
-
 function xcache_put() {
-	if [[ ! -d "$P_CACHE_DIR/cachedb" ]]; then
-		xexec mkdir -p "$P_CACHE_DIR/cachedb"
-	fi
-	echo "$2" >"$P_CACHE_DIR/cachedb/$1"
+	echo "$2" >"$P_CACHE_DIR/$1"
 }
 
 function xcache_get() {
-	cat "$P_CACHE_DIR/cachedb/$1" 2>/dev/null
+	cat "$P_CACHE_DIR/$1" 2>/dev/null
 }
 
 # shellcheck disable=SC2120
@@ -787,22 +792,26 @@ function xfiles_copy() {
 		list=("${COPY_FILES[@]}")
 	fi
 	if xis_ne "${#list[@]}" "0"; then
-		local backup_source="$P_CACHE_DIR/data"
+		local backup_source="$TEMP_DIR/data"
 		if xis_false "$COPY_CACHE"; then
-			xclean_directory "$P_CACHE_DIR/cachedb"
-		elif [[ ! -d "$P_CACHE_DIR/cachedb" ]]; then
-			xexec mkdir -p "$P_CACHE_DIR/cachedb"
+			xclean_directory "$P_CACHE_DIR"
+		elif [[ ! -d "$P_CACHE_DIR" ]]; then
+			xexec mkdir -p "$P_CACHE_DIR"
 		fi
 
 		local elements=""
 		local count="0"
 		local uploading=""
 		local directories=()
+		local symlinks=""
 		for pair in "${list[@]}"; do
 			IFS='|'
 			# shellcheck disable=SC2206
 			files=($pair)
 			unset IFS
+			if xis_ne "${#files[@]}" "2"; then
+				xfatal "Invalid copy command: \"$pair\""
+			fi
 			local fileA="${files[0]}"
 			local fileB="${files[1]}"
 			if [[ "$fileB" =~ ^\:.* ]]; then
@@ -838,10 +847,8 @@ function xfiles_copy() {
 					backup_subdir=$(dirname "$backup_target")
 					if ! xcontains "$backup_subdir" "${directories[@]}"; then
 						directories+=("$backup_subdir")
-						xexec mkdir -p "$backup_subdir"
 					fi
-					xexec ln -s "$fileA" "$backup_target"
-					#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"${fileB:1}\" ]]; then rm -f \"${fileB:1}\"; fi; "
+					symlinks="${symlinks}ln -s \"$fileA\" \"$backup_target\"; "
 					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"$name_hash\" \"$file_hash\"; "
 				else
 					xdebug "Skipping upload $fileA :: $name_hash :: $file_hash"
@@ -853,10 +860,20 @@ function xfiles_copy() {
 				count=$((count + 1))
 			fi
 		done
+		if xis_ne "${#directories[@]}" "0"; then
+			xexec mkdir -p "${directories[@]}"
+		fi
+		if xis_ne "$symlinks" ""; then
+			xexec "$symlinks"
+		fi
 		if xis_set "$uploading"; then
 			if xis_set "$elements"; then
 				xecho "Uploading $count files: ${elements:2}"
-				P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | gzip -5 - | "
+				local pkg="gzip -5"
+				if which pigz >/dev/null 2>&1; then
+					local pkg="pigz -p$(nproc) -9"
+				fi
+				P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | $pkg - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			fi
 		else
@@ -1022,6 +1039,40 @@ P_STATICCHECK_DONE=false
 P_GO_VET_DONE=false
 P_LLENCHECK_DONE=false
 
+function xreset_lint_state() {
+	P_GOLANGCI_LINT_DONE=false
+	P_STATICCHECK_DONE=false
+	P_GO_VET_DONE=false
+	P_LLENCHECK_DONE=false
+}
+
+function xload_lint_state() {
+	local state=()
+	IFS=' ' read -r -a state <<<"$(cat "$P_CACHE_DIR/__linters_result.state" 2>/dev/null)"
+	if xis_eq "${#state[@]}" "4"; then
+		P_GOLANGCI_LINT_DONE="${state[0]}"
+		P_STATICCHECK_DONE="${state[1]}"
+		P_GO_VET_DONE="${state[2]}"
+		P_LLENCHECK_DONE="${state[3]}"
+	else
+		xreset_lint_state
+	fi
+}
+
+function xsave_lint_state() {
+	if xis_eq "$name_hash" ""; then
+		return
+	fi
+	xcache_put "$name_hash" "$file_hash"
+	local state=(
+		"$P_GOLANGCI_LINT_DONE"
+		"$P_STATICCHECK_DONE"
+		"$P_GO_VET_DONE"
+		"$P_LLENCHECK_DONE"
+	)
+	echo "${state[@]}" >"$P_CACHE_DIR/__linters_result.state"
+}
+
 function xcheck_results() {
 	xtext "$EXEC_STDOUT"
 	xtext "$EXEC_STDERR"
@@ -1029,7 +1080,7 @@ function xcheck_results() {
 		eval "$1"=false
 		if xis_true "$2"; then
 			xecho "ERROR: $3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
-			xsave_results
+			xsave_lint_state
 			exit "$EXEC_STATUS"
 		fi
 	else
@@ -1037,18 +1088,9 @@ function xcheck_results() {
 	fi
 }
 
-function xsave_results() {
-	xcache_put "$name_hash" "$file_hash"
-	echo "$P_GOLANGCI_LINT_DONE" >"$TEMP_DIR/cachedb/golangcli-lint.state"
-	echo "$P_STATICCHECK_DONE" >"$TEMP_DIR/cachedb/staticcheck.state"
-	echo "$P_GO_VET_DONE" >"$TEMP_DIR/cachedb/go-vet.state"
-	echo "$P_LLENCHECK_DONE" >"$TEMP_DIR/cachedb/llencheck.state"
-}
-
 function xcheck_project() {
-	local name_hash file_hash dir_hash="$TEMP_DIR/project_checklist.log" project_name
+	local name_hash="" file_hash="" dir_hash="$P_CACHE_DIR/__project_checklist.log"
 	local diff_filter_args=() diff_filter_command=""
-	project_name="$(basename -- "$PWD")"
 	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
 		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE"; then
 		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
@@ -1056,18 +1098,12 @@ function xcheck_project() {
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 		xtext "$EXEC_STDOUT"
 		xtext "$EXEC_STDERR"
-		P_GOLANGCI_LINT_DONE=$(cat "$TEMP_DIR/cachedb/golangcli-lint.state" 2>/dev/null)
-		P_STATICCHECK_DONE=$(cat "$TEMP_DIR/cachedb/staticcheck.state" 2>/dev/null)
-		P_GO_VET_DONE=$(cat "$TEMP_DIR/cachedb/go-vet.state" 2>/dev/null)
-		P_LLENCHECK_DONE=$(cat "$TEMP_DIR/cachedb/llencheck.state" 2>/dev/null)
+		xload_lint_state
 		name_hash=$(xcache_shash "$dir_hash")
 		file_hash=$(xcache_fhash "$dir_hash")
 		#xecho "$name_hash :: $file_hash"
 		if xis_ne "$(xcache_get "$name_hash")" "$file_hash" || xis_true "$CLEAN_GOCACHE"; then
-			P_GOLANGCI_LINT_DONE=false
-			P_STATICCHECK_DONE=false
-			P_GO_VET_DONE=false
-			P_LLENCHECK_DONE=false
+			xreset_lint_state
 		fi
 		if xis_true "$P_GOLANGCI_LINT_DONE" &&
 			xis_true "$P_STATICCHECK_DONE" &&
@@ -1076,7 +1112,9 @@ function xcheck_project() {
 			return 0
 		fi
 		export PYTHONPYCACHEPREFIX="$TEMP_DIR/pycache"
-		xexec mkdir -p "$PYTHONPYCACHEPREFIX"
+		if [[ ! -d "$PYTHONPYCACHEPREFIX" ]]; then
+			xexec mkdir -p "$PYTHONPYCACHEPREFIX"
+		fi
 		if xis_set "$GIT_COMMIT_FILTER"; then
 			diff_filter_args+=("-c=$GIT_COMMIT_FILTER")
 		fi
@@ -1097,14 +1135,17 @@ function xcheck_project() {
 		done
 		xunreferenced "$linters_all"
 		if xis_true "$linters_all"; then
+			local disabled=("${GOLANGCI_LINT_DEPRECATED[@]}")
+			disabled+=("${GOLANGCI_LINT_SUPRESSED[@]}")
+			IFS=" " read -r -a disabled <<<"$(echo "${disabled[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')"
 			linter_args+=("--enable-all")
-			for linter in "${GOLANGCI_LINT_DEPRECATED[@]}"; do
+			for linter in "${disabled[@]}"; do
 				linter_args+=("-D" "$linter")
 			done
 			for linter in "${linters_list[@]}"; do
 				if [[ "$linter" == -* ]]; then
 					linter="${linter:1}"
-					for over in "${GOLANGCI_LINT_DEPRECATED[@]}"; do
+					for over in "${disabled[@]}"; do
 						if xis_eq "$linter" "$over"; then
 							linter=""
 							break
@@ -1124,7 +1165,7 @@ function xcheck_project() {
 			done
 		fi
 		local scheck="$TEMP_DIR/golangci-lint.log"
-		xecho "Running $(xdecodate golangci-lint) (details: file://$scheck)"
+		xecho "Running $(xdecorate golangci-lint) (details: file://$scheck)"
 		xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
 			"./..." ">" "$scheck" "2>&1"
 		if xis_true "$GOLANGCI_LINT_FILTER"; then
@@ -1146,7 +1187,7 @@ function xcheck_project() {
 			flags+=("-checks" "$STATICCHECK_CHECKS")
 		fi
 		local scheck="$TEMP_DIR/staticcheck.log"
-		xecho "Running $(xdecodate staticcheck) (details: file://$scheck)"
+		xecho "Running $(xdecorate staticcheck) (details: file://$scheck)"
 		xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
 		if xis_true "$STATICCHECK_FILTER"; then
 			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
@@ -1157,12 +1198,14 @@ function xcheck_project() {
 		xcheck_results "P_STATICCHECK_DONE" "$STATICCHECK_FAIL" "Staticcheck"
 	fi
 	if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
-		xecho "Running $(xdecodate go vet) on $(xdecodate ${TARGET_BUILD_LAUNCHER})..."
+		xecho "Running $(xdecorate go vet) on $(xdecorate ${TARGET_BUILD_LAUNCHER})..."
 		xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
 		xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
 	fi
 	if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
-		xecho "Running $(xdecodate line-length-limit) check on $(xdecodate "$project_name")"
+		local project_name
+		project_name="$(basename -- "$PWD")"
+		xecho "Running $(xdecorate line-length-limit) check on $(xdecorate "$project_name")"
 		if xis_true "$LLENCHECK_FILTER"; then
 			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
 				-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
@@ -1172,7 +1215,7 @@ function xcheck_project() {
 		fi
 		xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
 	fi
-	xsave_results
+	xsave_lint_state
 }
 
 function xbuild_project() {

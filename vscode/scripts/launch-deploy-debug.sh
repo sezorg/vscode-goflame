@@ -71,4 +71,4 @@ xunreferenced \
 	"${COPY_FILES[@]}"
 
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[DEBUG]" \
-	"Building & deploying $(xdecodate "${TARGET_BIN_NAME}") to remote host http://$TARGET_IPADDR"
+	"Building & deploying $(xdecorate "${TARGET_BIN_NAME}") to remote host http://$TARGET_IPADDR"
