@@ -140,7 +140,11 @@ BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
 GOLANGCI_LINT_ENABLE=false
-GOLANGCI_LINT_LINTERS="all,-depguard,-gochecknoglobals"
+GOLANGCI_LINT_LINTERS=(
+	"all"
+	"-depguard"
+	"-gochecknoglobals"
+)
 GOLANGCI_LINT_FILTER=true
 GOLANGCI_LINT_FAIL=false
 GOLANGCI_LINT_SUPRESSED=()
@@ -440,6 +444,14 @@ function xcontains() {
 	shift
 	for element; do xis_eq "$element" "$value" && return 0; done
 	return 1
+}
+
+function xsort_unique() {
+	local output_name="$1" joined_list
+	shift
+	readarray -t sorted_list <<<"$(printf "%s\n" "$@" | sort -u)"
+	joined_list=$(printf " \"%s\"" "${sorted_list[@]}")
+	eval "$output_name=(${joined_list:1})"
 }
 
 P_EXPORTED_STATE=false
@@ -1126,39 +1138,29 @@ function xcheck_project() {
 	fi
 	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
 		xtest_installed "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
-		local linter_args=() linters_all="" linters_list=() linter=""
-		IFS=',' read -r -a linters_list <<<"$GOLANGCI_LINT_LINTERS"
-		for linter in "${linters_list[@]}"; do
-			if xis_eq "$linter" "all"; then
-				linters_all=true
-			fi
-		done
-		xunreferenced "$linters_all"
-		if xis_true "$linters_all"; then
-			local disabled=("${GOLANGCI_LINT_DEPRECATED[@]}")
-			disabled+=("${GOLANGCI_LINT_SUPRESSED[@]}")
-			IFS=" " read -r -a disabled <<<"$(echo "${disabled[@]}" | tr ' ' '\n' | sort -u | tr '\n' ' ')"
-			linter_args+=("--enable-all")
-			for linter in "${disabled[@]}"; do
-				linter_args+=("-D" "$linter")
-			done
+		local linter_args=() linters_list=()
+		xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
+		if xcontains "all" "${linters_list[@]}"; then
+			local disabled_list=("${GOLANGCI_LINT_DEPRECATED[@]}" "${GOLANGCI_LINT_SUPRESSED[@]}")
 			for linter in "${linters_list[@]}"; do
-				if [[ "$linter" == -* ]]; then
-					linter="${linter:1}"
-					for over in "${disabled[@]}"; do
-						if xis_eq "$linter" "$over"; then
-							linter=""
-							break
-						fi
-					done
-					if xis_set "$linter"; then
-						linter_args+=("-D" "$linter")
-					fi
+				if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+					continue
 				fi
+				if [[ "$linter" == -* ]]; then
+					disabled_list+=("${linter:1}")
+				fi
+			done
+			xsort_unique disabled_list "${disabled_list[@]}"
+			linter_args+=("--enable-all")
+			for linter in "${disabled_list[@]}"; do
+				linter_args+=("-D" "$linter")
 			done
 		else
 			linter_args+=("--disable-all")
 			for linter in "${linters_list[@]}"; do
+				if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+					continue
+				fi
 				if [[ ! "$linter" == -* ]]; then
 					linter_args+=("-E" "$linter")
 				fi
