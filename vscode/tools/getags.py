@@ -298,16 +298,14 @@ class GerritTags:
 
     def create_branches(self):
         if not self.execute:
-            print(f'{Colors.green}{self.branch_index} branches has been '
-                  f'deleted.{Colors.nc}')
+            print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
             return
         status = Shell(['git', 'fetch', self.repository_url])
         if not status.succed():
             fatal(f'Failed to fetch from {self.repository_url}')
         self.branch_index = 0
         if not self.peek_gerrit_project():
-            fatal(f'Failed to retrieve Gerrit project configuration from'
-                  f' {self.repository_url}')
+            fatal(f'Failed to retrieve Gerrit project configuration from {self.repository_url}')
         args = ['ssh'] + self.gerrit_port
         args += [self.gerrit_host, 'gerrit', 'query', '--current-patch-set',
                  '--all-approvals', 'project:' + self.gerrit_project]
@@ -401,13 +399,14 @@ class GerritTags:
         if not status.succed():
             status = Shell(['git', 'fetch', self.repository_url, state.ref])
             if not status.succed():
-                fatal(
-                    f'Failed to fetch remote {state.ref} from {self.repository_url}')
-            status = Shell(
-                ['git', 'branch', branch_name, state.revision], True)
+                fatal(f'Failed to fetch remote {state.ref} from {self.repository_url}')
+            status = Shell(['git', 'branch', branch_name, state.revision], True)
             if not status.succed():
-                fatal(
-                    f'Failed to create branch  {branch_name} at {state.revision}')
+                fatal(f'Failed to create branch  {branch_name} at {state.revision}')
+        status = Shell(['git', 'config', 'branch.'+branch_name + '.description',
+                        state.subject], True)
+        if not status.succed():
+            fatal(f'Failed to set branch {branch_name} description.')
         if self.current_branch == branch_name or self.current_revision == state.revision:
             debug(f'Checking out back to {branch_name}')
             status = Shell(['git', 'checkout', branch_name])
@@ -466,7 +465,8 @@ class GerritTags:
         wip = ''
         if state.wip:
             wip = Colors.yellow + ' WIP'
-        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} -{wip}{information}{Colors.nc}')
+        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} -'
+              f'{wip}{information}{Colors.nc}')
 
 
 def main():
