@@ -14,7 +14,7 @@ source "$SCRIPT_DIR/go-runtime.sh"
 # List of services to be stopped
 SERVICES_STOP+=(
 	"onvifd"
-	"onvifd-debug"
+	#"onvifd-debug"
 )
 
 # List of services to be started

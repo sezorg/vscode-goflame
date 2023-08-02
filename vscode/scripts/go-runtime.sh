@@ -174,6 +174,8 @@ LLENCHECK_LIMIT=100
 LLENCHECK_FILTER=true
 LLENCHECK_FAIL=true
 
+INSTALL_SSH_KEY=false
+
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
 MESSAGES_IGNORE+=("# github.com/lestrrat-go/libxml2/clib")
@@ -681,6 +683,10 @@ function xperform_build_and_deploy() {
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
 	fi
 
+	if xis_true "$frebuild"; then
+		xistall_ssh_key
+	fi
+
 	xservices_stop
 	xprocesses_stop
 	xfiles_delete
@@ -1013,16 +1019,18 @@ function xexecute_target_commands_vargs() {
 	local list=("$@")
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
+		local count=$((0))
 		for command in "${list[@]}"; do
 			if xis_eq "${command:0:1}" "@"; then
 				command="${command:1}"
 			else
 				elements="$elements, ${command%% *}"
+				count=$(("$count" + 1))
 			fi
 			P_SSH_TARGET_POST="$P_SSH_TARGET_POST($command); "
 		done
 		if xis_set "$elements"; then
-			xecho "Executing ${#list[@]} target commands: ${elements:2}"
+			xecho "Executing $count target commands: ${elements:2}"
 		fi
 	fi
 }
@@ -1283,18 +1291,18 @@ function xcamera_features() {
 
 	local features_set=""
 	if xis_set "$features_on_set"; then
-		features_set="$features_set; true: ${features_on_set:2}"
+		features_set="$features_set; TRUE: ${features_on_set:2}"
 	fi
 	if xis_set "$features_off_set"; then
-		features_set="$features_set; false: ${features_off_set:2}"
+		features_set="$features_set; FALSE: ${features_off_set:2}"
 	fi
 
 	local features_err=""
 	if xis_set "$features_on_err"; then
-		features_err="$features_err; true: ${features_on_err:2}"
+		features_err="$features_err; TRUE: ${features_on_err:2}"
 	fi
 	if xis_set "$features_off_err"; then
-		features_err="$features_err; false: ${features_off_err:2}"
+		features_err="$features_err; FALSE: ${features_off_err:2}"
 	fi
 
 	if xis_set "$features_set"; then
@@ -1366,5 +1374,23 @@ function xprepare_runtime_scripts() {
 	COPY_FILES+=(
 		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"
+	)
+}
+
+function xistall_ssh_key() {
+	if xis_false "$INSTALL_SSH_KEY"; then
+		return
+	fi
+	local key_a="$HOME/.ssh/goflame-key"
+	local key_b="$HOME/.ssh/goflame-key.pub"
+	if [[ ! -f "$key_a" ]] || [[ ! -f "$key_b" ]]; then
+		xexec rm -f "$key_a" "$key_b"
+		xexec ssh-keygen -t ed25519 -C "goflame@elvees.com" -P "\"\"" -f "$key_a"
+	fi
+	DIRECTORIES_CREATE+=("/root/.ssh")
+	COPY_FILES+=("$key_b|:/root/.ssh/goflame-key.pub")
+	EXECUTE_COMMANDS+=(
+		#"if [ ! -f /etc/ssh/sshd_config.old ]; cp /etc/ssh/sshd_config /etc/ssh/sshd_config.old; fi"
+		#"sed -i 's/^#PubkeyAuthentication/PubkeyAuthentication/g' /etc/ssh/sshd_config"
 	)
 }
