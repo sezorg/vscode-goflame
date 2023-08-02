@@ -25,16 +25,18 @@ function fatal() {
 	exit 1
 }
 
-function json() {
-	local output="$*" decoded="" status=""
-	decoded=$(echo "$output" | jq 2>&1)
+function print_json() {
+	local type="$1"
+	shift
+	local json_text="$*" decoded="" status=""
+	decoded=$(echo "$json_text" | jq 2>&1)
 	status=$(echo "$decoded" | grep "parse error:")
 	if [[ "$status" != "" ]]; then
-		error "Malformed JSON response."
-		error "$decoded"
-		fatal "$output"
+		error "Malformed JSON $type."
+		error "Json: $decoded"
+		fatal "Text: $json_text"
 	fi
-	echo "$output" | jq
+	echo "$json_text" | jq
 	return 0
 }
 
@@ -44,12 +46,12 @@ function json_test() {
 	method="$(basename -- "$1")"
 	log "$IP: $service.$method()"
 	log "IN:"
-	json "$JSON"
+	print_json "request" "$JSON"
 	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
 	status=$(echo "$output" | grep "No route to host")
 	if [[ "$status" != "" ]]; then
 		fatal "IP $IP: No route to host."
 	fi
 	log "OUT:"
-	json "$output"
+	print_json "response" "$output"
 }
