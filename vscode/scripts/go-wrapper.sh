@@ -161,8 +161,8 @@ fi
 
 # Check configuration.
 if [[ ! -f "$BUILDROOT_GOBIN" ]]; then
-	xecho "ERROR: Can not find Go executable at \"$BUILDROOT_GOBIN\"."
-	xecho "ERROR: Check BUILDROOT_DIR variable in your \"config-user.ini\" or \"config.ini\"."
+	xerror "Can not find Go executable at \"$BUILDROOT_GOBIN\"."
+	xerror "Check BUILDROOT_DIR variable in your \"config-user.ini\" or \"config.ini\"."
 	if [[ -d "$BUILDROOT_DIR" ]]; then
 		lookup_dir=$(find "$BUILDROOT_DIR" -name "using-buildroot-toolchain.txt" -maxdepth 5)
 		xdebug "Actual BUILDROOT_DIR=\"$BUILDROOT_DIR\""
@@ -189,7 +189,7 @@ if xis_set "$HAVE_BUILD_COMMAND"; then
 				"Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
 			exit "0"
 		else
-			xecho "ERROR: Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"
+			xerror "Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"
 			exit "1"
 		fi
 	fi

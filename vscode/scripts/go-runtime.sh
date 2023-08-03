@@ -263,6 +263,10 @@ function xecho() {
 	xemit "$XECHO_ENABLED" "$*"
 }
 
+function xerror() {
+	xemit "1" "ERROR: $*"
+}
+
 function xfatal() {
 	xemit "1" "FATAL: $*"
 	exit 1
@@ -571,11 +575,11 @@ EOF
 	xfunset
 	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
 		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
-		xecho "ERROR: Failed to execute: $command"
+		xerror "Failed to execute: $command"
 		xtext "$EXEC_STDERR"
 		xtext "$EXEC_STDOUT"
-		xecho "ERROR: Terminating with status $EXEC_STATUS"
-		xecho "ERROR: More details in file://$WRAPPER_LOGFILE"
+		xerror "Terminating with status $EXEC_STATUS"
+		xerror "More details in file://$WRAPPER_LOGFILE"
 		exit ${EXEC_STATUS}
 	elif xis_true "false"; then
 		if xis_set "$EXEC_STDOUT"; then
@@ -846,7 +850,7 @@ function xfiles_copy() {
 					xecho "File \"$fileA\" does not exists, skipping"
 					continue
 				else
-					xecho "ERROR: Unable to find \"$fileA\" for upload"
+					xerror "Unable to find \"$fileA\" for upload"
 					exit "1"
 				fi
 
@@ -1048,9 +1052,13 @@ function xclean_gocache() {
 }
 
 function xtest_installed() {
-	if [[ ! -f "$1" ]]; then
-		xerror "Reqired binary '$(basename -- "$1")' is not installed."
-		xfatal "Check installation instructions: $2"
+	local enable_key="$1"
+	local binary="$2"
+	local instructions="$3"
+	if [[ ! -f "$binary" ]]; then
+		xerror "Reqired binary '$(basename -- "$binary")' is not installed."
+		xerror "To disable this feature set $enable_key=false in 'config-user.ini'."
+		xfatal "Check installation instructions: $instructions"
 	fi
 }
 
@@ -1099,7 +1107,7 @@ function xcheck_results() {
 	if xis_ne "$EXEC_STATUS" "0"; then
 		eval "$1"=false
 		if xis_true "$2"; then
-			xecho "ERROR: $3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
+			xerror "$3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
 			xsave_lint_state
 			exit "$EXEC_STATUS"
 		fi
@@ -1145,7 +1153,7 @@ function xcheck_project() {
 		xclean_gocache
 	fi
 	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
-		xtest_installed "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
+		xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
 		local linter_args=() linters_list=()
 		xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
 		if xcontains "all" "${linters_list[@]}"; then
@@ -1186,7 +1194,7 @@ function xcheck_project() {
 		xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 	fi
 	if xis_true "$STATICCHECK_ENABLE" && xis_false "$P_STATICCHECK_DONE"; then
-		xtest_installed "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
+		xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
 		xexport_clean "${GOLANG_EXPORTS[@]}"
 		local flags=() go_version
 		go_version=$("$BUILDROOT_GOBIN" version)
