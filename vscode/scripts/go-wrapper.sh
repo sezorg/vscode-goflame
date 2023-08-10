@@ -193,10 +193,10 @@ if xis_true "$HAVE_BUILD_COMMAND"; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 			xprepare_runtime_scripts
 			xperform_build_and_deploy "[REBUILD]" \
-				"Rebuild & insatll $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
+				"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host http://$TARGET_IPADDR"
 			exit "0"
 		else
-			xerror "Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"
+			xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
 			exit "1"
 		fi
 	fi
