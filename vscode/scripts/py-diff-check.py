@@ -163,8 +163,8 @@ def parse_arguments():
     )
     arguments, unknown_args = parser.parse_known_args()
     Config.debugLevel = arguments.debug
-    debug(f'arguments={arguments}')
-    debug(f'unknown arguments={unknown_args}')
+    # debug(f'arguments={arguments}')
+    # debug(f'unknown arguments={unknown_args}')
     if len(unknown_args) > 1:
         fatal('Too many arguments')
     arguments.exitCode = 0
@@ -203,10 +203,11 @@ class Shell:
         return self.status == 0
 
     def debug(self):
-        debug(f'Shell params: {self.params}')
-        debug(f'Shell stdout: {self.stdout}')
-        debug(f'Shell stderr: {self.stderr}')
-        debug(f'Shell status: {self.status}, succed {self.succed()}')
+        # debug(f'Shell params: {self.params}')
+        # debug(f'Shell stdout: {self.stdout}')
+        # debug(f'Shell stderr: {self.stderr}')
+        # debug(f'Shell status: {self.status}, succed {self.succed()}')
+        return
 
 
 class GitChangeSet:
@@ -229,7 +230,7 @@ class GitDiff:
             if not match:
                 fatal('Unable to get \'git rebase\' commit')
             commit = match.group(1)
-            self.run_on_commit(commit, '~', '', '')
+            self.run_on_commit(commit, '', '', '')
             return
         commit = Config.gitCommit
         self.run_on_commit(commit, '~', '', '')
@@ -249,7 +250,7 @@ class GitDiff:
         for patched_file in patch_set:
             appended_lines = [line for hunk in patched_file for line in hunk
                               if line.is_added and line.value.strip() != '']
-            debug(f'{appended_lines}')
+            # debug(f'{appended_lines}')
             file_path = patched_file.path
             change_set = GitChangeSet(file_path, appended_lines, None)
             self.change_list.append(change_set)
@@ -278,9 +279,12 @@ class GitPatchLines:
         return self.patched_lines
 
 
-class LineLengthLimit:
+class BuiltinLintersRunner:
     def __init__(self, git_diff):
         self.git_diff = git_diff
+        self.file_path = ''
+        self.line_index = 0
+        self.line_text = ''
         return
 
     def run(self):
@@ -289,32 +293,75 @@ class LineLengthLimit:
             return
         for change_set in self.git_diff.change_list:
             for line in change_set.appended_lines:
-                text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
-                self.process_line(change_set.file_path,
-                                  line.target_line_no, text)
+                # debug(f'{self.file_path}:{self.line_index}')
+                self.file_path = change_set.file_path
+                self.line_index = line.target_line_no
+                self.line_text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
+                self.process_line()
         return
 
     def process_all(self):
         git_files = GitFiles()
-        for file_path in git_files.files:
-            file_path = file_path.strip()
-            if file_path == "":
+        for self.file_path in git_files.files:
+            self.file_path = self.file_path.strip()
+            if self.file_path == "":
                 continue
-            lines = open(file_path, 'r', encoding='utf-8').readlines()
-            for line_index, line in enumerate(lines):
-                self.process_line(file_path, line_index+1, line)
+            lines = open(self.file_path, 'r', encoding='utf-8').readlines()
+            for index, line in enumerate(lines):
+                self.line_index = index + 1
+                self.line_text = line.expandtabs(Config.tabWidth)
+                self.process_line()
         return
 
-    def process_line(self, file_path, line_index, line):
-        text = line.expandtabs(Config.tabWidth)
-        length = len(text)
+    def process_line(self):
+        length = len(self.line_text)
         if length > Config.lineLengthLimit:
-            prefix = f'{file_path}:{line_index}: '
-            print(f'{prefix}Maximum line length exceeded '
-                  f'({length} > {Config.lineLengthLimit})')
-            if not Config.excludeNonPrefixed:
-                print(f'{prefix}{text}')
-            Config.exitCode = 1
+            if self.is_supressed('lll'):
+                return
+            self.output_message('Maximum line length exceeded '
+                                f'({length} > {Config.lineLengthLimit}) (lll)')
+        # wrapcheck
+        error_cheks = ["fmt.Error", "errors.Wrap", "errors.New", "errors.Error"]
+        offset = - 1
+        for check in error_cheks:
+            offset = self.line_text.find(check)
+            if offset >= 0:
+                break
+        if offset < 0:
+            return False
+        if self.is_supressed('wrapcheck'):
+            return
+        while offset < length and self.line_text[offset] != '"':
+            offset += 1
+        if offset < length - 1 and self.line_text[offset] == '"':
+            offset += 1
+            start = self.line_text[offset]
+            if str.isalpha(start) and not str.islower(start):
+                self.output_message('Error strings should not be capitalized (wrapcheck)')
+        else:
+            self.output_message(
+                'Unable to filed error string. Consider to use one-line expression (wrapcheck)')
+        return
+
+    def is_supressed(self, supress):
+        prefix = 'nolint:'
+        offset = self.line_text.rfind(prefix)
+        if offset < 0:
+            return False
+        for option in self.line_text[offset+len(prefix):].split(','):
+            option = option.strip()
+            if option == supress:
+                return True
+            if option == '':
+                return False
+        return False
+
+    def output_message(self, message):
+        prefix = f'{self.file_path}:{self.line_index}: '
+        print(f'{prefix}{message}')
+        if not Config.excludeNonPrefixed:
+            print(f'{prefix}{self.line_text}')
+        Config.exitCode = 2
 
 
 class WarningsSupressor:
@@ -327,7 +374,7 @@ class WarningsSupressor:
     def run(self):
         have_exclude_list = Config.excludeList != ""
         identifiers = Config.excludeList.split(',')
-        debug(f'supression list={identifiers}')
+        # debug(f'supression list={identifiers}')
         supress_list = {}
         for identifier in identifiers:
             supress_list[identifier] = True
@@ -390,7 +437,7 @@ def main():
     if Config.parseInput or select.select([sys.stdin, ], [], [], 0.0)[0]:
         WarningsSupressor(git_diff).run()
     else:
-        LineLengthLimit(git_diff).run()
+        BuiltinLintersRunner(git_diff).run()
     sys.exit(Config.exitCode)
 
 
