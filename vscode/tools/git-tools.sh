@@ -35,6 +35,7 @@ function gh() {
 }
 
 function gri() {
+	git config rebase.abbreviateCommands true
 	git rebase --interactive "HEAD~$1"
 }
 
