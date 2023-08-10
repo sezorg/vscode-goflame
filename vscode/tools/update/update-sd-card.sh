@@ -22,11 +22,16 @@ fatal() {
 usage() {
 	local filename
 	filename=$(basename "$0")
-	log "Usage: $filename sd-card [zuul-uuid] [rootfs]"
+	log "Usage: $filename [-f <format-mmc.sh>] <sd-card> [<zuul-uuid>] [<rootfs>]"
 	log "where:"
 	log "    sd-card     sd card device /dev/XXX"
 	log "    zuul-uuid   zuul periodic build pipeline identifier (UUID)"
 	log "    rootfs      rootfs file name"
+	log ""
+	log "examples:"
+	log "    $filename sda 6cba2361dc4f4e258dc258b425828f4a"
+	log "    $filename -f ./my-format-mmc.sh sda 6cba2361dc4f4e258dc258b425828f4a"
+	log "    $filename -f ./my-format-mmc.sh sda ./my-rootfs.squashfs"
 }
 
 run() {
@@ -66,7 +71,7 @@ arg_zuul_uuid=""
 arg_rootfs_squashfs_path=""
 arg_format_mmc_path=""
 
-while :; do
+while [[ "$#" != "0" ]]; do
 	case "$1" in
 	-f)
 		arg_format_mmc_path="$2"
