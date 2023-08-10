@@ -407,7 +407,7 @@ class WarningsSupressor:
         return
 
     def output(self, line, prefixed, exit_code):
-        if self.previous_line == line:
+        if self.output_skip(line):
             return
         output = line
         if prefixed:
@@ -423,6 +423,24 @@ class WarningsSupressor:
         self.output_next = line.endswith(':')
         Config.exitCode = exit_code
         return
+
+    def output_skip(self, line):
+        if self.previous_line == line:
+            return True
+        if self.output_next:
+            return False
+        if not line.endswith(')'):
+            return False
+        expr = r'^(.*)\s+\(\w+\)$'
+        old_match = re.match(expr, self.previous_line)
+        if not old_match:
+            return False
+        new_match = re.match(expr, line)
+        if not new_match:
+            return False
+        old_text = old_match.group(1).removesuffix(')')
+        new_text = new_match.group(1).removesuffix(')')
+        return old_text == new_text
 
     def in_dictionary(self, words, dictionary):
         for word in words:
