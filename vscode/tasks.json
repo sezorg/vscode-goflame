@@ -4,9 +4,9 @@
     "version": "2.0.0",
     "tasks": [
         {
-			"label": "launch-deploy-debug",
+            "label": "launch-deploy-debug",
             "type": "process",
-			"command": "${workspaceFolder}/.vscode/scripts/launch-deploy-debug.sh",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-debug.sh",
             "echoCommand": false,
             "hide": true
         },
@@ -38,5 +38,18 @@
             "echoCommand": false,
             "hide": false
         },
+        {
+            "type": "go",
+            "label": "go: build workspace",
+            "command": "build",
+            "args": [
+                "./..."
+            ],
+            "problemMatcher": [
+                "$go"
+            ],
+            "group": "build",
+            "detail": "Go: Build Workspace: ${workspaceFolder}"
+        }
     ]
 }

@@ -106,11 +106,12 @@ function xparse_go_arguments() {
 			modified=true
 		elif [[ "$item" == "build" ]]; then
 			XECHO_ENABLED=true
-			xecho "Building \`$TARGET_BUILD_LAUNCHER'"
 			result+=("$item")
 			modified=true
 			HAVE_BUILD_COMMAND=true
-		elif [[ "$item" == "./..." ]] || [[ "$prev_item" == "build" && -d "$item" ]]; then
+		elif [[ "$item" == "./..." ]] ||
+			[[ "$prev_item" == "build" && -d "$item" ]] ||
+			[[ "$prev_item" == "build" && -f "$item" ]]; then
 			if xis_true "$HAVE_BUILD_COMMAND"; then
 				modified=true
 			else
@@ -192,7 +193,7 @@ if xis_true "$HAVE_BUILD_COMMAND"; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 			xprepare_runtime_scripts
 			xperform_build_and_deploy "[REBUILD]" \
-				"Installing $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
+				"Rebuild & insatll $PI${TARGET_BIN_NAME}$PO to remote host http://$TARGET_IPADDR"
 			exit "0"
 		else
 			xerror "Main executable $PI${TARGET_BIN_SOURCE}$PO does not exist"
