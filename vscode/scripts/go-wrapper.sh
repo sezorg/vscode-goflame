@@ -92,24 +92,30 @@ xunreferenced \
 	"${CAMERA_FEATURES_ON[@]}"
 
 SRCIPT_ARGS=("$@")
-HAVE_BUILD_COMMAND=
+HAVE_BUILD_COMMAND=false
 HAVE_LOCAL_COMMAND=
 
 function xparse_go_arguments() {
-	local dirty=
-	local result=()
+	local modified=false result=() item="" prev_item=""
 	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
+		prev_item="$item"
 		item="${SRCIPT_ARGS[$i]}"
 		if [[ "$item" == "$EXPORT_DLVBIN" ]]; then
 			result+=("$LOCAL_DLVBIN")
-			dirty="y"
+			modified=true
 		elif [[ "$item" == "build" ]]; then
 			XECHO_ENABLED=true
 			xecho "Building \`$TARGET_BUILD_LAUNCHER'"
 			result+=("$item")
-			dirty="y"
-			HAVE_BUILD_COMMAND="y"
+			modified=true
+			HAVE_BUILD_COMMAND=true
+		elif [[ "$item" == "./..." ]] || [[ "$prev_item" == "build" && -d "$item" ]]; then
+			if xis_true "$HAVE_BUILD_COMMAND"; then
+				modified=true
+			else
+				result+=("$item")
+			fi
 		elif [[ "$item" == "install" ]]; then
 			xset HAVE_LOCAL_COMMAND="$item"
 			result+=("$item")
@@ -123,26 +129,26 @@ function xparse_go_arguments() {
 			xset HAVE_LOCAL_COMMAND="$item"
 			result+=("$item")
 		elif [[ "$item" == "--echo" ]]; then
-			xset XECHO_ENABLED="y"
-			dirty="y"
+			xset XECHO_ENABLED=true
+			modified=true
 		elif [[ "$item" == "--debug" ]]; then
-			xset XDEBUG_ENABLED="y"
-			dirty="y"
+			xset XDEBUG_ENABLED=true
+			modified=true
 		elif [[ "$item" == "--trace" ]]; then
 			set -x
-			dirty="y"
+			modified=true
 		else
 			result+=("$item")
 		fi
 	done
 
-	if xis_set "$dirty"; then
-		if xis_set "$HAVE_BUILD_COMMAND"; then
+	if xis_true "$modified"; then
+		if xis_true "$HAVE_BUILD_COMMAND"; then
 			# force debug build
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
 		SRCIPT_ARGS=("${result[@]}")
-		xdebug "Dirty args: $BUILDROOT_GOBIN ${SRCIPT_ARGS[*]}"
+		xdebug "Modified args: $BUILDROOT_GOBIN ${SRCIPT_ARGS[*]}"
 		return 0
 	fi
 	return 1
@@ -181,7 +187,7 @@ fi
 xexport_apply "${GOLANG_EXPORTS[@]}"
 xexec "$BUILDROOT_GOBIN" "$@"
 
-if xis_set "$HAVE_BUILD_COMMAND"; then
+if xis_true "$HAVE_BUILD_COMMAND"; then
 	if [[ "$EXEC_STATUS" == "0" ]]; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 			xprepare_runtime_scripts
