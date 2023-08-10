@@ -10,6 +10,7 @@ JSON=$(
 		"WhiteBalance": {
 			"Mode": "AUTO"
 		},
+		"IrCutFilter": "ON",
 		"Focus": {
 			"AutoFocusMode": "MANUAL",
 			"DefaultSpeed": 100.0,
