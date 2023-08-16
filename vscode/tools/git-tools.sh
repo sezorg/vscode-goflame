@@ -19,6 +19,7 @@ SSH_FLAGS=(
 function gh() {
 	echo "gri: git rebase --interactive HEAD~\$1"
 	echo "grc: git rebase --continue"
+	echo "grm: git rebase --update-refs master"
 	echo "gpc: git cherry-pick --continue"
 	echo "gx: git rebase --abort"
 	echo "gs: git status"
@@ -41,6 +42,10 @@ function gri() {
 
 function grc() {
 	git rebase --continue
+}
+
+function grm() {
+	git rebase --update-refs master
 }
 
 function gpc() {
