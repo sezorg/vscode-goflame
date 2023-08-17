@@ -36,9 +36,10 @@ function xtime() {
 	date +%s.%N
 }
 
-function xelapsed() {
+function xformat_time() {
+	local from="$1" to="$2" prefix="$3"
 	local time days days_frac hours hours_frac mins secs
-	time=$(echo "$(date +%s.%N) - $1" | bc)
+	time=$(echo "$to - $from" | bc)
 	days=$(echo "$time/86400" | bc)
 	days_frac=$(echo "$time-86400*$days" | bc)
 	hours=$(echo "$days_frac/3600" | bc)
@@ -46,21 +47,29 @@ function xelapsed() {
 	mins=$(echo "$hours_frac/60" | bc)
 	secs=$(echo "$hours_frac-60*$mins" | bc)
 	if xis_ne "$days" "0"; then
-		xecho "$(printf "Total runtime: %dd %02dh %02dm %02.3fs" "$days" "$hours" "$mins" "$secs")"
+		printf "$prefix%dd %02dh %02dm %02.3fs" "$days" "$hours" "$mins" "$secs"
 	elif xis_ne "$hours" "0"; then
-		xecho "$(printf "Total runtime: %dh %02dm %02.3fs" "$hours" "$mins" "$secs")"
+		printf "$prefix%dh %02dm %02.3fs" "$hours" "$mins" "$secs"
 	elif xis_ne "$mins" "0"; then
-		xecho "$(printf "Total runtime: %dm %02.3fs" "$mins" "$secs")"
+		printf "$prefix%dm %02.3fs" "$mins" "$secs"
 	else
-		xecho "$(printf "Total runtime: %02.3fs" "$secs")"
+		printf "$prefix%02.3fs" "$secs"
 	fi
 }
 
-xstart="$(xtime)"
+function xelapsed() {
+	local end_time
+	end_time="$(date +%s.%N)"
+	xecho "$(xformat_time "$P_TIME_STARTED" "$end_time" "Total runtime: ")"
+}
+
+P_TIME_STARTED="$(date +%s.%N)"
+P_TIME_PREV_OUT="$P_TIME_STARTED"
+P_TIME_PREV_LOG="$P_TIME_STARTED"
 trap xat_exit_trap EXIT
 
 function xat_exit_trap() {
-	xelapsed "$xstart"
+	xelapsed "$P_TIME_STARTED"
 	return 0
 }
 
@@ -231,30 +240,39 @@ P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 function xemit() {
 	local echo_flag="$1"
 	shift
-	local stamp message input="$*"
+	local time_stamp actual_time elapsed_time message_log message_out input=" [$P_MESSAGE_SOURCE] $*"
 	if xis_set "$input"; then
 		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
 		if xis_unset "$input"; then
 			return 0
 		fi
 	fi
-	stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
-	message="${stamp:0:-6} [$P_MESSAGE_SOURCE] $input"
+	time_stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
+	time_stamp="${time_stamp:0:-6}"
+	actual_time="$(date +%s.%N)"
+	elapsed_time="$(xformat_time "$P_TIME_PREV_LOG" "$actual_time" " +")"
+	P_TIME_PREV_LOG="$actual_time"
+	message_log="$time_stamp$elapsed_time$input"
+	if xis_set "$echo_flag"; then
+		elapsed_time="$(xformat_time "$P_TIME_PREV_OUT" "$actual_time" " +")"
+		P_TIME_PREV_OUT="$actual_time"
+		message_out="$time_stamp$elapsed_time$input"
+	fi
 	if xis_unset "$P_FIRST_ECHO"; then
 		if xis_set "$echo_flag"; then
-			echo >&2 "$EP${message}"
+			echo >&2 "$EP${message_out}"
 		fi
-		echo "$message" >>"$WRAPPER_LOGFILE"
+		echo "$message_log" >>"$WRAPPER_LOGFILE"
 	else
 		P_FIRST_ECHO=
 		if xis_set "$XECHO_ENABLED" || xis_set "$XDEBUG_ENABLED"; then
 			echo >&2
 		fi
 		if xis_set "$echo_flag"; then
-			echo >&2 "$EP${message}"
+			echo >&2 "$EP${message_out}"
 		fi
 		echo >>"$WRAPPER_LOGFILE"
-		echo "$message" >>"$WRAPPER_LOGFILE"
+		echo "$message_log" >>"$WRAPPER_LOGFILE"
 	fi
 }
 
