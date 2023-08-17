@@ -911,7 +911,7 @@ function xfiles_copy() {
 				xecho "Uploading $count files: ${elements:2}"
 				local pkg="gzip -5"
 				if which pigz >/dev/null 2>&1; then
-					local pkg="pigz -p$(nproc) -9"
+					pkg="pigz -p$(nproc) -9"
 				fi
 				P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | $pkg - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
