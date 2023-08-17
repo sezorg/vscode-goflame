@@ -32,10 +32,16 @@ import sys
 
 
 class Config:
-    debugLevel = 0
-    verboseLevel = 0
-    rebaseChains = False
-    unprotectGit = True
+    def __init__(self):
+        self.debug_level = 0
+        self.verbose_level = 0
+        self.subject_enabled = False
+        self.rebase_chains = False
+        self.unprotect_git = True
+        self.master_branch = 'master'
+
+
+config = Config()
 
 
 class Colors:
@@ -58,12 +64,12 @@ class Colors:
 
 
 def debug(message):
-    if Config.debugLevel > 0:
+    if config.debug_level > 0:
         print(f'DEBUG: {message}')
 
 
 def verbose(message):
-    if Config.verboseLevel > 0:
+    if config.verbose_level > 0:
         print(f'VERBOSE: {message}')
 
 
@@ -83,6 +89,10 @@ def fatal(message):
 def remove_from_dict(dictionary, values):
     for value in values:
         del dictionary[value]
+
+
+def decorate(branch):
+    return f'\'{branch}\''
 
 
 def parse_arguments():
@@ -121,7 +131,7 @@ def parse_arguments():
     )
     parser.add_argument(
         '-r', '--rebase',
-        help='Rebase top level branches chains above the master',
+        help=f'Rebase top level branches chains above the {decorate(config.master_branch)}',
         required=False,
         action='store_true',
         default=False,
@@ -146,10 +156,10 @@ def parse_arguments():
     arguments.warnCount = 0
     if len(unknown_args) > 0:
         arguments.command = unknown_args[0]
-    Config.debugLevel = arguments.debug
-    Config.verboseLevel = arguments.verbose
-    Config.rebaseChains = arguments.rebase
-    Config.subjectEnabled = arguments.subject
+    config.debug_level = arguments.debug
+    config.verbose_level = arguments.verbose
+    config.rebase_chains = arguments.rebase
+    config.subject_enabled = arguments.subject
     return arguments
 
 
@@ -161,6 +171,7 @@ class Shell:
             params,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE)
+        debug(f'Exec {params}')
         stdout, stderr = proc.communicate()
         self.stdout = stdout.decode()
         self.stderr = stderr.decode()
@@ -182,10 +193,10 @@ class Shell:
 class GitConfig:
     def __init__(self):
         self.data = {}
-        config = Shell(['git', 'config', '--list'])
-        if not config.succed():
+        status = Shell(['git', 'config', '--list'])
+        if not status.succed():
             fatal('Unable to get Git configuration')
-        lines = config.stdout.split('\n')
+        lines = status.stdout.split('\n')
         for line in lines:
             pos = line.find('=')
             if pos >= 0:
@@ -244,6 +255,8 @@ class GerritTags:
         self.gerrit_port = []
         self.gerrit_project = ''
         self.state_list = []
+        self.state_by_rev = {}
+        self.containing_master = []
         debug(f'Gerrit filter: {self.filter}')
 
     def remove_branches(self):
@@ -256,7 +269,7 @@ class GerritTags:
             fatal('Failed to obtain current branch name')
         self.current_branch = status.stdout.strip()
         self.restore_branch = False
-        debug(f'Curent branch {self.current_branch} at {self.current_revision}')
+        debug(f'Curent branch {decorate(self.current_branch)} at {self.current_revision}')
         status = Shell(['git', 'branch', '--format', '%(refname:short)'])
         if not status.succed():
             fatal('Unable get Git branches')
@@ -270,11 +283,11 @@ class GerritTags:
                     status = Shell(['git', 'checkout', self.current_revision])
                     if not status.succed():
                         fatal(f'Failed to checkout to {self.current_revision}')
-                debug(f'Deleting local branch {branch_name}')
-                if Config.unprotectGit:
+                debug(f'Deleting local branch {decorate(branch_name)}')
+                if config.unprotect_git:
                     status = Shell(['git', 'branch', '-D', branch_name])
                     if not status.succed():
-                        fatal(f'Can not delete branch {branch_name}')
+                        fatal(f'Can not delete branch {decorate(branch_name)}')
                 self.branch_index += 1
 
     def git_cleanup(self):
@@ -404,33 +417,55 @@ class GerritTags:
                     if mode == 'currentPatchSetAdd' or state.patch_num != state.curr_num:
                         state.mode = mode
                         self.state_list.append(state)
+                        self.state_by_rev[state.revision] = state
+                        debug(f'Revision {state.revision} registered.')
                         state = State()
                 mode = ''
                 if self.patchsets:
                     mode = 'listPatchSets'
         return
 
+    def find_state_by_rev(self, revision):
+        if revision in self.state_by_rev:
+            return self.state_by_rev[revision]
+        debug(f'Revision {revision} not found.')
+        return None
+
     def create_branches(self):
-        state_by_rev = {}
-        for state in self.state_list:
-            state_by_rev[state.revision] = state
-            debug(f'Revision {state.revision} registered.')
         for state in self.state_list:
             if len(state.parents) != 1:
                 debug(f'Revision {state.revision} have no parent.')
                 continue
-            parent_rev = state.parents[0]
-            if not parent_rev in state_by_rev:
-                debug(f'Revision {parent_rev} not found.')
+            parent = self.find_state_by_rev(state.parents[0])
+            if not parent:
                 continue
-            parent = state_by_rev[parent_rev]
             parent.child_count += 1
             debug(f'Ref {parent.ref} child_count = {parent.child_count}')
-
         self.branch_index = 0
-        self.print_header()
         for state in self.state_list:
             self.create_branch(state.mode, state)
+        # list branches including master
+        status = Shell(['git', 'branch', '--contains', config.master_branch], True)
+        if not status.succed():
+            fatal(f'Failed to get list of branches containing '
+                  f'{decorate(config.master_branch)} branch.')
+        lines = status.stdout.split('\n')
+        line_count = len(lines)
+        line_index = 0
+        while line_index < line_count:
+            branch_name = lines[line_index]
+            line_index += 1
+            if branch_name.startswith('*'):
+                branch_name = branch_name[1:]
+            branch_name = branch_name.strip()
+            if branch_name.startswith(self.branch_prefix):
+                self.containing_master.append(branch_name)
+        debug(f'Branchprefix {decorate(self.branch_prefix)}')
+        debug(f'List of {decorate(config.master_branch)} branches: {self.containing_master}')
+        # print table of the branches created
+        self.print_header()
+        for state in self.state_list:
+            self.print_branch(state)
         self.print_header()
 
     def create_branch(self, mode, state) -> None:
@@ -449,7 +484,7 @@ class GerritTags:
         if self.email == '':
             entry_name += self.branch_separator + state.username
         branch_name = self.branch_prefix + entry_name + self.branch_postfix
-        if Config.subjectEnabled:
+        if config.subject_enabled:
             subject = re.sub(r'[^\w\s]', r'', ' ' + state.subject)
             branch_name += re.sub(r'[\s]', r'-', subject)
         state.branch_name = branch_name
@@ -460,27 +495,27 @@ class GerritTags:
                 fatal(f'Failed to fetch remote {state.ref} from {self.repository_url}')
             status = Shell(['git', 'branch', branch_name, state.revision], True)
             if not status.succed():
-                fatal(f'Failed to create branch  {branch_name} at {state.revision}')
+                fatal(f'Failed to create branch  {decorate(branch_name)} at {state.revision}')
         status = Shell(['git', 'config', 'branch.'+branch_name + '.description',
                         state.subject], True)
         if not status.succed():
-            fatal(f'Failed to set branch {branch_name} description.')
-        self.print_branch(state)
+            fatal(f'Failed to set branch {decorate(branch_name)} description.')
 
     def rebase_branches(self):
-        if not Config.rebaseChains:
+        if not config.rebase_chains:
             return
         rebase_list = []
         for state in self.state_list:
             if state.child_count != 0:
                 continue
-            debug(f'Rebasing branch {state.branch_name} to master')
+            debug(f'Rebasing branch {decorate(state.branch_name)} '
+                  f'to {decorate(config.master_branch)}')
             status = Shell(['git', 'switch', state.branch_name])
             if not status.succed():
-                fatal(f'Failed to switch to {state.branch_name} branch')
-            status = Shell(['git', 'rebase', '--update-refs', 'master'])
+                fatal(f'Failed to switch to {decorate(state.branch_name)} branch')
+            status = Shell(['git', 'rebase', '--update-refs', config.master_branch])
             if not status.succed():
-                fatal(f'Failed to rebase branch {state.branch_name}')
+                fatal(f'Failed to rebase branch {decorate(state.branch_name)}')
             if 'is up to date' not in status.stdout:
                 print(f'{status.stdout}')
                 rebase_list.append(state.branch_name)
@@ -489,25 +524,33 @@ class GerritTags:
             print('Use git push to update Git remotes.')
         else:
             print(f'{Colors.gray}There is nothing to rebase. '
-                  f'All branches seems already above the \'master\' branch.{Colors.nc}')
+                  f'All branches seems already above the {decorate(config.master_branch)}'
+                  f' branch.{Colors.nc}')
         return
 
     def checkout_branch(self):
+        debug(f'Checking out branch {decorate(self.current_branch)} '
+              f'revision {self.current_revision}')
         checked_out = False
         for state in self.state_list:
             if self.current_branch == state.branch_name or self.current_revision == state.revision:
-                debug(f'Checking out back to branch {state.branch_name} rev {state.revision}')
+                debug(f'Checking out back to branch {decorate(state.branch_name)} '
+                      f'revision {state.revision}')
                 status = Shell(['git', 'checkout', state.branch_name])
                 if not status.succed():
-                    fatal(f'Failed to checkout to {state.branch_name} branch')
+                    fatal(f'Failed to checkout to {decorate(state.branch_name)} branch')
                 checked_out = True
         if not checked_out:
-            if self.current_branch != 'HEAD':
-                warning(f'Unable to find local branch \'{self.current_branch}\''
+            known_branch = self.current_branch == 'HEAD' or \
+                self.current_branch == config.master_branch
+            chekout_target = self.current_branch
+            if not known_branch:
+                chekout_target = self.current_revision
+                warning(f'Unable to find local branch {decorate(self.current_branch)}'
                         f' with rev {self.current_revision}')
-            status = Shell(['git', 'checkout', self.current_revision])
+            status = Shell(['git', 'checkout', chekout_target])
             if not status.succed():
-                fatal(f'Failed to checkout to branch {self.current_branch}'
+                fatal(f'Failed to checkout to branch {decorate(self.current_branch)}'
                       f' revision {self.current_revision}')
 
     def print_header(self):
@@ -529,7 +572,7 @@ class GerritTags:
             subject = f'{subject}{width%10}'
             width += 1
         subject = Colors.nc + subject
-        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} -')
+        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} | ----- |')
 
     def print_branch(self, state):
         self.branch_index += 1
@@ -548,10 +591,11 @@ class GerritTags:
         branch = Colors.blue + self.branch_prefix + state.number + self.branch_postfix
         subject = state.subject
         info = ''
-        if state.child_count == 0:
-            info += Colors.blue + ' *'
-        if state.wip:
-            info += Colors.yellow + ' WIP'
+        post = Colors.nc + '  '
+        info += Colors.blue + ' *' if state.child_count == 0 else post
+        info += Colors.yellow + ' W' if state.wip else post
+        info += Colors.cyan + ' R' if state.branch_name not in self.containing_master else post
+        info += Colors.nc + ' |'
         while len(subject) < self.subject_limit:
             subject += ' '
         if len(subject) <= self.subject_limit:
@@ -561,8 +605,8 @@ class GerritTags:
                 subject = Colors.nc + subject
         else:
             info += Colors.red + f' [{len(subject)}>{self.subject_limit}]'
-            subject = Colors.red + subject
-        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} -'
+            subject = Colors.red + subject[:self.subject_limit-3] + '...'
+        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} |'
               f'{info}{Colors.nc}')
 
 
