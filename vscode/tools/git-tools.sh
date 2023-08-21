@@ -20,8 +20,8 @@ function gh() {
 	echo "gri: git rebase --interactive HEAD~\$1"
 	echo "grc: git rebase --continue"
 	echo "grm: git rebase --update-refs master"
+	echo "grx: git rebase --abort"
 	echo "gpc: git cherry-pick --continue"
-	echo "gx: git rebase --abort"
 	echo "gs: git status"
 	echo "ga: git add -u"
 	echo "gp: git push origin [HEAD:refs/for/master]"
@@ -48,12 +48,12 @@ function grm() {
 	git rebase --update-refs master
 }
 
-function gpc() {
-	git cherry-pick --continue
+function grx() {
+	git rebase --abort
 }
 
-function gx() {
-	git rebase --abort
+function gpc() {
+	git cherry-pick --continue
 }
 
 function gs() {
