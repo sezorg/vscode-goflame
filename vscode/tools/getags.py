@@ -325,9 +325,15 @@ class GerritTags:
         if not self.execute:
             print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
             return
+        status = Shell(['git', 'checkout', config.master_branch])
+        if not status.succed():
+            fatal(f'Failed to checkout to {decorate(config.master_branch)}')
         status = Shell(['git', 'fetch', self.repository_url])
         if not status.succed():
             fatal(f'Failed to fetch from {self.repository_url}')
+        status = Shell(['git', 'pull'])
+        if not status.succed():
+            fatal(f'Failed to pull {decorate(config.master_branch)} branch.')
         self.branch_index = 0
         if not self.peek_gerrit_project():
             fatal(f'Failed to retrieve Gerrit project configuration from {self.repository_url}')
@@ -508,6 +514,8 @@ class GerritTags:
         for state in self.state_list:
             if state.child_count != 0:
                 continue
+            if state.branch_name in self.containing_master:
+                continue
             debug(f'Rebasing branch {decorate(state.branch_name)} '
                   f'to {decorate(config.master_branch)}')
             status = Shell(['git', 'switch', state.branch_name])
@@ -516,9 +524,17 @@ class GerritTags:
             status = Shell(['git', 'rebase', '--update-refs', config.master_branch])
             if not status.succed():
                 fatal(f'Failed to rebase branch {decorate(state.branch_name)}')
-            if 'is up to date' not in status.stdout:
-                print(f'{status.stdout}')
+            text = status.stdout.strip()
+            if 'is up to date' not in text:
+                if text != '':
+                    print(f'{text}')
                 rebase_list.append(state.branch_name)
+            status = Shell(['git', 'push', 'origin', 'HEAD:refs/for/' + config.master_branch])
+            if not status.succed():
+                fatal(f'Failed push rebased branch {decorate(state.branch_name)}')
+            text = status.stdout.strip()
+            if text != '':
+                print(f'{text}')
         if len(rebase_list) != 0:
             print(f'{len(rebase_list)} branches rebased: {rebase_list}')
             print('Use git push to update Git remotes.')
