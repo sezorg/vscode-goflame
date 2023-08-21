@@ -43,11 +43,6 @@ DELETE_FILES+=(
 )
 
 # List of files to be copied, "source|target"
-if [[ "$TARGET_ARCH" != "arm" ]]; then
-	COPY_FILES+=(
-		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
-	)
-fi
 COPY_FILES+=(
 	#".vscode/data/onvifd_debug.service|:/usr/lib/systemd/system/onvifd_debug.service"
 	"$TARGET_BIN_SOURCE|:$TARGET_BIN_DESTIN"
@@ -55,6 +50,11 @@ COPY_FILES+=(
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	#"init/users.toml|:/var/lib/onvifd/users.toml"
 )
+if [[ "$TARGET_ARCH" != "arm" ]]; then
+	COPY_FILES+=(
+		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
+	)
+fi
 
 # Очистка кеша Golang
 CLEAN_GOCACHE=true
