@@ -38,6 +38,7 @@ class Config:
         self.subject_enabled = False
         self.rebase_chains = False
         self.unprotect_git = True
+        self.expire_unreachable = False
         self.master_branch = 'master'
 
 
@@ -137,6 +138,13 @@ def parse_arguments():
         default=False,
     )
     parser.add_argument(
+        '-e', '--expire-unreachable',
+        help='Prune unreachable reflog entries.',
+        required=False,
+        action='store_true',
+        default=False,
+    )
+    parser.add_argument(
         '-j', '--subject',
         help='Add subject/commit message to branches being created',
         required=False,
@@ -159,6 +167,7 @@ def parse_arguments():
     config.debug_level = arguments.debug
     config.verbose_level = arguments.verbose
     config.rebase_chains = arguments.rebase
+    config.expire_unreachable = arguments.expire_unreachable
     config.subject_enabled = arguments.subject
     return arguments
 
@@ -248,7 +257,6 @@ class GerritTags:
         self.branch_index = 0
         self.current_revision = ''
         self.current_branch = ''
-        self.restore_branch = ''
         self.subject_limit = 65
         self.username_limit = 12
         self.gerrit_host = ''
@@ -259,7 +267,7 @@ class GerritTags:
         self.containing_master = []
         debug(f'Gerrit filter: {self.filter}')
 
-    def remove_branches(self):
+    def resolve_current(self):
         status = Shell(['git', 'rev-parse', 'HEAD'])
         if not status.succed():
             fatal('Failed to obtain current revision')
@@ -268,17 +276,17 @@ class GerritTags:
         if not status.succed():
             fatal('Failed to obtain current branch name')
         self.current_branch = status.stdout.strip()
-        self.restore_branch = False
         debug(f'Curent branch {decorate(self.current_branch)} at {self.current_revision}')
+
+    def remove_branches(self):
         status = Shell(['git', 'branch', '--format', '%(refname:short)'])
         if not status.succed():
-            fatal('Unable get Git branches')
+            fatal('Unable get list of actual Git branches')
         branches = status.stdout.split('\n')
         self.branch_index = 0
         for branch_name in branches:
             if branch_name.startswith(self.branch_prefix):
                 if branch_name == self.current_branch:
-                    self.restore_branch = True
                     debug(f'Checking out to {self.current_revision}')
                     status = Shell(['git', 'checkout', self.current_revision])
                     if not status.succed():
@@ -290,13 +298,15 @@ class GerritTags:
                         fatal(f'Can not delete branch {decorate(branch_name)}')
                 self.branch_index += 1
 
-    def git_cleanup(self):
-        # status = Shell(['git', 'reflog', 'expire', '--expire-unreachable=all', '--all'])
-        # if not status.succed():
-        # fatal('Unable to run Git reflog expire')
-        # status = Shell(['git', 'gc', '--prune=now'])
-        # if not status.succed():
-        # fatal('Unable to run Git gc --prune=now')
+    def cleanup_pending(self):
+        if not config.expire_unreachable:
+            return
+        status = Shell(['git', 'reflog', 'expire', '--expire-unreachable=all'])  # --all
+        if not status.succed():
+            fatal('Unable to run Git reflog expire')
+        status = Shell(['git', 'gc', '--prune=now'])
+        if not status.succed():
+            fatal('Unable to run Git gc --prune=now')
         return
 
     def peek_gerrit_project(self):
@@ -321,7 +331,7 @@ class GerritTags:
             return False
         return False
 
-    def list_branches(self):
+    def obtain_branches(self):
         if not self.execute:
             print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
             return
@@ -635,12 +645,13 @@ def main():
         git_config.repository_url,
         arguments.command,
         arguments.patchsets)
-    gerrit_tags.list_branches()
+    gerrit_tags.resolve_current()
+    gerrit_tags.obtain_branches()
     gerrit_tags.remove_branches()
     gerrit_tags.create_branches()
     gerrit_tags.rebase_branches()
     gerrit_tags.checkout_branch()
-    gerrit_tags.git_cleanup()
+    gerrit_tags.cleanup_pending()
 
 
 if __name__ == '__main__':
