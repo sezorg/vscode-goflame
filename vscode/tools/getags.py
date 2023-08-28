@@ -40,6 +40,7 @@ class Config:
         self.unprotect_git = True
         self.expire_unreachable = False
         self.master_branch = 'master'
+        self.patch_number = -1
 
 
 config = Config()
@@ -124,6 +125,13 @@ def parse_arguments():
         default=0,
     )
     parser.add_argument(
+        '-u', '--patch-number',
+        help='The patch number to be checked out after all',
+        required=False,
+        type=int,
+        default=-1,
+    )
+    parser.add_argument(
         '-p', '--patchsets',
         help='List all patchets from Gerrit commits',
         required=False,
@@ -166,6 +174,7 @@ def parse_arguments():
         arguments.command = unknown_args[0]
     config.debug_level = arguments.debug
     config.verbose_level = arguments.verbose
+    config.patch_number = arguments.patch_number
     config.rebase_chains = arguments.rebase
     config.expire_unreachable = arguments.expire_unreachable
     config.subject_enabled = arguments.subject
@@ -555,18 +564,13 @@ class GerritTags:
         return
 
     def checkout_branch(self):
+        if config.patch_number != -1:
+            if self.checkout_to(str(config.patch_number), '', ''):
+                return
+            warning(f'Failed to check out to patch numver {config.patch_number}')
         debug(f'Checking out branch {decorate(self.current_branch)} '
               f'revision {self.current_revision}')
-        checked_out = False
-        for state in self.state_list:
-            if self.current_branch == state.branch_name or self.current_revision == state.revision:
-                debug(f'Checking out back to branch {decorate(state.branch_name)} '
-                      f'revision {state.revision}')
-                status = Shell(['git', 'checkout', state.branch_name])
-                if not status.succed():
-                    fatal(f'Failed to checkout to {decorate(state.branch_name)} branch')
-                checked_out = True
-        if not checked_out:
+        if not self.checkout_to('', self.current_branch, self.current_revision):
             known_branch = self.current_branch == 'HEAD' or \
                 self.current_branch == config.master_branch
             chekout_target = self.current_branch
@@ -578,6 +582,19 @@ class GerritTags:
             if not status.succed():
                 fatal(f'Failed to checkout to branch {decorate(self.current_branch)}'
                       f' revision {self.current_revision}')
+
+    def checkout_to(self, patch_number, branch_name, revision):
+        for state in self.state_list:
+            if patch_number == state.number or \
+                    branch_name == state.branch_name or \
+                    revision == state.revision:
+                debug(f'Checking out back to branch {decorate(state.branch_name)} '
+                      f'revision {state.revision}')
+                status = Shell(['git', 'checkout', state.branch_name])
+                if not status.succed():
+                    fatal(f'Failed to checkout to {decorate(state.branch_name)} branch')
+                return True
+        return False
 
     def print_header(self):
         if self.patchsets:
