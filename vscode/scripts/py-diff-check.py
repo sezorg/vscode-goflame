@@ -337,7 +337,10 @@ class BuiltinLintersRunner:
             offset += 1
             start = self.line_text[offset]
             if str.isalpha(start) and not str.islower(start):
-                self.output_message('Error strings should not be capitalized (wrapcheck)')
+                word = self.line_text[offset:].split()[0]
+                if len(word) == 1 or word.upper() != word:
+                    self.output_message(
+                        f'Error strings should not be capitalized: \'{word}\' (wrapcheck)')
         else:
             self.output_message(
                 'Unable to filed error string. Consider to use one-line expression (wrapcheck)')
