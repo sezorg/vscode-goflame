@@ -556,7 +556,6 @@ class GerritTags:
                 print(f'{text}')
         if len(rebase_list) != 0:
             print(f'{len(rebase_list)} branches rebased: {rebase_list}')
-            print('Use git push to update Git remotes.')
         else:
             print(f'{Colors.gray}There is nothing to rebase. '
                   f'All branches seems already above the {decorate(config.master_branch)}'
