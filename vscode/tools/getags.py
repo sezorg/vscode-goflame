@@ -94,7 +94,7 @@ def remove_from_dict(dictionary, values):
 
 
 def decorate(branch):
-    return f'\'{branch}\''
+    return f'{Colors.blue}\'{branch}\'{Colors.nc}'
 
 
 def parse_arguments():
@@ -274,6 +274,7 @@ class GerritTags:
         self.state_list = []
         self.state_by_rev = {}
         self.containing_master = []
+        self.repeat_refresh = False
         debug(f'Gerrit filter: {self.filter}')
 
     def resolve_current(self):
@@ -529,14 +530,24 @@ class GerritTags:
     def rebase_branches(self):
         if not config.rebase_chains:
             return
-        rebase_list = []
+        state_list = []
+        names_list = []
         for state in self.state_list:
             if state.child_count != 0:
                 continue
             if state.branch_name in self.containing_master:
                 continue
-            debug(f'Rebasing branch {decorate(state.branch_name)} '
-                  f'to {decorate(config.master_branch)}')
+            state_list.append(state)
+            names_list.append(state.branch_name)
+        if len(state_list) == 0:
+            print(f'{Colors.gray}There is nothing to rebase. '
+                  f'All branches seems already above the {Colors.nc}'
+                  f'{decorate(config.master_branch)}{Colors.gray} branch.{Colors.nc}')
+            return
+        print(f'Rebasing {len(state_list)} branches...')
+        for state in state_list:
+            print(f'Rebasing branch {decorate(state.branch_name)} '
+                  f'above the {decorate(config.master_branch)}')
             status = Shell(['git', 'switch', state.branch_name])
             if not status.succed():
                 fatal(f'Failed to switch to {decorate(state.branch_name)} branch')
@@ -547,19 +558,14 @@ class GerritTags:
             if 'is up to date' not in text:
                 if text != '':
                     print(f'{text}')
-                rebase_list.append(state.branch_name)
             status = Shell(['git', 'push', 'origin', 'HEAD:refs/for/' + config.master_branch])
             if not status.succed():
                 fatal(f'Failed push rebased branch {decorate(state.branch_name)}')
             text = status.stdout.strip()
             if text != '':
                 print(f'{text}')
-        if len(rebase_list) != 0:
-            print(f'{len(rebase_list)} branches rebased: {rebase_list}')
-        else:
-            print(f'{Colors.gray}There is nothing to rebase. '
-                  f'All branches seems already above the {decorate(config.master_branch)}'
-                  f' branch.{Colors.nc}')
+        print(f'{len(names_list)} branches rebased: {names_list}')
+        self.repeat_refresh = True
         return
 
     def checkout_branch(self):
@@ -656,18 +662,22 @@ def main():
     arguments = parse_arguments()
     git_config = GitConfig()
     debug(f'{git_config.user_email}, {arguments.command}')
-    gerrit_tags = GerritTags(
-        git_config.user_email,
-        git_config.repository_url,
-        arguments.command,
-        arguments.patchsets)
-    gerrit_tags.resolve_current()
-    gerrit_tags.obtain_branches()
-    gerrit_tags.remove_branches()
-    gerrit_tags.create_branches()
-    gerrit_tags.rebase_branches()
-    gerrit_tags.checkout_branch()
-    gerrit_tags.cleanup_pending()
+    while True:
+        gerrit_tags = GerritTags(
+            git_config.user_email,
+            git_config.repository_url,
+            arguments.command,
+            arguments.patchsets)
+        gerrit_tags.resolve_current()
+        gerrit_tags.obtain_branches()
+        gerrit_tags.remove_branches()
+        gerrit_tags.create_branches()
+        gerrit_tags.rebase_branches()
+        gerrit_tags.checkout_branch()
+        gerrit_tags.cleanup_pending()
+        if not gerrit_tags.repeat_refresh:
+            break
+    return
 
 
 if __name__ == '__main__':
