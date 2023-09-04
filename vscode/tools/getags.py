@@ -47,12 +47,13 @@ config = Config()
 
 
 class Colors:
+    nc = '\033[0m'
+    pf = '\033['
     red = '\033[31m'
     green = '\033[32m'
     yellow = '\033[33m'
     blue = '\033[34m'
     gray = '\033[90m'
-    nc = '\033[0m'
     cregexp = r's/\033\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g'
     header = '\033[95m'
 # blue = '\033[94m'
@@ -63,11 +64,30 @@ class Colors:
     endc = '\033[0m'
     bold = '\033[1m'
     under = '\033[4m'
+    white_bg = '\033[1;47m'
+    black = '\033[0;30m'
 
 
 def debug(message):
     if config.debug_level > 0:
         print(f'DEBUG: {message}')
+
+
+def purify(message):
+    return message.replace(Colors.pf, '\\033[')
+
+
+def colorize(color, message):
+    if message.find(Colors.pf) < 0:
+        return color+message+Colors.nc
+    print(color+message.replace(Colors.nc, color).removesuffix(color)+Colors.nc)
+
+
+def inverse(message):
+    prefix = Colors.black+Colors.white_bg+'\033[2m'
+    message = message.replace(Colors.nc, prefix)
+    message = prefix + Colors.bold + message + Colors.nc
+    return message
 
 
 def verbose(message):
@@ -76,15 +96,15 @@ def verbose(message):
 
 
 def warning(message):
-    print(f'{Colors.yellow}WARNING: {message}{Colors.nc}')
+    colorize(Colors.yellow, f'WARNING: {message}')
 
 
 def error(message):
-    print(f'{Colors.red}ERROR: {message}{Colors.nc}')
+    colorize(Colors.red, f'ERROR: {message}')
 
 
 def fatal(message):
-    print(f'{Colors.red}FATAL: {message}{Colors.nc}')
+    colorize(Colors.red, f'FATAL: {message}')
     sys.exit()
 
 
@@ -267,7 +287,6 @@ class GerritTags:
         self.current_revision = ''
         self.current_branch = ''
         self.subject_limit = 65
-        self.username_limit = 12
         self.gerrit_host = ''
         self.gerrit_port = []
         self.gerrit_project = ''
@@ -458,7 +477,10 @@ class GerritTags:
         return None
 
     def create_branches(self):
+        username_len = 0
         for state in self.state_list:
+            if username_len < len(state.username):
+                username_len = len(state.username)
             if len(state.parents) != 1:
                 debug(f'Revision {state.revision} have no parent.')
                 continue
@@ -489,10 +511,10 @@ class GerritTags:
         debug(f'Branchprefix {decorate(self.branch_prefix)}')
         debug(f'List of {decorate(config.master_branch)} branches: {self.containing_master}')
         # print table of the branches created
-        self.print_header()
+        self.print_header(username_len)
         for state in self.state_list:
-            self.print_branch(state)
-        self.print_header()
+            self.print_branch(state, username_len)
+        self.print_header(username_len)
 
     def create_branch(self, mode, state) -> None:
         if self.email not in ('', state.email):
@@ -601,7 +623,7 @@ class GerritTags:
                 return True
         return False
 
-    def print_header(self):
+    def print_header(self, username_len):
         if self.patchsets:
             index = f'{Colors.gray}---'
         else:
@@ -609,9 +631,9 @@ class GerritTags:
         user_name = ''
         if self.email == '':
             user_name = 'user'
-            while len(user_name) < self.username_limit:
+            while len(user_name) < username_len:
                 user_name = '-' + user_name + '-'
-            user_name = Colors.nc + ' ' + user_name[:self.username_limit]
+            user_name = Colors.nc + ' ' + user_name[:username_len]
         revision = Colors.green + '--sha1--'
         branch = Colors.blue + '--id---'
         subject = ''
@@ -622,7 +644,7 @@ class GerritTags:
         subject = Colors.nc + subject
         print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} | ----- |')
 
-    def print_branch(self, state):
+    def print_branch(self, state, username_len):
         self.branch_index += 1
         index = ''
         if self.patchsets:
@@ -633,7 +655,7 @@ class GerritTags:
         user_name = ''
         if self.email == '':
             user_name = state.username
-            while len(user_name) < self.username_limit:
+            while len(user_name) < username_len:
                 user_name = ' ' + user_name
             user_name = Colors.nc + ' ' + user_name
         branch = Colors.blue + self.branch_prefix + state.number + self.branch_postfix
@@ -654,14 +676,17 @@ class GerritTags:
         else:
             info += Colors.red + f' [{len(subject)}>{self.subject_limit}]'
             subject = Colors.red + subject[:self.subject_limit-3] + '...'
-        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} |'
-              f'{info}{Colors.nc}')
+        text = f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} |{info}{Colors.nc}'
+        if self.current_branch == state.branch_name or \
+                self.current_revision == state.revision:
+            text = inverse(text)
+        print(text)
 
 
 def main():
     arguments = parse_arguments()
     git_config = GitConfig()
-    debug(f'{git_config.user_email}, {arguments.command}')
+    debug(f'user_email={git_config.user_email}, command={arguments.command}')
     while True:
         gerrit_tags = GerritTags(
             git_config.user_email,
