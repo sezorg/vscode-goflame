@@ -12,6 +12,7 @@ if [[ "$instance_guard" == "" ]]; then
 			if [[ "$status" != "155" ]]; then
 				exit "$status"
 			fi
+			sleep 2
 		else
 			usleep 500000
 		fi
