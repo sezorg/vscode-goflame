@@ -364,7 +364,8 @@ class GerritTags:
         if not self.execute:
             print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
             return
-        status = Shell(['git', 'checkout', config.master_branch])
+        status = Shell(['git', 'checkout', '-B', config.master_branch,
+                       'origin/'+config.master_branch])
         if not status.succed():
             fatal(f'Failed to checkout to {decorate(config.master_branch)}')
         status = Shell(['git', 'fetch', self.repository_url])
