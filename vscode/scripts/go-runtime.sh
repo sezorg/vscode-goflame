@@ -32,6 +32,14 @@ function xis_ne() {
 	[[ "$1" != "$2" ]]
 }
 
+function xis_exists() {
+	[[ -f "$*" ]]
+}
+
+function xis_ipv4() {
+	[[ "$*" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
 function xtime() {
 	date +%s.%N
 }
@@ -88,7 +96,7 @@ function xat_error() {
 
 trap 'xat_error $LINENO' ERR
 
-if [[ ! -f "$HOME/.shellcheckrc" ]]; then
+if ! xis_exists "$HOME/.shellcheckrc"; then
 	echo "external-sources=true" >"$HOME/.shellcheckrc"
 fi
 
@@ -135,6 +143,7 @@ xunreferenced "$DT" "$CE" "$EP"
 
 TARGET_ARCH=""
 TARGET_GOCXX=""
+TARGET_DOMAIN="UNKNOWN-TARGET_DOMAIN"
 TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
 TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
@@ -144,6 +153,9 @@ TARGET_BIN_SOURCE=""
 TARGET_BIN_DESTIN=""
 TARGET_EXEC_ARGS=()
 TARGET_SUPRESS_MSSGS=()
+
+TARGET_BUILD_GOFLAGS=()
+TARGET_BUILD_LDFLAGS=()
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -220,12 +232,12 @@ CAMERA_FEATURES_ON=()
 CAMERA_FEATURES_OFF=()
 
 P_CONFIG_INI_LOADED=true
-if [[ -f "$SCRIPT_DIR/../config.ini" ]]; then
+if xis_exists "$SCRIPT_DIR/../config.ini"; then
 	# shellcheck disable=SC1091
 	source "$SCRIPT_DIR/../config.ini"
 	P_CONFIG_INI_LOADED=true
 fi
-if [[ -f "$SCRIPT_DIR/../config-user.ini" ]]; then
+if xis_exists "$SCRIPT_DIR/../config-user.ini"; then
 	# shellcheck disable=SC1091
 	source "$SCRIPT_DIR/../config-user.ini"
 	P_CONFIG_INI_LOADED=true
@@ -315,21 +327,8 @@ if xis_false "$P_CONFIG_INI_LOADED"; then
 	xfatal "See documentation for more details."
 fi
 
-cat <<EOF >"$TEMP_DIR/config-vscode.ini"
-# Machine generated file. Do not modify.
-TARGET_IPADDR=$TARGET_IPADDR
-TARGET_IPPORT=$TARGET_IPPORT
-TARGET_USER=$TARGET_USER
-TARGET_PASS=$TARGET_PASS
-EOF
-
 BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
 BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
-
-TARGET_BUILD_GOFLAGS=("-gcflags=\"-N -l\"")
-TARGET_BUILD_LDFLAGS=("-X main.currentVersion=custom")
-TARGET_BUILD_LDFLAGS+=("-X main.sysConfDir=/etc")
-TARGET_BUILD_LDFLAGS+=("-X main.localStateDir=/var")
 
 TARGET_BUILD_FLAGS=("${TARGET_BUILD_GOFLAGS[@]}")
 if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
@@ -372,9 +371,9 @@ xunreferenced \
 	"$DLOOP_RESTART_FILE"
 
 if xis_unset "$TARGET_ARCH"; then
-	if [[ -f "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc" ]]; then
+	if xis_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
 		TARGET_ARCH="arm"
-	elif [[ -f "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc" ]]; then
+	elif xis_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
 		TARGET_ARCH="arm64"
 	else
 		xfatal "Can not determine target architecture from BUILDROOT_DIR: $BUILDROOT_DIR."
@@ -638,6 +637,76 @@ function xfunset() {
 	unset "P_OPTIONS_STACK[-1]"
 }
 
+P_CACHE_SALT=$(date -r "$0" "+%m-%d-%Y %H:%M:%S")
+P_CACHE_SALT="$P_CACHE_SALT$PWD$TARGET_ARCH$TARGET_GOCXX$BUILDROOT_DIR"
+P_CACHE_SALT="$P_CACHE_SALT$TARGET_DOMAIN$TARGET_IPADDR$TARGET_IPPORT$TARGET_USER$TARGET_PASS"
+P_CACHE_SALT=$(echo -n "$P_CACHE_SALT" | md5sum)
+P_CACHE_SALT="${P_CACHE_SALT:0:32}"
+
+function xcache_text_hash() {
+	local string_hash
+	string_hash=$(md5sum <<<"$1${P_CACHE_SALT}")
+	string_hash="${string_hash:0:32}"
+	echo "$string_hash"
+}
+
+function xcache_file_hash() {
+	local file_hash
+	file_hash=$(md5sum "$1")
+	file_hash="${file_hash:0:32}"
+	echo "$file_hash-$P_CACHE_SALT"
+}
+
+function xcache_put() {
+	echo "$2" >"$P_CACHE_DIR/$1"
+}
+
+function xcache_get() {
+	cat "$P_CACHE_DIR/$1" 2>/dev/null
+}
+
+function xresolve_target_config() {
+	TARGET_HOSTNAME="$TARGET_IPADDR"
+	local cache_name="__config_vscode.hash" data_hash config_path="$TEMP_DIR/config-vscode.ini"
+	data_hash=$(xcache_text_hash "$config_path")
+	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
+		xdebug "Creating target config for $TARGET_IPADDR..."
+		if ! xis_ipv4 "$TARGET_IPADDR"; then
+			local hostnames=("$TARGET_IPADDR.$TARGET_DOMAIN" "$TARGET_IPADDR") found=false
+			for hostname in "${hostnames[@]}"; do
+				xexec "$P_CANFAIL" getent hosts "$hostname" "|" awk "'{ print \$1 ; exit }'"
+				if xis_eq "$EXEC_STATUS" "0" && xis_ipv4 "$EXEC_STDOUT"; then
+					TARGET_IPADDR="$EXEC_STDOUT"
+					TARGET_HOSTNAME="$hostname"
+					found=true
+					break
+				fi
+			done
+			if xis_false "$found"; then
+				xfatal "Unable resolve IP for target '$TARGET_IPADDR'."
+			fi
+		fi
+		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
+		cat <<EOF >"$TEMP_DIR/config-vscode.ini"
+# Machine generated file. Do not modify.
+TARGET_IPADDR=$TARGET_IPADDR
+TARGET_IPPORT=$TARGET_IPPORT
+TARGET_HOSTNAME=$TARGET_HOSTNAME
+TARGET_USER=$TARGET_USER
+TARGET_PASS=$TARGET_PASS
+EOF
+		xcache_put "$cache_name" "$data_hash"
+	fi
+	# shellcheck disable=SC1090
+	source "$config_path"
+	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
+	if xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
+		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
+	fi
+}
+
+xresolve_target_config
+
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
@@ -793,31 +862,6 @@ function xclean_directory() {
 	fi
 }
 
-P_CACHE_SALT=$(echo -n "$PWD${TARGET_ARCH}$TARGET_GOCXX${BUILDROOT_DIR}$TARGET_IPADDR" | md5sum)
-P_CACHE_SALT="${P_CACHE_SALT:0:32}"
-
-function xcache_shash() {
-	local string_hash
-	string_hash=$(md5sum <<<"$1${P_CACHE_SALT}")
-	string_hash="${string_hash:0:32}"
-	echo "$string_hash"
-}
-
-function xcache_fhash() {
-	local file_hash
-	file_hash=$(md5sum "$1")
-	file_hash="${file_hash:0:32}"
-	echo "$file_hash-$P_CACHE_SALT"
-}
-
-function xcache_put() {
-	echo "$2" >"$P_CACHE_DIR/$1"
-}
-
-function xcache_get() {
-	cat "$P_CACHE_DIR/$1" 2>/dev/null
-}
-
 # shellcheck disable=SC2120
 function xfiles_copy() {
 	# Copy files from COPY_FILES
@@ -860,9 +904,9 @@ function xfiles_copy() {
 				if xis_eq "$prefA" "?"; then
 					fileA="${fileA:1}"
 				fi
-				if [[ -f "$PWD/$fileA" ]]; then
+				if xis_exists "$PWD/$fileA"; then
 					fileA="$PWD/$fileA"
-				elif [[ -f "$fileA" ]]; then
+				elif xis_exists "$fileA"; then
 					:
 				elif xis_eq "$prefA" "?"; then
 					xecho "File \"$fileA\" does not exists, skipping"
@@ -873,8 +917,8 @@ function xfiles_copy() {
 				fi
 
 				local name_hash file_hash
-				name_hash=$(xcache_shash "$fileA")
-				file_hash=$(xcache_fhash "$fileA")
+				name_hash=$(xcache_text_hash "$fileA")
+				file_hash=$(xcache_file_hash "$fileA")
 				#xecho "$name_hash :: $file_hash"
 
 				if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
@@ -1073,7 +1117,7 @@ function xtest_installed() {
 	local enable_key="$1"
 	local binary="$2"
 	local instructions="$3"
-	if [[ ! -f "$binary" ]]; then
+	if ! xis_exists "$binary"; then
 		xerror "Reqired binary '$(basename -- "$binary")' is not installed."
 		xerror "To disable this feature set $enable_key=false in 'config-user.ini'."
 		xfatal "Check installation instructions: $instructions"
@@ -1145,8 +1189,8 @@ function xcheck_project() {
 		xtext "$EXEC_STDOUT"
 		xtext "$EXEC_STDERR"
 		xload_lint_state
-		name_hash=$(xcache_shash "$dir_hash")
-		file_hash=$(xcache_fhash "$dir_hash")
+		name_hash=$(xcache_text_hash "$dir_hash")
+		file_hash=$(xcache_file_hash "$dir_hash")
 		#xecho "$name_hash :: $file_hash"
 		if xis_ne "$(xcache_get "$name_hash")" "$file_hash" || xis_true "$CLEAN_GOCACHE"; then
 			xreset_lint_state
@@ -1343,7 +1387,7 @@ function xtruncate_text_file() {
 	local name="$1"
 	local limit="$2"
 	local target="$3"
-	if [[ ! -f "$name" ]]; then
+	if ! xis_exists "$name"; then
 		return 0
 	fi
 	local actual
@@ -1409,7 +1453,7 @@ function xistall_ssh_key() {
 	fi
 	local key_a="$HOME/.ssh/goflame-key"
 	local key_b="$HOME/.ssh/goflame-key.pub"
-	if [[ ! -f "$key_a" ]] || [[ ! -f "$key_b" ]]; then
+	if ! xis_exists "$key_a" || ! xis_exists "$key_b"; then
 		xexec rm -f "$key_a" "$key_b"
 		xexec ssh-keygen -t ed25519 -C "goflame@elvees.com" -P "\"\"" -f "$key_a"
 	fi
