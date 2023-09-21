@@ -194,6 +194,8 @@ LLENCHECK_TABWIDTH=4
 LLENCHECK_LIMIT=100
 LLENCHECK_FILTER=true
 LLENCHECK_FAIL=true
+PRECOMMIT_ENABLE=false
+PRECOMMIT_FAIL=true
 
 INSTALL_SSH_KEY=false
 
@@ -1128,22 +1130,25 @@ P_GOLANGCI_LINT_DONE=false
 P_STATICCHECK_DONE=false
 P_GO_VET_DONE=false
 P_LLENCHECK_DONE=false
+P_PRECOMMIT_DONE=false
 
 function xreset_lint_state() {
 	P_GOLANGCI_LINT_DONE=false
 	P_STATICCHECK_DONE=false
 	P_GO_VET_DONE=false
 	P_LLENCHECK_DONE=false
+	P_PRECOMMIT_DONE=false
 }
 
 function xload_lint_state() {
 	local state=()
 	IFS=' ' read -r -a state <<<"$(cat "$P_CACHE_DIR/__linters_result.state" 2>/dev/null)"
-	if xis_eq "${#state[@]}" "4"; then
+	if xis_eq "${#state[@]}" "5"; then
 		P_GOLANGCI_LINT_DONE="${state[0]}"
 		P_STATICCHECK_DONE="${state[1]}"
 		P_GO_VET_DONE="${state[2]}"
 		P_LLENCHECK_DONE="${state[3]}"
+		P_PRECOMMIT_DONE="${state[4]}"
 	else
 		xreset_lint_state
 	fi
@@ -1159,6 +1164,7 @@ function xsave_lint_state() {
 		"$P_STATICCHECK_DONE"
 		"$P_GO_VET_DONE"
 		"$P_LLENCHECK_DONE"
+		"$P_PRECOMMIT_DONE"
 	)
 	echo "${state[@]}" >"$P_CACHE_DIR/__linters_result.state"
 }
@@ -1182,7 +1188,8 @@ function xcheck_project() {
 	local name_hash="" file_hash="" dir_hash="$P_CACHE_DIR/__project_checklist.log"
 	local diff_filter_args=() diff_filter_command=""
 	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
-		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE"; then
+		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE" ||
+		xis_true "$PRECOMMIT_ENABLE"; then
 		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
 			-not -path "\"./.git/*\"" -exec date -r {} \
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
@@ -1198,7 +1205,8 @@ function xcheck_project() {
 		if xis_true "$P_GOLANGCI_LINT_DONE" &&
 			xis_true "$P_STATICCHECK_DONE" &&
 			xis_true "$P_GO_VET_DONE" &&
-			xis_true "$P_LLENCHECK_DONE"; then
+			xis_true "$P_LLENCHECK_DONE" &&
+			xis_true "$P_PRECOMMIT_DONE"; then
 			return 0
 		fi
 		export PYTHONPYCACHEPREFIX="$TEMP_DIR/pycache"
@@ -1294,6 +1302,11 @@ function xcheck_project() {
 				-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
 		fi
 		xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
+	fi
+	if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
+		xecho "Running $(xdecorate pre-commit-checks) check on $(xdecorate "$project_name")"
+		xexec "$P_CANFAIL" "pre-commit" "run" -a
+		xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
 	fi
 	xsave_lint_state
 }
