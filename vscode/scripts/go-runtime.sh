@@ -1304,6 +1304,8 @@ function xcheck_project() {
 		xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
 	fi
 	if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
+		local project_name
+		project_name="$(basename -- "$PWD")"
 		xecho "Running $(xdecorate pre-commit-checks) check on $(xdecorate "$project_name")"
 		xexec "$P_CANFAIL" "pre-commit" "run" -a
 		xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
