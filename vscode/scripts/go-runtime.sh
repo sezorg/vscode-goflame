@@ -160,6 +160,7 @@ TARGET_BUILD_LDFLAGS=()
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
+REBUILD_FORCE_LINTERS=true
 GOLANGCI_LINT_ENABLE=false
 GOLANGCI_LINT_LINTERS=(
 	"all"
@@ -763,6 +764,15 @@ function xperform_build_and_deploy() {
 		fi
 		shift
 	done
+
+	if xis_true "$frebuild" && xis_true "$REBUILD_FORCE_LINTERS"; then
+		CLEAN_GOCACHE=true
+		GOLANGCI_LINT_FILTER=true
+		STATICCHECK_ENABLE=true
+		GO_VET_ENABLE=true
+		LLENCHECK_ENABLE=true
+		PRECOMMIT_ENABLE=true
+	fi
 
 	xecho "$*"
 	if xis_true "$fbuild"; then
