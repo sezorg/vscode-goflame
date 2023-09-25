@@ -57,7 +57,7 @@ if [[ "$TARGET_ARCH" != "arm" ]]; then
 fi
 
 # Очистка кеша Golang
-CLEAN_GOCACHE=true
+#CLEAN_GOCACHE=true
 
 # Disable chache then building workspace.
 COPY_CACHE=n

@@ -766,7 +766,6 @@ function xperform_build_and_deploy() {
 	done
 
 	if xis_true "$frebuild" && xis_true "$REBUILD_FORCE_LINTERS"; then
-		CLEAN_GOCACHE=true
 		GOLANGCI_LINT_FILTER=true
 		STATICCHECK_ENABLE=true
 		GO_VET_ENABLE=true
@@ -1120,8 +1119,9 @@ function xclean_gocache() {
 		return 0
 	fi
 	P_GOCACHE_CLEANED=true
-	export GOCACHE="$TEMP_DIR/gocache"
+	xecho "Cleaning Go compiler & linters cache..."
 	xclean_directory "$GOCACHE"
+	xclean_directory "$HOME/.cache/go-build"
 	xexec go clean -cache
 }
 
