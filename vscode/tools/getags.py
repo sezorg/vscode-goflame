@@ -554,14 +554,12 @@ class GerritTags:
         if not config.rebase_chains:
             return
         state_list = []
-        names_list = []
         for state in self.state_list:
             if state.child_count != 0:
                 continue
             if state.branch_name in self.containing_master:
                 continue
             state_list.append(state)
-            names_list.append(state.branch_name)
         if len(state_list) == 0:
             print(f'{Colors.gray}There is nothing to rebase. '
                   f'All branches seems already above the {Colors.nc}'
@@ -587,7 +585,7 @@ class GerritTags:
             text = status.stdout.strip()
             if text != '':
                 print(f'{text}')
-        print(f'{len(names_list)} branches rebased: {names_list}')
+        print(f'{len(state_list)} branches rebased.')
         self.repeat_refresh = True
         return
 
