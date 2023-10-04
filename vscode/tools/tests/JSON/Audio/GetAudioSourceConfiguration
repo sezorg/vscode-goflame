@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"ConfigurationToken":"asc-1"
+}
+DELIMITER
+)
+json_test media/GetAudioSourceConfiguration

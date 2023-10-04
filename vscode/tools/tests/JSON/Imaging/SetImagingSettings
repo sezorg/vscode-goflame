@@ -1,0 +1,24 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+    "VideoSourceToken": "src",
+    "ImagingSettings": {
+        "WhiteBalance": {
+            "Mode": "AUTO"
+        },
+        "IrCutFilter": "ON",
+        "Focus": {
+            "AutoFocusMode": "MANUAL",
+            "DefaultSpeed": 100,
+            "NearLimit": 1,
+            "FarLimit": 2
+        }
+    }
+}
+DELIMITER
+)
+json_test imaging/SetImagingSettings

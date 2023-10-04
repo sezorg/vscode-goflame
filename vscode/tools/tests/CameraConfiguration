@@ -1,0 +1,80 @@
+#!/bin/bash
+
+BASE=$(realpath "$(dirname "$PWD/${BASH_SOURCE[0]}")")
+IP=10.113.11.65
+ARGS=()
+
+if [[ -f "$BASE/../../config.ini" ]]; then
+	source "$BASE/../../config.ini"
+	IP="$TARGET_IPADDR"
+fi
+if [[ -f "$BASE/../../config-user.ini" ]]; then
+	source "$BASE/../../config-user.ini"
+	IP="$TARGET_IPADDR"
+fi
+
+function log() {
+	echo "$*"
+}
+
+function error() {
+	echo "ERROR: $*"
+}
+
+function fatal() {
+	error "$*"
+	exit 1
+}
+
+function parse_args() {
+	for arg_pair in "${ARGS[@]}"; do
+		log "$arg_pair"
+		IFS='='
+		# shellcheck disable=SC2206
+		arg_items=($arg_pair)
+		unset IFS
+		if [[ "${#arg_items[@]}" != "2" ]]; then
+			fatal "Invalid argument entry: \"$arg_pair\""
+		fi
+		local arg_name="${arg_items[0]}"
+		local arg_default="${arg_items[1]}"
+		export "json_$arg_name"="$arg_default"
+	done
+
+	eval "text=\"$JSON\""
+	echo "$text"
+
+	exit 0
+}
+
+function print_json() {
+	local type="$1"
+	shift
+	local json_text="$*" decoded="" status=""
+	decoded=$(echo "$json_text" | jq 2>&1)
+	status=$(echo "$decoded" | grep "parse error:")
+	if [[ "$status" != "" ]]; then
+		error "Malformed JSON $type."
+		error "Json: $decoded"
+		fatal "Text: $json_text"
+	fi
+	echo "$json_text" | jq
+	return 0
+}
+
+function json_test() {
+	#parse_args
+	local service method output status decoded
+	service="$(dirname "$1")"
+	method="$(basename -- "$1")"
+	log "$IP: $service.$method()"
+	log "IN:"
+	print_json "request" "$JSON"
+	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
+	status=$(echo "$output" | grep "No route to host")
+	if [[ "$status" != "" ]]; then
+		fatal "IP $IP: No route to host."
+	fi
+	log "OUT:"
+	print_json "response" "$output"
+}

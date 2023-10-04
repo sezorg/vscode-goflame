@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"VideoSourceToken":"src"
+}
+DELIMITER
+)
+json_test imaging/GetImagingSettings

@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Remove": true
+}
+DELIMITER
+)
+json_test media/StartUploadAudio

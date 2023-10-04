@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Mode": "Repeat"
+}
+DELIMITER
+)
+json_test media/PlayUploadedAudio
