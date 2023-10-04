@@ -320,17 +320,39 @@ class BuiltinLintersRunner:
                 return
             self.output_message('Maximum line length exceeded '
                                 f'({length} > {Config.lineLengthLimit}) (lll)')
-        # wrapcheck
-        error_cheks = ["fmt.Error", "errors.Wrap", "errors.New", "errors.Error"]
+        self.process_wrapcheck()
+        self.process_deprecheck()
+        return
+
+    def process_deprecheck(self):
+        type_id = 'deprecheck'
+        check_list = ['errors.Wrap']
         offset = - 1
-        for check in error_cheks:
+        check = ''
+        for check in check_list:
             offset = self.line_text.find(check)
             if offset >= 0:
                 break
         if offset < 0:
             return False
-        if self.is_supressed('wrapcheck'):
+        if self.is_supressed(type_id):
             return
+        self.output_message(f'Use of method is deprecated: \'{check}\' ({type_id})')
+        return
+
+    def process_wrapcheck(self):
+        type_id = 'wrapcheck'
+        check_list = ['fmt.Error', 'errors.Wrap', 'errors.New', 'errors.Error']
+        offset = - 1
+        for check in check_list:
+            offset = self.line_text.find(check)
+            if offset >= 0:
+                break
+        if offset < 0:
+            return False
+        if self.is_supressed(type_id):
+            return
+        length = len(self.line_text)
         while offset < length and self.line_text[offset] != '"':
             offset += 1
         if offset < length - 1 and self.line_text[offset] == '"':
@@ -340,10 +362,10 @@ class BuiltinLintersRunner:
                 word = self.line_text[offset:].split()[0]
                 if len(word) == 1 or word.upper() != word:
                     self.output_message(
-                        f'Error strings should not be capitalized: \'{word}\' (wrapcheck)')
+                        f'Error strings should not be capitalized: \'{word}\' ({type_id})')
         else:
             self.output_message(
-                'Unable to filed error string. Consider to use one-line expression (wrapcheck)')
+                f'Unable to filed error string. Consider to use one-line expression ({type_id})')
         return
 
     def is_supressed(self, supress):
