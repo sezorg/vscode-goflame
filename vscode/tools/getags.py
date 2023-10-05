@@ -80,7 +80,7 @@ def purify(message):
 def colorize(color, message):
     if message.find(Colors.pf) < 0:
         return color+message+Colors.nc
-    print(color+message.replace(Colors.nc, color).removesuffix(color)+Colors.nc)
+    return color+message.replace(Colors.nc, color).removesuffix(color)+Colors.nc
 
 
 def inverse(message):
@@ -96,15 +96,15 @@ def verbose(message):
 
 
 def warning(message):
-    colorize(Colors.yellow, f'WARNING: {message}')
+    print(colorize(Colors.yellow, f'WARNING: {message}'))
 
 
 def error(message):
-    colorize(Colors.red, f'ERROR: {message}')
+    print(colorize(Colors.red, f'ERROR: {message}'))
 
 
 def fatal(message):
-    colorize(Colors.red, f'FATAL: {message}')
+    print(colorize(Colors.red, f'FATAL: {message}'))
     sys.exit()
 
 
@@ -241,11 +241,13 @@ class GitConfig:
                 key = line[0:pos]
                 value = line[pos+1:]
                 self.data[key] = value
-                debug(f'Git configuration: key = {key} || value = {value}')
+                debug(f'Git configuration: key="{key}"; value="{value}"')
         self.user_email = self.data.get('user.email', '')
         self.repository_url = self.data.get('remote.origin.url', '')
         if self.user_email == '':
             warning('Unable to retrieve user email from Git config')
+        debug(f'Git configuration: user_email="{self.user_email}"; ' +
+              f'repository_url="{self.repository_url}"')
         if self.repository_url == '':
             error('Unable to retrieve repository URL')
             fatal('Looks like current directory is not a valid Git repository')
