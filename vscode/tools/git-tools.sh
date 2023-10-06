@@ -32,6 +32,7 @@ function gh() {
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	echo "jc: jsoncli.py ...arguments"
 	echo "xcd: cd [directory]"
+	echo "upd: sudo dnf update --refresh"
 	return 0
 }
 
@@ -227,4 +228,12 @@ function xcd() {
 	fi
 	echo "Changing directory: $destin"
 	cd "$destin" || true
+}
+
+function upd() {
+	. /etc/os-release
+	printf 'Updating %s %s\n' \
+		"${REDHAT_SUPPORT_PRODUCT:-$PRETTY_NAME}" \
+		"${REDHAT_SUPPORT_PRODUCT_VERSION:-$VERSION_ID}"
+	sudo dnf update --refresh
 }
