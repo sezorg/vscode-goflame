@@ -480,6 +480,15 @@ function xsort_unique() {
 	eval "$output_name=(${joined_list:1})"
 }
 
+function xdecode_array() {
+	local output_name="$1" joined_list
+	shift
+	local text joined_list
+	readarray -t text <<<"$@"
+	joined_list=$(printf " \"%s\"" "${text[@]}")
+	eval "$output_name=(${joined_list:1})"
+}
+
 P_EXPORTED_STATE=false
 
 function xexport_apply() {
@@ -1247,9 +1256,51 @@ function xcheck_project() {
 				fi
 			done
 			xsort_unique disabled_list "${disabled_list[@]}"
-			linter_args+=("--enable-all")
-			for linter in "${disabled_list[@]}"; do
-				linter_args+=("-D" "$linter")
+			#linter_args+=("--enable-all")
+			#for linter in "${disabled_list[@]}"; do
+			#	linter_args+=("-D" "$linter")
+			#done
+			xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
+			local known_linters=() enabled_list=()
+			readarray -t known_linters <<<"$EXEC_STDOUT"
+			for linter_desc in "${known_linters[@]}"; do
+				IFS=':'
+				# shellcheck disable=SC2206
+				linter_desc=($linter_desc)
+				unset IFS
+				if xis_eq "${#linter_desc[@]}" "0"; then
+					continue
+				fi
+				linter=${linter_desc[0]}
+				if xis_eq "$linter" "Enabled by default linters" ||
+					xis_eq "$linter" "Disabled by default linters"; then
+					continue
+				fi
+				if xis_eq "$linter" "Linters presets"; then
+					break
+				fi
+				IFS=' '
+				# shellcheck disable=SC2206
+				linter_desc=($linter)
+				unset IFS
+				if xis_eq "${#linter_desc[@]}" "0"; then
+					continue
+				fi
+				if xis_eq "${#linter_desc[@]}" "2" &&
+					xis_eq "${linter_desc[1]}" "[deprecated]"; then
+					continue
+				fi
+				enabled_list+=("${linter_desc[0]}")
+				#xecho "++${linter_desc[0]} ${#linter_desc[@]} ${linter_desc[*]}"
+				if ! xcontains "$linter" "${disabled_list[@]}"; then
+					linter_args+=("-E" "$linter")
+				fi
+			done
+			xsort_unique enabled_list "${enabled_list[@]}"
+			for linter in "${enabled_list[@]}"; do
+				if ! xcontains "$linter" "${disabled_list[@]}"; then
+					linter_args+=("-E" "$linter")
+				fi
 			done
 		else
 			linter_args+=("--disable-all")
