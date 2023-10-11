@@ -75,7 +75,7 @@ CAMERA_FEATURES_ON+=(
 
 # Disable camera feature
 CAMERA_FEATURES_OFF+=(
-	"webrtc"
+	#"webrtc"
 )
 
 # Advised target stripts that the initial upload deploy is complete.
