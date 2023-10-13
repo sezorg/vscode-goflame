@@ -36,6 +36,18 @@ function gh() {
 	return 0
 }
 
+function master_branch_lookup() {
+	local branches=("master" "main" "ipcam")
+	for branch in "${branches[@]}"; do
+		if (git rev-parse --verify "$branch" >/dev/null 2>&1); then
+			echo "$branch"
+			return 0
+		fi
+	done
+	echo "unknown-master-branch"
+	return 1
+}
+
 function gri() {
 	git config rebase.abbreviateCommands true
 	git rebase --interactive "HEAD~$1"
@@ -46,7 +58,7 @@ function grc() {
 }
 
 function grm() {
-	git rebase --update-refs master
+	git rebase --update-refs "$(master_branch_lookup)"
 }
 
 function grx() {
@@ -68,7 +80,7 @@ function ga() {
 function gp() {
 	local target="$1"
 	if [[ "$target" == "" ]]; then
-		target="HEAD:refs/for/master"
+		target="HEAD:refs/for/$(master_branch_lookup)"
 	fi
 	git push origin "$target"
 }
