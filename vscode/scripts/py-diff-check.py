@@ -315,7 +315,7 @@ class BuiltinLintersRunner:
 
     def process_line(self):
         length = len(self.line_text)
-        if length > Config.lineLengthLimit:
+        if length > Config.lineLengthLimit and self.line_text[length-1] != '`':
             if self.is_supressed('lll'):
                 return
             self.output_message('Maximum line length exceeded '
