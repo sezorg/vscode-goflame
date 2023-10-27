@@ -237,6 +237,16 @@ partprobe -s "$DEV"
 PART1=$(get_partition "$DEV" 1)
 PART2=$(get_partition "$DEV" 2)
 PART3=$(get_partition "$DEV" 3)
+log "Waiting for '$PART1', '$PART2' and '$PART3'..."
+COUNTER=30
+while [ ! -b "$PART1" ] || [ ! -b "$PART2" ] || [ ! -b "$PART3" ]; do
+    if [ "$COUNTER" -eq "0" ]; then
+        fatal "Failed to wait for target partitions to appear in 30 seconds"
+    fi
+    COUNTER=$((COUNTER - 1))
+    sleep 1
+done
+log "Devices are ready!"
 TMPST="/tmp/format-mmc-status"
 SQFS_SIZE=""
 SQFS_MD5=""
