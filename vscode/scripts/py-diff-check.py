@@ -314,30 +314,20 @@ class BuiltinLintersRunner:
         return
 
     def process_line(self):
-        length = len(self.line_text)
-        if length > Config.lineLengthLimit and self.line_text[length-1] != '`':
-            if self.is_supressed('lll'):
-                return
-            self.output_message('Maximum line length exceeded '
-                                f'({length} > {Config.lineLengthLimit}) (lll)')
+        self.process_lllcheck()
         self.process_wrapcheck()
         self.process_deprecheck()
         return
 
-    def process_deprecheck(self):
-        type_id = 'deprecheck'
-        check_list = ['errors.Wrap']
-        offset = - 1
-        check = ''
-        for check in check_list:
-            offset = self.line_text.find(check)
-            if offset >= 0:
-                break
-        if offset < 0:
-            return False
-        if self.is_supressed(type_id):
-            return
-        self.output_message(f'Use of method is deprecated: \'{check}\' ({type_id})')
+    def process_lllcheck(self):
+        length = len(self.line_text)
+        if length > Config.lineLengthLimit and self.line_text[length-1] != '`':
+            if self.file_path in ['go.mod', 'go.sum']:
+                return
+            if self.is_supressed('lll'):
+                return
+            self.output_message('Maximum line length exceeded '
+                                f'({length} > {Config.lineLengthLimit}) (lll)')
         return
 
     def process_wrapcheck(self):
@@ -366,6 +356,22 @@ class BuiltinLintersRunner:
         else:
             self.output_message(
                 f'Unable to filed error string. Consider to use one-line expression ({type_id})')
+        return
+
+    def process_deprecheck(self):
+        type_id = 'deprecheck'
+        check_list = ['errors.Wrap']
+        offset = - 1
+        check = ''
+        for check in check_list:
+            offset = self.line_text.find(check)
+            if offset >= 0:
+                break
+        if offset < 0:
+            return False
+        if self.is_supressed(type_id):
+            return
+        self.output_message(f'Use of method is deprecated: \'{check}\' ({type_id})')
         return
 
     def is_supressed(self, supress):
