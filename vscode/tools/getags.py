@@ -186,18 +186,25 @@ def parse_arguments():
         help='User id or command')
     arguments, unknown_args = parser.parse_known_args()
     debug(f'{unknown_args}')
-    if len(unknown_args) > 1:
-        fatal('Too many arguments')
     arguments.exitCode = 0
     arguments.warnCount = 0
-    if len(unknown_args) > 0:
-        arguments.command = unknown_args[0]
     config.debug_level = arguments.debug
     config.verbose_level = arguments.verbose
     config.patch_number = arguments.patch_number
     config.rebase_chains = arguments.rebase
     config.expire_unreachable = arguments.expire_unreachable
     config.subject_enabled = arguments.subject
+    for argument in unknown_args:
+        if argument.isnumeric():
+            if config.patch_number != -1:
+                warning(f'Patch number {config.patch_number} already set')
+                continue
+            config.patch_number = int(argument)
+            continue
+        if arguments.command != '' and not arguments.command is None:
+            warning(f'Command {arguments.command} already set')
+            continue
+        arguments.command = argument
     return arguments
 
 
@@ -282,6 +289,8 @@ class GerritTags:
             self.email = user_email
         elif command == 'all':
             self.email = ''
+            if config.rebase_chains:
+                fatal(f'Rebase chains for {decorate(command)} users is feature protected')
         elif command == 'del':
             self.execute = False
         else:
@@ -305,6 +314,7 @@ class GerritTags:
         self.state_by_rev = {}
         self.containing_master = []
         self.repeat_refresh = False
+        self.patch_number = str(config.patch_number) if config.patch_number >= 0 else ''
         debug(f'Gerrit filter: {self.filter}')
 
     def resolve_current(self):
@@ -480,6 +490,17 @@ class GerritTags:
                 mode = ''
                 if self.patchsets:
                     mode = 'listPatchSets'
+        self.select_current_branch()
+        return
+
+    def select_current_branch(self):
+        if self.patch_number == '':
+            return
+        for state in self.state_list:
+            if self.patch_number == state.number:
+                self.current_revision = state.revision
+                self.current_branch = state.branch_name
+                break
         return
 
     def find_state_by_rev(self, revision):
@@ -601,10 +622,10 @@ class GerritTags:
         return
 
     def checkout_branch(self):
-        if config.patch_number != -1:
-            if self.checkout_to(str(config.patch_number), '', ''):
+        if self.patch_number != "":
+            if self.checkout_to(self.patch_number, '', ''):
                 return
-            warning(f'Failed to check out to patch numver {config.patch_number}')
+            warning(f'Failed to check out to patch numver {self.patch_number}')
         debug(f'Checking out branch {decorate(self.current_branch)} '
               f'revision {self.current_revision}')
         if not self.checkout_to('', self.current_branch, self.current_revision):
