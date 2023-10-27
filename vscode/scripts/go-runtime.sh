@@ -36,8 +36,25 @@ function xis_exists() {
 	[[ -f "$*" ]]
 }
 
-function xis_ipv4() {
+function xis_ipv4_addr() {
 	[[ "$*" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
+}
+
+function xis_mac_addr() {
+	pattern='^([0-9A-Fa-f]{2}[:-]){5}([0-9A-Fa-f]{2})$'
+	[[ "$*" =~ $pattern ]]
+}
+
+function xto_lowercase() {
+	input_string=$1
+	lowercase_string=${input_string,,}
+	echo "$lowercase_string"
+}
+
+function xhas_prefix() {
+	input_string="$1"
+	prefix="$2"
+	[[ "$input_string" == "$prefix"* ]]
 }
 
 function xtime() {
@@ -512,6 +529,7 @@ function xexport_apply() {
 		export "P_SAVED_$name"="$actual"
 		if xis_unset "$actual"; then
 			export "$name"="$value"
+			#xdebug "Exports: $name=$value"
 		else
 			: #xecho "INFO: Unexported variable: $name=\"$actual\""
 		fi
@@ -679,21 +697,55 @@ function xcache_get() {
 
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
+	TARGET_MACADDR=""
 	local cache_name="__config_vscode.hash" data_hash config_path="$TEMP_DIR/config-vscode.ini"
 	data_hash=$(xcache_text_hash "$config_path")
 	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
 		xdebug "Creating target config for $TARGET_IPADDR..."
-		if ! xis_ipv4 "$TARGET_IPADDR"; then
-			local hostnames=("$TARGET_IPADDR.$TARGET_DOMAIN" "$TARGET_IPADDR") found=false
-			for hostname in "${hostnames[@]}"; do
-				xexec "$P_CANFAIL" getent hosts "$hostname" "|" awk "'{ print \$1 ; exit }'"
-				if xis_eq "$EXEC_STATUS" "0" && xis_ipv4 "$EXEC_STDOUT"; then
-					TARGET_IPADDR="$EXEC_STDOUT"
-					TARGET_HOSTNAME="$hostname"
-					found=true
-					break
+		if ! xis_ipv4_addr "$TARGET_IPADDR"; then
+			local found=false mac_addr
+			if xhas_prefix "$TARGET_IPADDR" "ASSET-"; then
+				# Not implemented because of missing Jira login/password credentials.
+				xfatal "Failed to resolve asset addrress for '$TARGET_IPADDR': Not implemented."
+			fi
+			if xis_mac_addr "$TARGET_IPADDR"; then
+				mac_addr="$(xto_lowercase "$TARGET_IPADDR")"
+				function resolve_ip_from_mac_addr() {
+					xexec "$P_CANFAIL" ip neighbor "|" grep -i "$mac_addr" "|" \
+						awk "'{ print \$1 ; exit }'"
+					if xis_eq "$EXEC_STATUS" "0" && xis_ipv4_addr "$EXEC_STDOUT"; then
+						TARGET_IPADDR="$EXEC_STDOUT"
+						TARGET_HOSTNAME="$EXEC_STDOUT"
+						TARGET_MACADDR="$mac_addr"
+						found=true
+					fi
+				}
+				function refresh_arg_cache_table() {
+					for network in $(ifconfig | grep -oE 'inet (addr:)?([0-9]+\.){3}[0-9]+' |
+						awk '{print $2}'); do
+						if xis_eq "$network" "127.0.0.1"; then
+							continue
+						fi
+						xexec "$P_CANFAIL" nmap -sP "$network"
+					done
+				}
+				resolve_ip_from_mac_addr
+				if xis_false "$found"; then
+					refresh_arg_cache_table
+					resolve_ip_from_mac_addr
 				fi
-			done
+			else
+				local hostnames=("$TARGET_IPADDR.$TARGET_DOMAIN" "$TARGET_IPADDR")
+				for hostname in "${hostnames[@]}"; do
+					xexec "$P_CANFAIL" getent hosts "$hostname" "|" awk "'{ print \$1 ; exit }'"
+					if xis_eq "$EXEC_STATUS" "0" && xis_ipv4_addr "$EXEC_STDOUT"; then
+						TARGET_IPADDR="$EXEC_STDOUT"
+						TARGET_HOSTNAME="$hostname"
+						found=true
+						break
+					fi
+				done
+			fi
 			if xis_false "$found"; then
 				xfatal "Unable resolve IP for target '$TARGET_IPADDR'."
 			fi
@@ -704,6 +756,7 @@ function xresolve_target_config() {
 TARGET_IPADDR=$TARGET_IPADDR
 TARGET_IPPORT=$TARGET_IPPORT
 TARGET_HOSTNAME=$TARGET_HOSTNAME
+TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER=$TARGET_USER
 TARGET_PASS=$TARGET_PASS
 EOF
@@ -714,6 +767,8 @@ EOF
 	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
 	if xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
+	elif xis_ne "$TARGET_MACADDR" ""; then
+		TARGET_HYPERLINK="$TARGET_HYPERLINK (MAC $TARGET_MACADDR)"
 	fi
 }
 
@@ -1520,6 +1575,7 @@ function xprepare_runtime_scripts() {
 	COPY_FILES+=(
 		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"
+		"$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 }
 
