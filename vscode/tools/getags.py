@@ -25,6 +25,7 @@
 # pylint: disable=too-many-instance-attributes
 
 import argparse
+import functools
 import os
 import re
 import subprocess
@@ -37,6 +38,7 @@ class Config:
         self.verbose_level = 0
         self.subject_enabled = False
         self.rebase_chains = False
+        self.rebase_for_all = False
         self.unprotect_git = True
         self.expire_unreachable = False
         self.patch_number = -1
@@ -166,6 +168,13 @@ def parse_arguments():
         default=False,
     )
     parser.add_argument(
+        '-R', '--rebase-all',
+        help='Allow rebase of then branches for all/multiple users (UNSAFE)',
+        required=False,
+        action='store_true',
+        default=False,
+    )
+    parser.add_argument(
         '-e', '--expire-unreachable',
         help='Prune unreachable reflog entries.',
         required=False,
@@ -192,6 +201,7 @@ def parse_arguments():
     config.verbose_level = arguments.verbose
     config.patch_number = arguments.patch_number
     config.rebase_chains = arguments.rebase
+    config.rebase_for_all = arguments.rebase_all
     config.expire_unreachable = arguments.expire_unreachable
     config.subject_enabled = arguments.subject
     for argument in unknown_args:
@@ -289,7 +299,7 @@ class GerritTags:
             self.email = user_email
         elif command == 'all':
             self.email = ''
-            if config.rebase_chains:
+            if config.rebase_chains and not config.rebase_for_all:
                 fatal(f'Rebase chains for {decorate(command)} users is feature protected')
         elif command == 'del':
             self.execute = False
@@ -490,8 +500,24 @@ class GerritTags:
                 mode = ''
                 if self.patchsets:
                     mode = 'listPatchSets'
+        self.state_list.sort(key=functools.cmp_to_key(GerritTags.compare_branches))
         self.select_current_branch()
         return
+
+    @staticmethod
+    def compare_branches(state1, state2):
+        result = GerritTags.compare_strings(state1.username, state2.username)
+        if result == 0:
+            result = GerritTags.compare_strings(state1.number, state2.number)
+        return result
+
+    @staticmethod
+    def compare_strings(string1, string2):
+        if string1 < string2:
+            return -1
+        if string1 > string2:
+            return 1
+        return 0
 
     def select_current_branch(self):
         if self.patch_number == '':
