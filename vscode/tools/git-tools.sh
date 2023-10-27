@@ -24,10 +24,10 @@ function gh() {
 	echo "gpc: git cherry-pick --continue"
 	echo "gs: git status"
 	echo "ga: git add -u"
-	echo "gp: git push origin [HEAD:refs/for/master]"
+	echo "gp: git push origin [<master> >>> HEAD:refs/for/master]"
 	echo "gt: gerrit-tags [me/all/username/user@mail]"
 	echo "ss: ssh root-user@[ip_address]"
-	echo "ssd: ssh root-user@[ip_address] dloop"
+	echo "so: xdg-open http://[ip_address]"
 	echo "sf: sshfs root-user@[ip_address]"
 	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
 	echo "jc: jsoncli.py ...arguments"
@@ -80,9 +80,9 @@ function ga() {
 function gp() {
 	local target="$1"
 	if [[ "$target" == "" ]]; then
-		target="HEAD:refs/for/$(master_branch_lookup)"
+		target="$(master_branch_lookup)"
 	fi
-	git push origin "$target"
+	git push origin "HEAD:refs/for/$target"
 }
 
 function gt() {
@@ -118,24 +118,35 @@ function _resolve_variable() {
 	local value_name="$3"
 	local error_message="$4"
 	local value_path="$HOME/.config/sshcache"
-	if [[ "$actual_value" == "" ]]; then
+	if [[ "$actual_value" == "x" ]]; then
+		local last_config="/var/tmp/goflame/config-vscode.ini"
+		if [[ "$value_name" == "last_ip_addr" ]] &&
+			[[ -f "$last_config" ]]; then
+			# shellcheck disable=SC1090
+			source "$last_config"
+			actual_value="$TARGET_IPADDR"
+		fi
+	elif [[ "$actual_value" == "" ]]; then
 		if [[ -f "$value_path/$value_name" ]]; then
 			actual_value=$(cat "$value_path/$value_name")
 		fi
-	else
-		mkdir -p "$value_path" >/dev/null >&2
-		echo "$actual_value" >"$value_path/$value_name"
 	fi
+	mkdir -p "$value_path" >/dev/null >&2
+	echo "$actual_value" >"$value_path/$value_name"
 	if [[ "$actual_value" == "" ]]; then
 		if [[ "$default_value" != "" ]]; then
 			_warning "$error_message"
 			actual_value="$default_value"
 		else
 			_error "$error_message"
-			return 1
+			exit 1
 		fi
 	fi
 	echo "$actual_value"
+}
+
+function _is_empty_argument() {
+	[[ "$1" == "" ]] || [[ "$1" == "x" ]]
 }
 
 function _set_konsole_tab_title_type() {
@@ -157,13 +168,9 @@ function _set_konsole_title() {
 }
 
 function ss() {
-	local user="root"
-	local pass="root"
-	local ip_address
-	if ! ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected"); then
-		return 1
-	fi
-	if [[ "$1" == "" ]]; then
+	local user="root" pass="root" ip_address
+	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$1"; then
 		echo "Connecting to $ip_address"
 	fi
 	_set_konsole_title "SSH on $user@$ip_address" "SSH on $user@$ip_address"
@@ -172,20 +179,13 @@ function ss() {
 	_set_konsole_title
 }
 
-function ssd() {
-	local user="root"
-	local pass="root"
+function so() {
 	local ip_address
-	if ! ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected"); then
-		return 1
+	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$1"; then
+		echo "Opening http://$ip_address"
 	fi
-	if [[ "$1" == "" ]]; then
-		echo "Connecting to $ip_address"
-	fi
-	_set_konsole_title "SSH on $user@$ip_address" "SSH on $user@$ip_address"
-	sshpass -p "$pass" ssh \
-		"${SSH_FLAGS[@]}" "$user@$ip_address" dloop 2> >(grep -E -v '^Warning: Permanently added' >&2)
-	_set_konsole_title
+	xdg-open "http://$ip_address"
 }
 
 function run() {
@@ -194,13 +194,9 @@ function run() {
 }
 
 function sf() {
-	local user="root"
-	local pass="root"
-	local ip_address
-	if ! ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected"); then
-		return 1
-	fi
-	if [[ "$1" == "" ]]; then
+	local user="root" pass="root" ip_address
+	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$1"; then
 		echo "Mounting FS of $ip_address"
 	fi
 	local mount_point="$HOME/Devices/$ip_address"
@@ -217,9 +213,9 @@ function sf() {
 
 function pi() {
 	local device_path
-	if ! device_path=$(_resolve_variable "$1" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"); then
-		return 1
-	fi
+	device_path=$(
+		_resolve_variable "$1" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
+	)
 	if ! sh -c ": >$device_path" >/dev/null 2>/dev/null; then
 		_error "TTY device $device_path is not avaliable"
 		return 1
@@ -235,9 +231,7 @@ function jc() {
 
 function xcd() {
 	local destin
-	if ! destin=$(_resolve_variable "$1" "" "last_destin" "Destination directory expected"); then
-		return 1
-	fi
+	destin=$(_resolve_variable "$1" "" "last_destin" "Destination directory expected")
 	echo "Changing directory: $destin"
 	cd "$destin" || true
 }
