@@ -12,6 +12,10 @@ if [[ -f "$BASE/../../config-user.ini" ]]; then
 	source "$BASE/../../config-user.ini"
 	IP="$TARGET_IPADDR"
 fi
+if [[ -f "/var/tmp/goflame/config-vscode.ini" ]]; then
+	source "/var/tmp/goflame/config-vscode.ini"
+	IP="$TARGET_IPADDR"
+fi
 
 function log() {
 	echo "$*"
