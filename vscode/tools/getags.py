@@ -269,7 +269,7 @@ class GitConfig:
             error('Unable to retrieve repository URL')
             fatal('Looks like current directory is not a valid Git repository')
         self.master_branch = ''
-        for branch_name in ['master', 'main', 'ipcam']:
+        for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03']:
             status = Shell(['git', 'rev-parse', '--verify', branch_name], silent=True)
             if status.succed():
                 self.master_branch = branch_name

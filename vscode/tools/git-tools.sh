@@ -37,7 +37,7 @@ function gh() {
 }
 
 function master_branch_lookup() {
-	local branches=("master" "main" "ipcam")
+	local branches=("master" "main" "ipcam" "ecam02" "ecam03")
 	for branch in "${branches[@]}"; do
 		if (git rev-parse --verify "$branch" >/dev/null 2>&1); then
 			echo "$branch"
