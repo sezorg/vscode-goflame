@@ -349,7 +349,8 @@ class BuiltinLintersRunner:
             offset += 1
             start = self.line_text[offset]
             if str.isalpha(start) and not str.islower(start):
-                word = self.line_text[offset:].split()[0]
+                word = BuiltinLintersRunner.select_first_alnum_word(
+                    self.line_text[offset:].split()[0])
                 if len(word) == 1 or word.upper() != word:
                     self.output_message(
                         f'Error strings should not be capitalized: \'{word}\' ({type_id})')
@@ -393,6 +394,14 @@ class BuiltinLintersRunner:
         if not Config.excludeNonPrefixed:
             print(f'{prefix}{self.line_text}')
         Config.exitCode = 2
+
+    @staticmethod
+    def select_first_alnum_word(string):
+        match = re.search(r'\b\w+\b', string)
+        if match:
+            return match.group()
+        else:
+            return None
 
 
 class WarningsSupressor:
