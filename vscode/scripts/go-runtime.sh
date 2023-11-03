@@ -1184,7 +1184,7 @@ function xclean_gocache() {
 	fi
 	P_GOCACHE_CLEANED=true
 	xecho "Cleaning Go compiler & linters cache..."
-	xclean_directory "$GOCACHE"
+	xclean_directory "$EXPORT_GOCACHE"
 	xclean_directory "$HOME/.cache/go-build"
 	xexec go clean -cache
 }
