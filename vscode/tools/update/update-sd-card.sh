@@ -130,6 +130,11 @@ download_dir="/var/tmp/mcom03-sd-update"
 format_mmc_name="format-mmc.sh"
 rootfs_squashfs_name="rootfs.squashfs"
 
+if [[ -f "./$format_mmc_name" ]]; then
+	arg_format_mmc_path="./$format_mmc_name"
+	log "Using $format_mmc_name from current directory..."
+fi
+
 run mkdir -p "$download_dir"
 if [[ "$arg_purge_cache" != "" ]]; then
 	run rm -rf "${download_dir:?}/"*
