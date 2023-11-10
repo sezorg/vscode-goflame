@@ -293,10 +293,13 @@ class BuiltinLintersRunner:
             return
         for change_set in self.git_diff.change_list:
             for line in change_set.appended_lines:
-                # debug(f'{self.file_path}:{self.line_index}')
+
                 self.file_path = change_set.file_path
                 self.line_index = line.target_line_no
-                self.line_text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
+                self.line_text = line.value.rstrip(
+                    '\r\n').expandtabs(Config.tabWidth)
+                debug(
+                    f'Change: {self.file_path}:{self.line_index}: {self.line_text}')
                 self.process_line()
         return
 
@@ -372,7 +375,8 @@ class BuiltinLintersRunner:
             return False
         if self.is_supressed(type_id):
             return
-        self.output_message(f'Use of method is deprecated: \'{check}\' ({type_id})')
+        self.output_message(
+            f'Use of method is deprecated: \'{check}\' ({type_id})')
         return
 
     def is_supressed(self, supress):
@@ -493,8 +497,10 @@ def main():
     parse_arguments()
     git_diff = GitDiff()
     if Config.parseInput or select.select([sys.stdin, ], [], [], 0.0)[0]:
+        debug('Starting WarningsSupressor...')
         WarningsSupressor(git_diff).run()
     else:
+        debug('Starting BuiltinLintersRunner...')
         BuiltinLintersRunner(git_diff).run()
     sys.exit(Config.exitCode)
 
