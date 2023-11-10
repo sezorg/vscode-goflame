@@ -71,6 +71,7 @@ download_file() {
 	mv "$download_name.dld" "$download_name"
 }
 
+arg_sd_name=""
 arg_sd_device=""
 arg_zuul_uuid=""
 arg_rootfs_squashfs_path=""
@@ -99,7 +100,7 @@ done
 
 case $# in
 2)
-	arg_sd_device="/dev/$1"
+	arg_sd_name="$1"
 	arg_zuul_uuid="$2"
 	if [[ -f "$arg_zuul_uuid" ]]; then
 		arg_rootfs_squashfs_path="$arg_zuul_uuid"
@@ -107,7 +108,7 @@ case $# in
 	fi
 	;;
 3)
-	arg_sd_device="/dev/$1"
+	arg_sd_name="$1"
 	arg_zuul_uuid="$2"
 	arg_rootfs_squashfs_path="$3"
 	if [[ ! -f "$arg_rootfs_squashfs_path" ]]; then
@@ -129,6 +130,15 @@ zuul_source="$zuul_base/$zuul_project/$arg_zuul_uuid/artifacts/images"
 download_dir="/var/tmp/mcom03-sd-update"
 format_mmc_name="format-mmc.sh"
 rootfs_squashfs_name="rootfs.squashfs"
+
+removable_path="/sys/block/$arg_sd_name/removable"
+arg_sd_device="/dev/$arg_sd_name"
+if [[ ! -f "$removable_path" ]]; then
+	fatal "Device '$arg_sd_device' semms not mounted."
+fi
+if [[ "$(cat cat "$removable_path" 2>/dev/null)" != "1" ]]; then
+	fatal "Device '$arg_sd_device' is not removable."
+fi
 
 if [[ -f "./$format_mmc_name" ]]; then
 	arg_format_mmc_path="./$format_mmc_name"

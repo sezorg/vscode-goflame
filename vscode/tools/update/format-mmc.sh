@@ -57,6 +57,13 @@ assert_removable() {
     if [[ "$(grep "ATTR{removable}==\"1\"" <<<"$info" || true)" == "" ]]; then
         fatal "Device '$1' does not seems to be a removable USB Flash or SD Card."
     fi
+    REMOVABLE="/sys/block/$(basename -- "$1")/removable"
+    if [[ ! -f "$REMOVABLE" ]]; then
+        fatal "Device '$1' semms not mounted."
+    fi
+    if [[ "$(cat cat "$REMOVABLE" 2>/dev/null)" != "1" ]]; then
+        fatal "Device '$1' does not seems to be a removable USB Flash or SD Card."
+    fi
 }
 
 get_partition() {
