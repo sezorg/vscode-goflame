@@ -184,6 +184,10 @@ GOLANGCI_LINT_LINTERS=(
 	"-depguard"
 	"-gochecknoglobals"
 )
+GOLANGCI_LINT_ARGUMENTS=(
+	"--max-issues-per-linter" "0"
+	"--max-same-issues" "0"
+)
 GOLANGCI_LINT_FILTER=true
 GOLANGCI_LINT_FAIL=false
 GOLANGCI_LINT_SUPRESSED=()
@@ -250,6 +254,12 @@ EXECUTE_COMMANDS=()
 # Camera features ON and OFF
 CAMERA_FEATURES_ON=()
 CAMERA_FEATURES_OFF=()
+
+LOCAL_DLVBIN="$(which dlv)"
+LOCAL_GOBIN="$(which go)"
+LOCAL_GOPATH="$(go env GOPATH)"
+LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
+LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
 P_CONFIG_INI_LOADED=true
 if xis_exists "$SCRIPT_DIR/../config.ini"; then
@@ -362,12 +372,6 @@ TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
 WRAPPER_LOGFILE="$TEMP_DIR/go-wrapper.log"
-
-LOCAL_DLVBIN="$(which dlv)"
-LOCAL_GOBIN="$(which go)"
-LOCAL_GOPATH="$(go env GOPATH)"
-LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
-LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
 DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
@@ -1187,6 +1191,9 @@ function xclean_gocache() {
 	xclean_directory "$EXPORT_GOCACHE"
 	xclean_directory "$HOME/.cache/go-build"
 	xexec go clean -cache
+	if xis_true "$GOLANGCI_LINT_ENABLE"; then
+		xexec "$LOCAL_GOLANGCI_LINT" cache clean
+	fi
 }
 
 function xtest_installed() {
@@ -1298,7 +1305,7 @@ function xcheck_project() {
 	fi
 	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
 		xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
-		local linter_args=() linters_list=()
+		local linter_args=("${GOLANGCI_LINT_ARGUMENTS[@]}") linters_list=()
 		xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
 		if xcontains "all" "${linters_list[@]}"; then
 			local disabled_list=("${GOLANGCI_LINT_DEPRECATED[@]}" "${GOLANGCI_LINT_SUPRESSED[@]}")
@@ -1345,8 +1352,9 @@ function xcheck_project() {
 					xis_eq "${linter_desc[1]}" "[deprecated]"; then
 					continue
 				fi
-				enabled_list+=("${linter_desc[0]}")
-				#xecho "++${linter_desc[0]} ${#linter_desc[@]} ${linter_desc[*]}"
+				linter="${linter_desc[0]}"
+				enabled_list+=("$linter")
+				#xecho "++$linter ${#linter_desc[@]} ${linter_desc[*]}"
 				if ! xcontains "$linter" "${disabled_list[@]}"; then
 					linter_args+=("-E" "$linter")
 				fi
