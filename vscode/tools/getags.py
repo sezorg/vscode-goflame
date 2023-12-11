@@ -23,6 +23,7 @@
 # pylint: disable=too-many-branches
 # pylint: disable=too-many-statements
 # pylint: disable=too-many-instance-attributes
+# pylint: disable=line-too-long
 
 import argparse
 import functools
@@ -30,6 +31,8 @@ import os
 import re
 import subprocess
 import sys
+import inspect
+from contextlib import ExitStack
 
 
 class Config:
@@ -270,7 +273,8 @@ class GitConfig:
             fatal('Looks like current directory is not a valid Git repository')
         self.master_branch = ''
         for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03']:
-            status = Shell(['git', 'rev-parse', '--verify', branch_name], silent=True)
+            status = Shell(['git', 'rev-parse', '--verify',
+                           branch_name], silent=True)
             if status.succed():
                 self.master_branch = branch_name
                 break
@@ -395,14 +399,14 @@ class GerritTags:
         if not self.execute:
             print(f'{Colors.green}{self.branch_index} branches has been deleted.{Colors.nc}')
             return
-        status = Shell(['git', 'checkout', '-B', self.master_branch,
-                       'origin/'+self.master_branch])
+        status = Shell(['git', 'checkout', '--merge',
+                        '-B', self.master_branch, 'origin/'+self.master_branch])
         if not status.succed():
             fatal(f'Failed to checkout to {decorate(self.master_branch)}')
         status = Shell(['git', 'fetch', self.repository_url])
         if not status.succed():
             fatal(f'Failed to fetch from {self.repository_url}')
-        status = Shell(['git', 'pull'])
+        status = Shell(['git', 'pull', '--rebase', '--autostash'])
         if not status.succed():
             fatal(f'Failed to pull {decorate(self.master_branch)} branch.')
         self.branch_index = 0
@@ -625,27 +629,78 @@ class GerritTags:
             return
         print(f'Rebasing {len(state_list)} branches...')
         for state in state_list:
-            print(f'Rebasing branch {decorate(state.branch_name)} '
-                  f'above the {decorate(self.master_branch)}')
-            status = Shell(['git', 'switch', state.branch_name])
-            if not status.succed():
-                fatal(f'Failed to switch to {decorate(state.branch_name)} branch')
-            status = Shell(['git', 'rebase', '--update-refs', self.master_branch])
-            if not status.succed():
-                fatal(f'Failed to rebase branch {decorate(state.branch_name)}')
-            text = status.stdout.strip()
-            if 'is up to date' not in text:
-                if text != '':
-                    print(f'{text}')
-            status = Shell(['git', 'push', 'origin', 'HEAD:refs/for/' + self.master_branch])
-            if not status.succed():
-                fatal(f'Failed push rebased branch {decorate(state.branch_name)}')
-            text = status.stdout.strip()
-            if text != '':
-                print(f'{text}')
+            branch_name = decorate(state.branch_name)
+            master_branch = decorate(self.master_branch)
+            print(f'Rebasing branch {branch_name} above the {master_branch}')
+            self.rebase_state_branch_safe(state)
+
         print(f'{len(state_list)} branches rebased.')
         self.repeat_refresh = True
         return
+
+    def rebase_state_branch_safe(self, state):
+        stash_name = state.branch_name + '.stash.backup'
+        status = Shell(['git', 'stash', 'push', '-m', stash_name])
+        if not status.succed():
+            branch_name = decorate(state.branch_name)
+            fatal(f'Failed to save stash {stash_name} while rebasing {branch_name}')
+        text = status.stdout.strip()
+        debug(f'Save stash output: {text}')
+        with ExitStack() as stack:
+            continue_with_rebase = False
+            if 'Saved working directory' in text:
+                continue_with_rebase = True
+                debug(f'Saved local changes to stash {stash_name}')
+                stack.callback(self.rebase_state_branch_restore, state, stash_name)
+            if continue_with_rebase or 'No local changes to save' in text:
+                self.rebase_state_branch(state)
+            else:
+                fatal(f'Unknown save stash output: {text}')
+
+    def rebase_state_branch_restore(self, state, stash_name):
+        debug(f'Restoring local changes from stash {stash_name}')
+        status = Shell(['git', 'stash', 'list'])
+        if not status.succed():
+            branch_name = decorate(state.branch_name)
+            fatal(f'Failed to list stashes while rebasing {branch_name}')
+        pattern = r"stash@{(\d+)}.+:\s(.+)"
+        matches = re.findall(pattern, status.stdout)
+        stash_index_found = ''
+        for match in matches:
+            stack_identifier = match[0]
+            stash_message = match[1]
+            if stash_message == stash_name:
+                stash_index_found = 'stash@{' + stack_identifier + '}'
+                break
+        if stash_index_found == '':
+            branch_name = decorate(state.branch_name)
+            fatal(f'Failed to retrieve index for stash {stash_name} while rebasing {branch_name}')
+        status = Shell(['git', 'stash', 'apply', stash_index_found])
+        if not status.succed():
+            branch_name = decorate(state.branch_name)
+            fatal(f'Failed to apply stash {stash_name} while rebasing {branch_name}')
+        status = Shell(['git', 'stash', 'drop', stash_index_found])
+        if not status.succed():
+            branch_name = decorate(state.branch_name)
+            fatal(f'Failed to drop stash {stash_name} while rebasing {branch_name}')
+
+    def rebase_state_branch(self, state):
+        debug(f'Running rebase on branch {state.branch_name}')
+        status = Shell(['git', 'switch', state.branch_name])
+        if not status.succed():
+            fatal(f'Failed to switch to {decorate(state.branch_name)} branch')
+        status = Shell(['git', 'rebase', '--update-refs', self.master_branch])
+        if not status.succed():
+            fatal(f'Failed to rebase branch {decorate(state.branch_name)}')
+        text = status.stdout.strip()
+        if 'is up to date' not in text and text != '':
+            print(f'{text}')
+        status = Shell(['git', 'push', 'origin', 'HEAD:refs/for/' + self.master_branch])
+        if not status.succed():
+            fatal(f'Failed to push rebased branch {decorate(state.branch_name)}')
+        text = status.stdout.strip()
+        if text != '':
+            print(f'{text}')
 
     def checkout_branch(self):
         if self.patch_number != "":
@@ -744,7 +799,8 @@ def main():
     arguments = parse_arguments()
     git_config = GitConfig()
     debug(f'user_email={git_config.user_email}, command={arguments.command}')
-    while True:
+    refresh_count = 0
+    while refresh_count == 0 or refresh_count == 2:
         gerrit_tags = GerritTags(
             git_config.user_email,
             git_config.repository_url,
@@ -755,11 +811,14 @@ def main():
         gerrit_tags.obtain_branches()
         gerrit_tags.remove_branches()
         gerrit_tags.create_branches()
-        gerrit_tags.rebase_branches()
+        if refresh_count == 0:
+            gerrit_tags.rebase_branches()
         gerrit_tags.checkout_branch()
         gerrit_tags.cleanup_pending()
-        if not gerrit_tags.repeat_refresh:
-            break
+        refresh_count += 1
+        if gerrit_tags.repeat_refresh:
+            refresh_count += 1
+        debug(f'Refresh count: {refresh_count}')
     return
 
 
