@@ -5,8 +5,8 @@
 JSON=$(
 	cat <<DELIMITER
 {
-    "Token": "mdc"
+    "ConfigurationToken": "mdc"
 }
 DELIMITER
 )
-json_test media/GetMetadataConfigurations
+json_test media/GetMetadataConfiguration
