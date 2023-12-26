@@ -221,7 +221,11 @@ function pi() {
 		return 1
 	fi
 	_set_konsole_title "picocom on $device_path" "picocom on $device_path"
-	picocom -b 115200 "$device_path"
+	commands_list=("root" "root")
+	for command in "${commands_list[@]}"; do
+		echo "$command" | picocom -qrb 115200 "$device_path"
+	done
+	picocom -rb 115200 "$device_path" -t "$(echo -ne '\rcat /etc/os-release\rifconfig\r\r')" | tail -n +26
 	_set_konsole_title
 }
 
@@ -241,5 +245,5 @@ function upd() {
 	printf 'Updating %s %s\n' \
 		"${REDHAT_SUPPORT_PRODUCT:-$PRETTY_NAME}" \
 		"${REDHAT_SUPPORT_PRODUCT_VERSION:-$VERSION_ID}"
-	sudo dnf update --refresh
+	sudo dnf update --refresh $*
 }
