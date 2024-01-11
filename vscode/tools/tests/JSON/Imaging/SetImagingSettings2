@@ -1,0 +1,46 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "VideoSourceToken": "src",
+  "ImagingSettings": {
+    "WhiteBalance": {
+      "Mode": "AUTO"
+    },
+    "Exposure": {
+      "Mode": "MANUAL",
+      "Priority": "",
+      "Window": {
+        "XMLName": {
+          "Space": "",
+          "Local": ""
+        },
+        "Bottom": 0,
+        "Top": 0,
+        "Right": 0,
+        "Left": 0
+      },
+      "MinExposureTime": 1701539700,
+      "MaxExposureTime": 110,
+      "MinGain": 0,
+      "MaxGain": 0,
+      "MinIris": 0,
+      "MaxIris": 0,
+      "ExposureTime": 0,
+      "Gain": 0,
+      "Iris": 0
+    },
+    "Focus": {
+      "AutoFocusMode": "MANUAL",
+      "DefaultSpeed": 0,
+      "NearLimit": 0,
+      "FarLimit": 0
+    }
+  }
+}
+DELIMITER
+)
+json_test imaging/SetImagingSettings
