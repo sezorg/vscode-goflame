@@ -58,6 +58,7 @@ def execute_jsonrpc(args):
         "security": f"{url}/onvif/security",
         "event": f"{url}/onvif/event",
         "storagecontrol": f"{url}/api/v2/storagecontrol",
+        "appmgmt": f"{url}/api/v2/appmgmt",
     }
     cookies = generate_cookies(args.user, args.password)
     session = requests.session()
