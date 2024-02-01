@@ -285,6 +285,7 @@ class BuiltinLintersRunner:
         self.file_path = ''
         self.line_index = 0
         self.line_text = ''
+        self.in_imports = 0
         return
 
     def run(self):
@@ -319,18 +320,21 @@ class BuiltinLintersRunner:
     def process_line(self):
         self.process_lllcheck()
         self.process_wrapcheck()
+        self.process_declcheck()
         self.process_deprecheck()
+        # self.process_gimpcheck()
         return
 
     def process_lllcheck(self):
+        type_id = 'lll'
         length = len(self.line_text)
         if length > Config.lineLengthLimit and self.line_text[length-1] != '`':
             if self.file_path in ['go.mod', 'go.sum']:
                 return
-            if self.is_supressed('lll'):
+            if self.is_supressed(type_id):
                 return
-            self.output_message('Maximum line length exceeded '
-                                f'({length} > {Config.lineLengthLimit}) (lll)')
+            self.output_message(type_id, 'Maximum line length exceeded '
+                                f'({length} > {Config.lineLengthLimit})')
         return
 
     def process_wrapcheck(self):
@@ -356,10 +360,26 @@ class BuiltinLintersRunner:
                     self.line_text[offset:].split()[0])
                 if len(word) == 1 or word.upper() != word:
                     self.output_message(
-                        f'Error strings should not be capitalized: \'{word}\' ({type_id})')
+                        type_id, f'Error strings should not be capitalized: \'{word}\'')
         else:
             self.output_message(
-                f'Unable to filed error string. Consider to use one-line expression ({type_id})')
+                type_id, 'Unable to filed error string. Consider to use one-line expression')
+        return
+
+    def process_declcheck(self):
+        type_id = 'declcheck'
+        if self.line_text.replace(" ", "").find(':nil') >= 0 and not self.is_supressed(type_id):
+            self.output_message(type_id, 'Nil field initialization can be omitted')
+            return
+        offset = self.line_text.find(':=')
+        if offset < 0:
+            return False
+        if self.line_text.endswith('""') and not self.is_supressed(type_id):
+            self.output_message(type_id, 'Consider initializing an empty string with var keyword')
+            return
+        if ((self.line_text.find('[]') >= 0 and self.line_text.endswith('{}')) or
+                self.line_text.endswith('(nil)')) and not self.is_supressed(type_id):
+            self.output_message(type_id, 'Explicit variable declaration should use var keyword')
         return
 
     def process_deprecheck(self):
@@ -375,8 +395,26 @@ class BuiltinLintersRunner:
             return False
         if self.is_supressed(type_id):
             return
-        self.output_message(
-            f'Use of method is deprecated: \'{check}\' ({type_id})')
+        self.output_message(type_id, f'Use of method is deprecated: \'{check}\'')
+        return
+
+    def process_gimpcheck(self):
+        type_id = 'gimpcheck'
+        if self.line_text.startswith('import ('):
+            self.in_imports = 1
+            self.output_message(type_id, 'Sep start')
+            return
+        if self.in_imports != 0:
+            if self.line_text == '':
+                self.in_imports += 1
+                self.output_message(type_id, 'Sep space')
+                return
+            if self.line_text.startswith(')'):
+                self.output_message(type_id, f'Sep end {self.in_imports}')
+                if self.in_imports > 2 and not self.is_supressed(type_id):
+                    self.output_message(type_id, 'Multiple separator lines in imports block')
+                self.in_imports = 0
+                return
         return
 
     def is_supressed(self, supress):
@@ -392,11 +430,13 @@ class BuiltinLintersRunner:
                 return False
         return False
 
-    def output_message(self, message):
+    def output_message(self, type_id, message):
+        if self.is_supressed(type_id):
+            return
         prefix = f'{self.file_path}:{self.line_index}: '
-        print(f'{prefix}{message}')
+        print(f'{prefix}{message} ({type_id})')
         if not Config.excludeNonPrefixed:
-            print(f'{prefix}{self.line_text}')
+            print(f'{prefix}{self.line_text} ({type_id})')
         Config.exitCode = 2
 
     @staticmethod
