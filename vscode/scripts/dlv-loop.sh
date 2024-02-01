@@ -33,6 +33,8 @@ BLUE=$(printf "\e[34m")
 GRAY=$(printf "\e[90m")
 NC=$(printf "\e[0m")
 
+IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+
 function log() {
 	echo "$BLUE|| $*$NC"
 }
@@ -154,7 +156,7 @@ while :; do
 	fi
 
 	seltest
-	log "Starting Delve headless server loop in DAP mode."
+	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://${IP}"
 	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
 	dlv_pid="$!"
 
