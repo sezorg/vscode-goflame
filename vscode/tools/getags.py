@@ -723,6 +723,15 @@ class GerritTags:
                       f' revision {self.current_revision}')
 
     def checkout_to(self, patch_number, branch_name, revision):
+        if self.checkout_lookup(patch_number, '', revision):
+            debug(f'Checked out to: patch {patch_number} revision {decorate(revision)}')
+            return True
+        if self.checkout_lookup(patch_number, branch_name, ''):
+            debug(f'Checked out to: patch {patch_number} branch {decorate(branch_name)}')
+            return True
+        return False
+
+    def checkout_lookup(self, patch_number, branch_name, revision):
         for state in self.state_list:
             if patch_number == state.number or \
                     branch_name == state.branch_name or \
