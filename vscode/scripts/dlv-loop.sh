@@ -162,6 +162,11 @@ while :; do
 
 	echo "$dlv_pid" >"$DLOOP_STATUS_FILE"
 	wait "$dlv_pid" >/dev/null 2>&1
+	dlv_status=$?
+	if [[ $dlv_status -ne 0 ]]; then
+		log "Delve exited with status: $dlv_status"
+		killall "$(basename -- "$dlv_binary")" >/dev/null 2>&1
+	fi
 
 	count="5"
 	while [[ "$count" != "0" ]]; do
