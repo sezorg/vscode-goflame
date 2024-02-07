@@ -699,6 +699,96 @@ function xcache_get() {
 	cat "$P_CACHE_DIR/$1" 2>/dev/null
 }
 
+TTY_PORT="/dev/ttyUSB0"
+TTY_SPEED="115200"
+TTY_PICOCOM="picocom"
+TTY_LOGIN="root"
+TTY_PASS="root"
+TTY_DELAY="200" # milliseconds
+
+function xtty() {
+	local format="" text
+	for ((i = 0; i <= $#; i++)); do
+		format="$format%s\r"
+	done
+	# shellcheck disable=SC2059
+	text="$(printf "$format" "$@")"
+	xdebug "TTY: send: $text"
+	text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1)
+	xdebug "TTY: recv: $text"
+	echo "$text"
+}
+
+function xtty_is() {
+	[[ "$(xtty "$1")" == *"$2"* ]]
+}
+
+function xtty_logout() {
+	if xtty_is "" "#"; then
+		if xtty_is "exit" "exit not allowed"; then
+			xdebug "TTY: Booting u-boot"
+			xtty "boot" >/dev/null 2>&1
+		else
+			xdebug "TTY: Logging out"
+			xtty "" >/dev/null 2>&1
+		fi
+	fi
+}
+
+function xtty_login() {
+	xtty_logout
+	if xtty_is "" "login:"; then
+		if xtty_is "$TTY_LOGIN" "Password:"; then
+			xtty_is "$TTY_PASS" "#"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+function xtty_peek_ip() {
+	if ! xtty_login; then
+		return 1
+	fi
+	local oldifs text lines=() line match
+	${IFS+"false"} && unset oldifs || oldifs="$IFS"
+	# shellcheck disable=SC2207
+	IFS=$'\r' lines=($(xtty "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
+	${oldifs+"false"} && unset IFS || IFS="$oldifs"
+	for line in "${lines[@]}"; do
+		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
+		if [[ "$match" != "" ]]; then
+			eval "$1"="$match"
+			return 0
+		fi
+	done
+	return 1
+}
+
+function xtty_resolve_ip() {
+	local start_time current_time elapsed_time ip="$1" timeout="$2"
+	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
+		timeout="10"
+	fi
+	start_time=$(date +%s)
+	while true; do
+		if xtty_peek_ip "$ip"; then
+			return 0
+		fi
+		sleep 0.5
+		current_time=$(date +%s)
+		elapsed_time=$((current_time - start_time))
+		if [[ "$elapsed_time" -ge "$timeout" ]]; then
+			return 1
+		fi
+	done
+}
+
+function xdiscard_target_config() {
+	local config_path="$TEMP_DIR/config-vscode.ini"
+	rm "$config_path"
+}
+
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
@@ -706,7 +796,15 @@ function xresolve_target_config() {
 	data_hash=$(xcache_text_hash "$config_path")
 	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
 		xdebug "Creating target config for $TARGET_IPADDR..."
-		if ! xis_ipv4_addr "$TARGET_IPADDR"; then
+		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
+			xecho "Resolving IP from $TARGET_IPADDR..."
+			TTY_PORT="$TARGET_IPADDR"
+			local target_ip=""
+			if ! xtty_resolve_ip "target_ip" "30"; then
+				xfatal "Unable to get IP from TTY $TARGET_IPADDR"
+			fi
+			TARGET_IPADDR="$target_ip"
+		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
 			local found=false mac_addr
 			if xhas_prefix "$TARGET_IPADDR" "ASSET-"; then
 				# Not implemented because of missing Jira login/password credentials.
@@ -769,7 +867,9 @@ EOF
 	# shellcheck disable=SC1090
 	source "$config_path"
 	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
-	if xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
+	if xhas_prefix "$TARGET_HOSTNAME" "/dev/"; then
+		TARGET_HYPERLINK="http://$TARGET_IPADDR (tty: $TARGET_HOSTNAME)"
+	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
 	elif xis_ne "$TARGET_MACADDR" ""; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (MAC $TARGET_MACADDR)"
