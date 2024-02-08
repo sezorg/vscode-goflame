@@ -32,4 +32,4 @@ xunreferenced \
 
 xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[EXEC]" \
-	"Building & deploying $PI${TARGET_BIN_NAME}$PO to remote host $TARGET_HYPERLINK"
+	"Building & deploying $PI${TARGET_BIN_NAME}$PO to remote host"

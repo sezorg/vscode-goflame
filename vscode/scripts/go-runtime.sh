@@ -174,6 +174,13 @@ TARGET_SUPRESS_MSSGS=()
 TARGET_BUILD_GOFLAGS=()
 TARGET_BUILD_LDFLAGS=()
 
+TTY_PORT=""
+TTY_SPEED="115200"
+TTY_PICOCOM="picocom"
+TTY_LOGIN="root"
+TTY_PASS="root"
+TTY_DELAY="200" # milliseconds
+
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
@@ -699,13 +706,6 @@ function xcache_get() {
 	cat "$P_CACHE_DIR/$1" 2>/dev/null
 }
 
-TTY_PORT="/dev/ttyUSB0"
-TTY_SPEED="115200"
-TTY_PICOCOM="picocom"
-TTY_LOGIN="root"
-TTY_PASS="root"
-TTY_DELAY="200" # milliseconds
-
 function xtty() {
 	local format="" text
 	for ((i = 0; i <= $#; i++)); do
@@ -796,12 +796,14 @@ function xresolve_target_config() {
 	data_hash=$(xcache_text_hash "$config_path")
 	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
 		xdebug "Creating target config for $TARGET_IPADDR..."
-		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
-			xecho "Resolving IP from $TARGET_IPADDR..."
-			TTY_PORT="$TARGET_IPADDR"
+		if xhas_prefix "$TARGET_IPADDR" "/dev/" || xis_ne "$TTY_PORT" ""; then
+			if xis_eq "$TTY_PORT" ""; then
+				TTY_PORT="$TARGET_IPADDR"
+			fi
+			xecho "Resolving device IP from TTY '$TTY_PORT'..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "30"; then
-				xfatal "Unable to get IP from TTY $TARGET_IPADDR"
+				xfatal "Unable to get IP from TTY '$TTY_PORT'"
 			fi
 			TARGET_IPADDR="$target_ip"
 		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
@@ -876,8 +878,6 @@ EOF
 	fi
 }
 
-xresolve_target_config
-
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
@@ -941,7 +941,8 @@ function xperform_build_and_deploy() {
 		PRECOMMIT_ENABLE=true
 	fi
 
-	xecho "$*"
+	xresolve_target_config
+	xecho "$* $TARGET_HYPERLINK"
 	if xis_true "$fbuild"; then
 		xbuild_project
 	else

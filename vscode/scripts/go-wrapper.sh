@@ -193,7 +193,7 @@ if xis_true "$HAVE_BUILD_COMMAND"; then
 		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 			xprepare_runtime_scripts
 			xperform_build_and_deploy "[REBUILD]" \
-				"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host $TARGET_HYPERLINK"
+				"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host"
 			exit "0"
 		else
 			xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
