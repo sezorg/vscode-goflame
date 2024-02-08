@@ -35,7 +35,7 @@ else
 	echo "Backup '$TARGET.bak' already exists. Skipping."
 fi
 
-echo "Stropping '$SERVICE'"
+echo "Stopping '$SERVICE'"
 systemctl stop "$SERVICE"
 echo "Copying '$SOURCE' to '$TARGET'"
 cp "$SOURCE" "$TARGET"
