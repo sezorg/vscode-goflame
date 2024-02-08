@@ -6,6 +6,7 @@
 set -euo pipefail
 
 TITLE="onvifd"
+SERVICE="$TITLE.service"
 SOURCE="/usr/bin/${TITLE}_debug"
 TARGET="/usr/bin/$TITLE"
 RED='\033[0;31m'
@@ -34,9 +35,14 @@ else
 	echo "Backup '$TARGET.bak' already exists. Skipping."
 fi
 
+echo "Stropping '$SERVICE'"
+systemctl stop "$SERVICE"
 echo "Copying '$SOURCE' to '$TARGET'"
 cp "$SOURCE" "$TARGET"
 sync
-echo "Restarting '$TITLE' service"
-systemctl restart "$TITLE"
+echo "Enabling & restarting '$TITLE' service"
+systemctl unmask "$SERVICE"
+systemctl enable "$SERVICE"
+systemctl restart "$SERVICE"
+systemctl status "$SERVICE"
 echo "Exit status: $?"
