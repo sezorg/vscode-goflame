@@ -74,6 +74,7 @@ function json_test() {
 	log "$IP: $service.$method()"
 	log "IN:"
 	print_json "request" "$JSON"
+	# ecamapi/ecam request -a 10.9.11.104 -u admin -p admin --no-proxy -s recording -c "GetServiceCapabilities" | jq
 	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
 	status=$(echo "$output" | grep "No route to host")
 	if [[ "$status" != "" ]]; then

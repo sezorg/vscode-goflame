@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"AppID": "somefacedetector"
+}
+DELIMITER
+)
+json_test appmgmt/Uninstall
