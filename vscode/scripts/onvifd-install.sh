@@ -13,9 +13,9 @@ RED='\033[0;31m'
 NC='\033[0m' # No Color
 
 echo "This will install debug version of $TITLE as main service."
-read -r -p "Do you want to continue? (y/n): " answer
+read -r -p "Do you want to continue? (Y/n): " answer
 
-if [[ "$answer" =~ ^[Yy]$ ]]; then
+if [[ "$answer" == "" ]] || [[ "$answer" =~ ^[Yy]$ ]]; then
 	if [[ ! -f "$SOURCE" ]]; then
 		echo "$RED ***ERROR: File '$SOURCE' does not exist. Aborting.$NC"
 		exit 1
@@ -44,5 +44,5 @@ echo "Enabling & restarting '$TITLE' service"
 systemctl unmask "$SERVICE"
 systemctl enable "$SERVICE"
 systemctl restart "$SERVICE"
-systemctl status "$SERVICE"
+systemctl status "$SERVICE" --no-pager -l --lines=1
 echo "Exit status: $?"
