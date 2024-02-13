@@ -223,7 +223,7 @@ function pi() {
 	_set_konsole_title "picocom on $device_path" "picocom on $device_path"
 	self_ip=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
 	baud_rate="115200"
-	session_file="/tmp/picocom_session_startup"
+	session_file="/var/tmp/picocom_session_startup"
 	session_lines=(
 		"# Automatically generated: $(date +"%A, %B %d, %Y, %I:%M:%S %p")"
 		"from_ip=\"$self_ip\""
@@ -243,9 +243,10 @@ function pi() {
 	done
 	session_text="${session_text:4}"
 	session_text="${session_text} && chmod +x \"$session_file\""
+	#echo "$session_text"
 	session_text=$(printf "\r%s\r%s\r%s\r" "root" "root" "$session_text")
 	echo "$session_text" | picocom -rqb "$baud_rate" "$device_path" >/dev/null 2>&1
-	sleep 0.1
+	sleep 0.3
 	yellow=$(printf "\e[33m") nc=$(printf "\e[0m")
 	echo -n "$yellow"
 	picocom -qrb "$baud_rate" "$device_path" -t "$(echo -ne "sh $session_file"'\r')"
