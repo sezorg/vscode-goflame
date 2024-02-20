@@ -98,6 +98,7 @@
             "program": "${workspaceFolder}/cmd/onvifd/onvifd.go",
             "buildFlags": "-ldflags '-X main.currentVersion=custom -X main.sysConfDir=${workspaceFolder}/.vscode/launch -X main.localStateDir=${workspaceFolder}/.vscode/launch'",
             "args": ["-users", "${workspaceFolder}/init/users.toml"],
+            "preLaunchTask": "launch-x86-prepare-env",
         },
     ],
 }

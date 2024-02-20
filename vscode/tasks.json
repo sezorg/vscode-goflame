@@ -39,6 +39,13 @@
             "hide": false
         },
         {
+            "label": "launch-x86-prepare-env",
+            "type": "process",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-x86-prepare-env.sh",
+            "echoCommand": false,
+            "hide": false
+        },
+        {
             "type": "go",
             "label": "go: build workspace",
             "command": "build",

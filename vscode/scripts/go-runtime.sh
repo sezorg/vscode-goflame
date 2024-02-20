@@ -878,6 +878,15 @@ EOF
 	fi
 }
 
+function xrm() {
+	for i in "$@"; do
+		if [[ -f "$i" ]]; then
+			xecho "Deleting $i"
+			rm -rf "$i"
+		fi
+	done
+}
+
 function xssh() {
 	xdebug "Target exec: $*"
 	local canfail=
