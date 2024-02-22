@@ -881,10 +881,15 @@ EOF
 function xrm() {
 	for i in "$@"; do
 		if [[ -f "$i" ]]; then
-			xecho "Deleting $i"
+			xdebug "Deleting $i"
 			rm -rf "$i"
 		fi
 	done
+}
+
+function xcp() {
+	xdebug "Copying $1 -> $2"
+	cp -f "$1" "$2"
 }
 
 function xssh() {
