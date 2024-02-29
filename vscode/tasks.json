@@ -39,9 +39,9 @@
             "hide": false
         },
         {
-            "label": "launch-x86-prepare-env",
+            "label": "launch-x86-prepare",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-x86-prepare-env.sh",
+            "command": "${workspaceFolder}/.vscode/scripts/launch-x86-prepare.sh",
             "echoCommand": false,
             "hide": false
         },

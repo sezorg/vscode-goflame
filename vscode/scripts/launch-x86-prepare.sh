@@ -7,6 +7,8 @@
 
 set -euo pipefail
 
+TARGET_ARCH="host"
+
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "$SCRIPT_DIR/go-runtime.sh"
@@ -22,3 +24,16 @@ xrm ".vscode/launch/lib/onvifd/state.toml"
 xcp "init/timesyncd-static.conf" ".vscode/launch/lib/onvifd/timesyncd-static.conf"
 xcp "init/users.toml" ".vscode/launch/lib/onvifd/users.toml"
 xcp "init/wpa_supplicant.tmpl" ".vscode/launch/lib/onvifd/wpa_supplicant.tmpl"
+
+TARGET_BUILD_GOFLAGS+=(
+	"-C" "$PWD"
+	"-o" "./onvifd_host"
+)
+
+TARGET_BUILD_LDFLAGS=(
+	"-X main.currentVersion=custom"
+	"-X main.sysConfDir=./.vscode/launch"
+	"-X main.localStateDir=./.vscode/launch"
+)
+
+xbuild_project

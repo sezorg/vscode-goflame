@@ -158,7 +158,9 @@ PI="\`"
 PO="'"
 xunreferenced "$DT" "$CE" "$EP"
 
-TARGET_ARCH=""
+if xis_unset "$TARGET_ARCH"; then
+	TARGET_ARCH=""
+fi
 TARGET_GOCXX=""
 TARGET_DOMAIN="UNKNOWN-TARGET_DOMAIN"
 TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
@@ -367,14 +369,6 @@ fi
 BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
 BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
 
-TARGET_BUILD_FLAGS=("${TARGET_BUILD_GOFLAGS[@]}")
-if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
-	TARGET_BUILD_FLAGS+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
-fi
-if xis_set "$TARGET_BUILD_LAUNCHER"; then
-	TARGET_BUILD_FLAGS+=("$TARGET_BUILD_LAUNCHER")
-fi
-
 TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
@@ -415,6 +409,7 @@ if xis_unset "$TARGET_GOCXX"; then
 	case "$TARGET_ARCH" in
 	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
 	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
+	"host") TARGET_GOCXX="gcc" ;;
 	*) xfatal "Can not determine compiler for TARGET_ARCH=\"$TARGET_ARCH\"" ;;
 	esac
 fi
@@ -445,6 +440,23 @@ EXPORT_CGO_LDFLAGS=""
 
 EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
 EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
+
+if xis_eq "$TARGET_ARCH" "host"; then
+	BUILDROOT_GOBIN="go"
+
+	EXPORT_GOROOT=""
+	EXPORT_GOPATH=""
+	EXPORT_GOMODCACHE=""
+	EXPORT_GOTOOLDIR=""
+	EXPORT_GOCACHE=""
+
+	EXPORT_GOARCH=""
+
+	EXPORT_CGO_CFLAGS=""
+	EXPORT_CGO_CXXFLAGS=""
+	EXPORT_CC=""
+	EXPORT_CXX=""
+fi
 
 GOLANG_EXPORTS=(
 	"EXPORT_DLVBIN"
@@ -528,7 +540,7 @@ function xexport_apply() {
 	for variable in "$@"; do
 		local name="$variable"
 		local value="${!name}"
-		if xis_unset "$value"; then
+		if xis_unset "$value" && xis_ne "$TARGET_ARCH" "host"; then
 			if ! xcontains "$variable" "EXPORT_CGO_LDFLAGS"; then
 				xecho "WARNING: An empty exported variable $variable"
 			fi
@@ -1560,8 +1572,17 @@ function xbuild_project() {
 	#flags+=("-race")
 	#flags+=("-msan")
 	#flags+=("-asan")
+
+	flags+=("${TARGET_BUILD_GOFLAGS[@]}")
+	if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
+		flags+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
+	fi
+	if xis_set "$TARGET_BUILD_LAUNCHER"; then
+		flags+=("$TARGET_BUILD_LAUNCHER")
+	fi
+
 	xexport_apply "${GOLANG_EXPORTS[@]}"
-	xexec "$BUILDROOT_GOBIN" "${flags[@]}" "${TARGET_BUILD_FLAGS[@]}"
+	xexec "$BUILDROOT_GOBIN" "${flags[@]}"
 	if xis_ne "$EXEC_STATUS" "0"; then
 		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
 		xdebug "EXPORT_GOPATH=$EXPORT_GOPATH"
