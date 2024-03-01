@@ -27,7 +27,7 @@ xcp "init/wpa_supplicant.tmpl" ".vscode/launch/lib/onvifd/wpa_supplicant.tmpl"
 
 TARGET_BUILD_GOFLAGS+=(
 	"-C" "$PWD"
-	"-o" "./onvifd_host"
+	"-o" "./onvifd"
 )
 
 TARGET_BUILD_LDFLAGS=(

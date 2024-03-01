@@ -95,7 +95,7 @@
             "type": "go",
             "request": "launch",
             "mode": "exec",
-            "program": "onvifd_host",
+            "program": "onvifd",
             "cwd": "${workspaceFolder}",
             "debugAdapter": "dlv-dap",
             "args": ["-users", "${workspaceFolder}/init/users.toml"],
