@@ -34,6 +34,7 @@ class Config:
     excludeList = ""
     gitCommit = ""
     excludeNonPrefixed = False
+    excludeNolintWarns = False
     printAll = False
     exitCode = 0
 
@@ -155,6 +156,13 @@ def parse_arguments():
         default=False,
     )
     parser.add_argument(
+        '-z', '--exclude-nolint',
+        help='Exclude warnings about unknown linters in nolint derectives',
+        required=False,
+        action='store_true',
+        default=False,
+    )
+    parser.add_argument(
         '-a', '--print-all',
         help='Print all messages regardless of changeset or commint',
         required=False,
@@ -179,6 +187,7 @@ def parse_arguments():
     Config.excludeList = arguments.exclude_list
     Config.gitCommit = arguments.commit
     Config.excludeNonPrefixed = arguments.exclude_non_prefixed
+    Config.excludeNolintWarns = arguments.exclude_nolint
     Config.printAll = arguments.print_all
     return arguments
 
@@ -471,6 +480,8 @@ class WarningsSupressor:
             if line == self.previous_line:
                 continue
             prefixed = line.startswith('level=')
+            if prefixed and Config.excludeNolintWarns and line.index('msg="[runner/nolint]') >= 0:
+                continue
             if self.output_next or prefixed:
                 self.output(line, prefixed, 1)
                 continue
