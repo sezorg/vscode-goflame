@@ -93,12 +93,30 @@ function _error() {
 	if [[ "$1" != "" ]]; then
 		echo >&2 "ERROR: $1"
 	fi
-	return 1
+}
+
+function _fatal() {
+	if [[ "$1" != "" ]]; then
+		echo >&2 "FATAL: $1"
+	fi
+	kill $$
+	exit 1
 }
 
 function _warning() {
 	if [[ "$1" != "" ]]; then
 		echo >&2 "WARNING: $1"
+	fi
+}
+
+_debug_en=false
+
+function _debug() {
+	if ! $_debug_en; then
+		return 0
+	fi
+	if [[ "$1" != "" ]]; then
+		echo >&2 "DEBUG: $1"
 	fi
 	return 0
 }
@@ -138,8 +156,7 @@ function _resolve_variable() {
 			_warning "$error_message"
 			actual_value="$default_value"
 		else
-			_error "$error_message"
-			exit 1
+			_fatal "$error_message"
 		fi
 	fi
 	echo "$actual_value"
@@ -165,6 +182,138 @@ function _set_konsole_title() {
 	local titleRemote=${2:-(%u) %H}
 	_set_konsole_tab_title_type "$titleLocal" &&
 		_set_konsole_tab_title_type "$titleRemote" 1
+}
+
+TTY_PORT=""
+TTY_SPEED="115200"
+TTY_PICOCOM="picocom"
+TTY_LOGIN="root"
+TTY_PASS="root"
+TTY_DELAY="100" # milliseconds
+
+function _tty_resolve_port() {
+	if [[ "$TTY_PORT" == "" ]] || [[ "$TTY_PORT" == "x" ]]; then
+		TTY_PORT="$(find /dev -name "ttyUSB*" -print -quit)"
+		if [[ "$TTY_PORT" == "" ]]; then
+			_fatal "Unable to find USB TTY port"
+		fi
+	fi
+	_debug "TTY: port $TTY_PORT"
+}
+
+function _tty_shell() {
+	_tty_resolve_port
+	local format="" text
+	for ((i = 0; i <= $#; i++)); do
+		format="$format%s\r"
+	done
+	# shellcheck disable=SC2059
+	text="$(printf "$format" "$@")"
+	_debug "TTY: send: -->$text<--"
+	if ! text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1); then
+		text=$(echo "$text" | xargs)
+		_fatal "Unable to communicate with TTY '$TTY_PORT': $text"
+	fi
+	_debug "TTY: recv: -->$text<--"
+	echo "$text"
+}
+
+function _tty_promt() {
+	_tty_resolve_port
+	local format="" text
+	for ((i = 0; i <= $#; i++)); do
+		format="$format%s\r"
+	done
+	# shellcheck disable=SC2059
+	text="$(printf "$format" "$@")"
+	_debug "TTY: send: -->$text<--"
+	if ! "$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT" -t "$text"; then
+		_fatal "Unable to communicate with TTY '$TTY_PORT'"
+	fi
+}
+
+function _tty_exchange() {
+	[[ "$(_tty_shell "$1")" == *"$2"* ]]
+}
+
+function _tty_logout() {
+	if _tty_exchange "" "#"; then
+		if _tty_exchange "exit" "exit not allowed"; then
+			_debug "TTY: Booting u-boot"
+			_tty_shell "boot" >/dev/null 2>&1
+		else
+			_debug "TTY: Logging out"
+			_tty_shell "" >/dev/null 2>&1
+		fi
+	fi
+}
+
+function _tty_try_login() {
+	case $(_tty_shell "") in
+	*"login:"*)
+		_debug "TTY: got login prompt"
+		if _tty_exchange "$TTY_LOGIN" "Password:"; then
+			_debug "TTY: got password prompt"
+			_tty_exchange "$TTY_PASS" "#"
+			return 0
+		fi
+		;;
+	*"#"*)
+		_debug "TTY: got command prompt"
+		return 0
+		;;
+	*) return 1 ;;
+	esac
+	return 1
+}
+
+function _tty_login() {
+	if _tty_try_login; then
+		return 0
+	fi
+	_tty_logout
+	if _tty_try_login; then
+		return 0
+	fi
+	return 1
+}
+
+function _tty_peek_ip() {
+	if ! _tty_login; then
+		return 1
+	fi
+	local oldifs text lines=() line match
+	${IFS+"false"} && unset oldifs || oldifs="$IFS"
+	# shellcheck disable=SC2207
+	IFS=$'\r' lines=($(_tty_shell "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
+	${oldifs+"false"} && unset IFS || IFS="$oldifs"
+	for line in "${lines[@]}"; do
+		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
+		if [[ "$match" != "" ]]; then
+			eval "$1"="$match"
+			return 0
+		fi
+	done
+	return 1
+}
+
+function _tty_resolve_ip() {
+	local start_time current_time elapsed_time ip="$1" timeout="$2"
+	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
+		timeout="10"
+	fi
+	start_time=$(date +%s)
+	while true; do
+		if _tty_peek_ip "$ip"; then
+			return 0
+		fi
+		sleep 0.5
+		current_time=$(date +%s)
+		elapsed_time=$((current_time - start_time))
+		if [[ "$elapsed_time" -ge "$timeout" ]]; then
+			return 1
+		fi
+	done
 }
 
 function ss() {
@@ -216,41 +365,12 @@ function pi() {
 	device_path=$(
 		_resolve_variable "$1" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
 	)
-	if ! sh -c ": >$device_path" >/dev/null 2>/dev/null; then
-		_error "TTY device $device_path is not avaliable"
-		return 1
+	TTY_PORT="$device_path"
+	if ! _tty_login; then
+		_fatal "Can't login to TTY"
 	fi
-	_set_konsole_title "picocom on $device_path" "picocom on $device_path"
-	self_ip=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
-	baud_rate="115200"
-	session_file="/var/tmp/picocom_session_startup"
-	session_lines=(
-		"# Automatically generated: $(date +"%A, %B %d, %Y, %I:%M:%S %p")"
-		"from_ip=\"$self_ip\""
-		"blue=\\\$(printf '\'\"e[34m\") nc=\\\$(printf '\'\"e[0m\")"
-		"ip=\\\$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')"
-		"echo \"\\\${nc}Device IP: \\\${blue}\\\$ip\\\${nc} Link: \\\${blue}http://\\\$ip\\\${nc}\""
-		"ip --color addr show eth0 | grep -v valid_lft"
-		"# cat \"$session_file\""
-		"# rm \"$session_file\""
-	)
-	session_outer=">"
-	session_text=""
-	for session_line in "${session_lines[@]}"; do
-		session_line="echo \"${session_line//\"/\\\"}\" $session_outer\"$session_file\""
-		session_text="$session_text && $session_line"
-		session_outer=">>"
-	done
-	session_text="${session_text:4}"
-	session_text="${session_text} && chmod +x \"$session_file\""
-	#echo "$session_text"
-	session_text=$(printf "\r%s\r%s\r%s\r" "root" "root" "$session_text")
-	echo "$session_text" | picocom -rqb "$baud_rate" "$device_path" >/dev/null 2>&1
-	sleep 0.3
-	yellow=$(printf "\e[33m") nc=$(printf "\e[0m")
-	echo -n "$yellow"
-	picocom -qrb "$baud_rate" "$device_path" -t "$(echo -ne "sh $session_file"'\r')"
-	echo -n "$nc"
+	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
+	_tty_promt "ifconfig"
 	_set_konsole_title
 }
 
