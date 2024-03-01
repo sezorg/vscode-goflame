@@ -16,6 +16,10 @@ function xis_false() {
 	[[ ! "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
 }
 
+function xis_defined() {
+	[[ -v "$1" ]]
+}
+
 function xis_set() {
 	[[ "$1" != "" ]]
 }
@@ -62,8 +66,8 @@ function xtime() {
 }
 
 function xformat_time() {
-	local from="$1" to="$2" prefix="$3"
-	local time days days_frac hours hours_frac mins secs
+	local from="$1" to="$2"
+	local time days days_frac hours hours_frac mins secs pad="0000000"
 	time=$(echo "$to - $from" | bc)
 	days=$(echo "$time/86400" | bc)
 	days_frac=$(echo "$time-86400*$days" | bc)
@@ -71,21 +75,23 @@ function xformat_time() {
 	hours_frac=$(echo "$days_frac-3600*$hours" | bc)
 	mins=$(echo "$hours_frac/60" | bc)
 	secs=$(echo "$hours_frac-60*$mins" | bc)
-	if xis_ne "$days" "0"; then
-		printf "$prefix%dd %02dh %02dm %02.3fs" "$days" "$hours" "$mins" "$secs"
-	elif xis_ne "$hours" "0"; then
-		printf "$prefix%dh %02dm %02.3fs" "$hours" "$mins" "$secs"
-	elif xis_ne "$mins" "0"; then
-		printf "$prefix%dm %02.3fs" "$mins" "$secs"
+	secs=$(printf "%02.3fs" "$secs")
+	secs="${pad:${#secs}}$secs"
+	if [[ "$days" != "0" ]]; then
+		printf "%dd %02.2dh %02.2dm %s" "$days" "$hours" "$mins" "$secs"
+	elif [[ "$hours" != "0" ]]; then
+		printf "%dh %02.2dm %s" "$hours" "$mins" "$secs"
+	elif [[ "$mins" != "0" ]]; then
+		printf "%dm %s" "$mins" "$secs"
 	else
-		printf "$prefix%02.3fs" "$secs"
+		printf "%s" "$secs"
 	fi
 }
 
 function xelapsed() {
 	local end_time
 	end_time="$(date +%s.%N)"
-	xecho "$(xformat_time "$P_TIME_STARTED" "$end_time" "Total runtime: ")"
+	xecho "Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time")"
 }
 
 P_TIME_STARTED="$(date +%s.%N)"
@@ -158,7 +164,7 @@ PI="\`"
 PO="'"
 xunreferenced "$DT" "$CE" "$EP"
 
-if xis_unset "$TARGET_ARCH"; then
+if ! xis_defined TARGET_ARCH; then
 	TARGET_ARCH=""
 fi
 TARGET_GOCXX=""
@@ -270,7 +276,7 @@ LOCAL_GOPATH="$(go env GOPATH)"
 LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
 LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
-P_CONFIG_INI_LOADED=true
+P_CONFIG_INI_LOADED=false
 if xis_exists "$SCRIPT_DIR/../config.ini"; then
 	# shellcheck disable=SC1091
 	source "$SCRIPT_DIR/../config.ini"
@@ -301,11 +307,11 @@ function xemit() {
 	time_stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
 	time_stamp="${time_stamp:0:-6}"
 	actual_time="$(date +%s.%N)"
-	elapsed_time="$(xformat_time "$P_TIME_PREV_LOG" "$actual_time" " +")"
+	elapsed_time=" +$(xformat_time "$P_TIME_PREV_LOG" "$actual_time")"
 	P_TIME_PREV_LOG="$actual_time"
 	message_log="$time_stamp$elapsed_time$input"
 	if xis_set "$echo_flag"; then
-		elapsed_time="$(xformat_time "$P_TIME_PREV_OUT" "$actual_time" " +")"
+		elapsed_time=" +$(xformat_time "$P_TIME_PREV_OUT" "$actual_time")"
 		P_TIME_PREV_OUT="$actual_time"
 		message_out="$time_stamp$elapsed_time$input"
 	fi
@@ -327,9 +333,21 @@ function xemit() {
 	fi
 }
 
+function xterminate() {
+	if xis_ne "$EXEC_STATUS" "0"; then
+		kill $$
+	fi
+	exit "$1"
+}
+
 function xecho() {
 	# Echo message
 	xemit "$XECHO_ENABLED" "$*"
+}
+
+function xdebug() {
+	# Debug message
+	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
 }
 
 function xerror() {
@@ -338,12 +356,7 @@ function xerror() {
 
 function xfatal() {
 	xemit "1" "FATAL: $*"
-	exit 1
-}
-
-function xdebug() {
-	# Debug message
-	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
+	xterminate "1"
 }
 
 function xtext() {
@@ -650,7 +663,7 @@ EOF
 		xtext "$EXEC_STDOUT"
 		xerror "Terminating with status $EXEC_STATUS"
 		xerror "More details in file://$WRAPPER_LOGFILE"
-		exit ${EXEC_STATUS}
+		xterminate "${EXEC_STATUS}"
 	elif xis_true "false"; then
 		if xis_set "$EXEC_STDOUT"; then
 			xdebug "EXEC_STDOUT: $EXEC_STDOUT"
@@ -669,7 +682,10 @@ function xexit() {
 	if xis_set "$EXEC_STDERR"; then
 		echo "$EXEC_STDERR" 1>&2
 	fi
-	exit "$EXEC_STATUS"
+	if xis_unset "$EXEC_STATUS"; then
+		xfatal "Missing EXEC_STATUS to exit"
+	fi
+	xterminate "$EXEC_STATUS"
 }
 
 P_OPTIONS_STACK=()
@@ -718,42 +734,90 @@ function xcache_get() {
 	cat "$P_CACHE_DIR/$1" 2>/dev/null
 }
 
-function xtty() {
+function xtty_resolve_port() {
+	if [[ "$TTY_PORT" == "" ]] || [[ "$TTY_PORT" == "x" ]] || [[ "$TTY_PORT" == "auto" ]]; then
+		TTY_PORT="$(find /dev -name "ttyUSB*" -print -quit)"
+		if [[ "$TTY_PORT" == "" ]]; then
+			_fatal "Unable to find USB TTY port"
+		fi
+	fi
+	#xdebug "TTY: port $TTY_PORT"
+}
+
+function xtty_shell() {
+	xtty_resolve_port
 	local format="" text
 	for ((i = 0; i <= $#; i++)); do
 		format="$format%s\r"
 	done
 	# shellcheck disable=SC2059
 	text="$(printf "$format" "$@")"
-	xdebug "TTY: send: $text"
-	text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1)
-	xdebug "TTY: recv: $text"
+	#xdebug "TTY: send: -->$text<--"
+	if ! text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1); then
+		text=$(echo "$text" | xargs)
+		xfatal "Unable to communicate with TTY '$TTY_PORT': $text"
+	fi
+	#xdebug "TTY: recv: -->$text<--"
 	echo "$text"
 }
 
-function xtty_is() {
-	[[ "$(xtty "$1")" == *"$2"* ]]
+function xtty_promt() {
+	xtty_resolve_port
+	local format="" text
+	for ((i = 0; i <= $#; i++)); do
+		format="$format%s\r"
+	done
+	# shellcheck disable=SC2059
+	if ! text="$(printf "$format" "$@")"; then
+		text=$(echo "$text" | xargs)
+		xfatal "Unable to communicate with TTY '$TTY_PORT': $text"
+	fi
+	#xdebug "TTY: send: -->$text<--"
+	"$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT" -t "$text"
+}
+
+function xtty_exchange() {
+	[[ "$(xtty_shell "$1")" == *"$2"* ]]
 }
 
 function xtty_logout() {
-	if xtty_is "" "#"; then
-		if xtty_is "exit" "exit not allowed"; then
-			xdebug "TTY: Booting u-boot"
-			xtty "boot" >/dev/null 2>&1
+	if xtty_exchange "" "#"; then
+		if xtty_exchange "exit" "exit not allowed"; then
+			#xdebug "TTY: Booting u-boot"
+			xtty_shell "boot" >/dev/null 2>&1
 		else
-			xdebug "TTY: Logging out"
-			xtty "" >/dev/null 2>&1
+			#xdebug "TTY: Logging out"
+			xtty_shell "" >/dev/null 2>&1
 		fi
 	fi
 }
 
-function xtty_login() {
-	xtty_logout
-	if xtty_is "" "login:"; then
-		if xtty_is "$TTY_LOGIN" "Password:"; then
-			xtty_is "$TTY_PASS" "#"
+function xtty_try_login() {
+	case $(xtty_shell "") in
+	*"login:"*)
+		#xdebug "TTY: got login prompt"
+		if xtty_exchange "$TTY_LOGIN" "Password:"; then
+			#xdebug "TTY: got password prompt"
+			xtty_exchange "$TTY_PASS" "#"
 			return 0
 		fi
+		;;
+	*"#"*)
+		#xdebug "TTY: got command prompt"
+		return 0
+		;;
+	*) return 1 ;;
+	esac
+	return 1
+}
+
+function xtty_login() {
+	if xtty_try_login; then
+		return 0
+	fi
+	xtty_logout
+	if xtty_try_login; then
+		return 0
 	fi
 	return 1
 }
@@ -765,7 +829,7 @@ function xtty_peek_ip() {
 	local oldifs text lines=() line match
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
 	# shellcheck disable=SC2207
-	IFS=$'\r' lines=($(xtty "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
+	IFS=$'\r' lines=($(xtty_shell "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
 	for line in "${lines[@]}"; do
 		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
@@ -808,10 +872,14 @@ function xresolve_target_config() {
 	data_hash=$(xcache_text_hash "$config_path")
 	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
 		xdebug "Creating target config for $TARGET_IPADDR..."
-		if xhas_prefix "$TARGET_IPADDR" "/dev/" || xis_ne "$TTY_PORT" ""; then
-			if xis_eq "$TTY_PORT" ""; then
-				TTY_PORT="$TARGET_IPADDR"
-			fi
+		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
+			TTY_PORT="$TARGET_IPADDR"
+		fi
+		if xis_eq "$TARGET_IPADDR" "tty"; then
+			TTY_PORT="auto"
+		fi
+		if xis_ne "$TTY_PORT" ""; then
+			xtty_resolve_port
 			xecho "Resolving device IP from TTY '$TTY_PORT'..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "30"; then
@@ -1508,9 +1576,9 @@ function xcheck_project() {
 		xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
 			"./..." ">" "$scheck" "2>&1"
 		if xis_true "$GOLANGCI_LINT_FILTER"; then
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x -z
 		else
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
+			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x -z
 		fi
 		xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 	fi

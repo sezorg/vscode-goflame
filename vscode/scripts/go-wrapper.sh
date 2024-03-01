@@ -184,22 +184,21 @@ if [[ ! -f "$BUILDROOT_GOBIN" ]]; then
 	exit "1"
 fi
 
-# Execute original Golang command
-xexport_apply "${GOLANG_EXPORTS[@]}"
-xexec "$BUILDROOT_GOBIN" "$@"
-
 if xis_true "$HAVE_BUILD_COMMAND"; then
-	if [[ "$EXEC_STATUS" == "0" ]]; then
-		if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
-			xprepare_runtime_scripts
-			xperform_build_and_deploy "[REBUILD]" \
-				"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host"
-			exit "0"
-		else
-			xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
-			exit "1"
-		fi
+	if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
+		xprepare_runtime_scripts
+		xperform_build_and_deploy "[REBUILD]" \
+			"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host"
+		exit "0"
+	else
+		xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
+		exit "1"
 	fi
+else
+	# Execute original Golang command
+	xecho "$BUILDROOT_GOBIN $@"
+	xexport_apply "${GOLANG_EXPORTS[@]}"
+	xexec "$BUILDROOT_GOBIN" "$@"
 fi
 
 xexit
