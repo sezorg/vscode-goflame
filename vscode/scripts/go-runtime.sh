@@ -91,7 +91,7 @@ function xformat_time() {
 function xelapsed() {
 	local end_time
 	end_time="$(date +%s.%N)"
-	xecho "Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time")"
+	xecho "Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time") (details: file:///var/tmp/goflame/go-wrapper.log)"
 }
 
 P_TIME_STARTED="$(date +%s.%N)"
@@ -949,8 +949,9 @@ EOF
 	# shellcheck disable=SC1090
 	source "$config_path"
 	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
-	if xhas_prefix "$TARGET_HOSTNAME" "/dev/"; then
-		TARGET_HYPERLINK="http://$TARGET_IPADDR (tty: $TARGET_HOSTNAME)"
+	xecho "TARGET_IPADDR=$TARGET_IPADDR"
+	if xis_ne "$TTY_PORT" ""; then
+		TARGET_HYPERLINK="http://$TARGET_IPADDR (TTY $TTY_PORT)"
 	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
 	elif xis_ne "$TARGET_MACADDR" ""; then
@@ -1149,112 +1150,114 @@ function xfiles_copy() {
 	if xis_eq "${#list[@]}" "0"; then
 		list=("${COPY_FILES[@]}")
 	fi
-	if xis_ne "${#list[@]}" "0"; then
-		local backup_source="$TEMP_DIR/data"
-		if xis_false "$COPY_CACHE"; then
-			xclean_directory "$P_CACHE_DIR"
-		elif [[ ! -d "$P_CACHE_DIR" ]]; then
-			xexec mkdir -p "$P_CACHE_DIR"
-		fi
-
-		local elements=""
-		local count="0"
-		local uploading=""
-		local directories=()
-		local symlinks=""
-		for pair in "${list[@]}"; do
-			IFS='|'
-			# shellcheck disable=SC2206
-			files=($pair)
-			unset IFS
-			if xis_ne "${#files[@]}" "2"; then
-				xfatal "Invalid copy command: \"$pair\""
-			fi
-			local fileA="${files[0]}"
-			local fileB="${files[1]}"
-			if [[ "$fileB" =~ ^\:.* ]]; then
-				uploading="1"
-				local prefA="${fileA:0:1}"
-				if xis_eq "$prefA" "?"; then
-					fileA="${fileA:1}"
-				fi
-				if xis_exists "$PWD/$fileA"; then
-					fileA="$PWD/$fileA"
-				elif xis_exists "$fileA"; then
-					:
-				elif xis_eq "$prefA" "?"; then
-					xecho "File \"$fileA\" does not exists, skipping"
-					continue
-				else
-					xerror "Unable to find \"$fileA\" for upload"
-					exit "1"
-				fi
-
-				local name_hash file_hash
-				name_hash=$(xcache_text_hash "$fileA")
-				file_hash=$(xcache_file_hash "$fileA")
-				#xecho "$name_hash :: $file_hash"
-
-				if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
-					if xis_unset "${directories[*]}"; then
-						xclean_directory "$backup_source"
-					fi
-					local backup_target="$backup_source/${fileB:1}"
-					backup_target="${backup_target//\/\//\/}"
-					local backup_subdir
-					backup_subdir=$(dirname "$backup_target")
-					if ! xcontains "$backup_subdir" "${directories[@]}"; then
-						directories+=("$backup_subdir")
-					fi
-					symlinks="${symlinks}ln -s \"$fileA\" \"$backup_target\"; "
-					P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"$name_hash\" \"$file_hash\"; "
-				else
-					xdebug "Skipping upload $fileA :: $name_hash :: $file_hash"
-					fileB=""
-				fi
-			fi
-			if xis_set "$fileB"; then
-				elements="$elements, $(basename -- "$fileB")"
-				count=$((count + 1))
-			fi
-		done
-		if xis_ne "${#directories[@]}" "0"; then
-			xexec mkdir -p "${directories[@]}"
-		fi
-		if xis_ne "$symlinks" ""; then
-			xexec "$symlinks"
-		fi
-		if xis_set "$uploading"; then
-			if xis_set "$elements"; then
-				xecho "Uploading $count files: ${elements:2}"
-				local pkg="gzip -5"
-				if which pigz >/dev/null 2>&1; then
-					pkg="pigz -p$(nproc) -9"
-				fi
-				P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | $pkg - | "
-				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
-			fi
-		else
-			xecho "Downloading ${#list[@]} files: ${elements:2}"
-		fi
-
-		for pair in "${list[@]}"; do
-			IFS='|'
-			# shellcheck disable=SC2206
-			files=($pair)
-			unset IFS
-			local fileA="${files[0]}"
-			local fileB="${files[1]}"
-			if [[ ! "$fileB" =~ ^\:.* ]]; then
-				xdebug "    ${fileB#":"}"
-				if xis_set "$canfail"; then
-					xscp "$P_CANFAIL" "$fileA" "$fileB"
-				else
-					xscp "$fileA" "$fileB"
-				fi
-			fi
-		done
+	if xis_eq "${#list[@]}" "0"; then
+		return 0
 	fi
+
+	local backup_source="$TEMP_DIR/data"
+	if xis_false "$COPY_CACHE"; then
+		xclean_directory "$P_CACHE_DIR"
+	elif [[ ! -d "$P_CACHE_DIR" ]]; then
+		xexec mkdir -p "$P_CACHE_DIR"
+	fi
+
+	local elements=""
+	local count="0"
+	local uploading=""
+	local directories=()
+	local symlinks=""
+	for pair in "${list[@]}"; do
+		IFS='|'
+		# shellcheck disable=SC2206
+		files=($pair)
+		unset IFS
+		if xis_ne "${#files[@]}" "2"; then
+			xfatal "Invalid copy command: \"$pair\""
+		fi
+		local fileA="${files[0]}"
+		local fileB="${files[1]}"
+		if [[ "$fileB" =~ ^\:.* ]]; then
+			uploading="1"
+			local prefA="${fileA:0:1}"
+			if xis_eq "$prefA" "?"; then
+				fileA="${fileA:1}"
+			fi
+			if xis_exists "$PWD/$fileA"; then
+				fileA="$PWD/$fileA"
+			elif xis_exists "$fileA"; then
+				:
+			elif xis_eq "$prefA" "?"; then
+				xecho "File \"$fileA\" does not exists, skipping"
+				continue
+			else
+				xerror "Unable to find \"$fileA\" for upload"
+				exit "1"
+			fi
+
+			local name_hash file_hash
+			name_hash=$(xcache_text_hash "$fileA")
+			file_hash=$(xcache_file_hash "$fileA")
+			#xecho "$name_hash :: $file_hash"
+
+			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
+				if xis_unset "${directories[*]}"; then
+					xclean_directory "$backup_source"
+				fi
+				local backup_target="$backup_source/${fileB:1}"
+				backup_target="${backup_target//\/\//\/}"
+				local backup_subdir
+				backup_subdir=$(dirname "$backup_target")
+				if ! xcontains "$backup_subdir" "${directories[@]}"; then
+					directories+=("$backup_subdir")
+				fi
+				symlinks="${symlinks}ln -s \"$fileA\" \"$backup_target\"; "
+				P_SSH_HOST_POST="${P_SSH_HOST_POST}xcache_put \"$name_hash\" \"$file_hash\"; "
+			else
+				xdebug "Skipping upload $fileA :: $name_hash :: $file_hash"
+				fileB=""
+			fi
+		fi
+		if xis_set "$fileB"; then
+			elements="$elements, $(basename -- "$fileB")"
+			count=$((count + 1))
+		fi
+	done
+	if xis_ne "${#directories[@]}" "0"; then
+		xexec mkdir -p "${directories[@]}"
+	fi
+	if xis_ne "$symlinks" ""; then
+		xexec "$symlinks"
+	fi
+	if xis_set "$uploading"; then
+		if xis_set "$elements"; then
+			xecho "Uploading $count files: ${elements:2}"
+			local pkg="gzip -5"
+			if which pigz >/dev/null 2>&1; then
+				pkg="pigz -p$(nproc) -9"
+			fi
+			P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | $pkg - | "
+			P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
+		fi
+	else
+		xecho "Downloading ${#list[@]} files: ${elements:2}"
+	fi
+
+	for pair in "${list[@]}"; do
+		IFS='|'
+		# shellcheck disable=SC2206
+		files=($pair)
+		unset IFS
+		local fileA="${files[0]}"
+		local fileB="${files[1]}"
+		if [[ ! "$fileB" =~ ^\:.* ]]; then
+			xdebug "    ${fileB#":"}"
+			if xis_set "$canfail"; then
+				xscp "$P_CANFAIL" "$fileA" "$fileB"
+			else
+				xscp "$fileA" "$fileB"
+			fi
+		fi
+	done
 }
 
 function xservices_stop() {
