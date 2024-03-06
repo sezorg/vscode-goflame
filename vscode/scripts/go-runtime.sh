@@ -861,17 +861,18 @@ function xtty_resolve_ip() {
 	done
 }
 
+P_VSCODE_CONFIG_PATH="$TEMP_DIR/config-vscode.ini"
+
 function xdiscard_target_config() {
-	local config_path="$TEMP_DIR/config-vscode.ini"
-	rm "$config_path"
+	rm "$P_VSCODE_CONFIG_PATH"
 }
 
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
-	local cache_name="__config_vscode.hash" data_hash config_path="$TEMP_DIR/config-vscode.ini"
-	data_hash=$(xcache_text_hash "$config_path")
-	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$config_path"; then
+	local cache_name="__config_vscode.hash" data_hash
+	data_hash=$(xcache_text_hash "$P_VSCODE_CONFIG_PATH")
+	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
 		xdebug "Creating target config for $TARGET_IPADDR..."
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
@@ -944,14 +945,15 @@ TARGET_HOSTNAME=$TARGET_HOSTNAME
 TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER=$TARGET_USER
 TARGET_PASS=$TARGET_PASS
+TARGET_TTYPORT=$TTY_PORT
 EOF
 		xcache_put "$cache_name" "$data_hash"
 	fi
 	# shellcheck disable=SC1090
-	source "$config_path"
+	source "$P_VSCODE_CONFIG_PATH"
 	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
-	if xis_ne "$TTY_PORT" ""; then
-		TARGET_HYPERLINK="http://$TARGET_IPADDR (TTY $TTY_PORT)"
+	if xis_ne "$TARGET_TTYPORT" ""; then
+		TARGET_HYPERLINK="http://$TARGET_IPADDR (TTY $TARGET_TTYPORT)"
 	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
 	elif xis_ne "$TARGET_MACADDR" ""; then
