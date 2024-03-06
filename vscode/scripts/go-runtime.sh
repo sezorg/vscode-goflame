@@ -335,7 +335,8 @@ function xemit() {
 
 function xterminate() {
 	if xis_ne "$EXEC_STATUS" "0"; then
-		kill $$
+		#kill $$
+		:
 	fi
 	exit "$1"
 }
@@ -931,7 +932,7 @@ function xresolve_target_config() {
 				done
 			fi
 			if xis_false "$found"; then
-				xfatal "Unable resolve IP for target '$TARGET_IPADDR'."
+				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
 			fi
 		fi
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
@@ -949,7 +950,6 @@ EOF
 	# shellcheck disable=SC1090
 	source "$config_path"
 	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
-	xecho "TARGET_IPADDR=$TARGET_IPADDR"
 	if xis_ne "$TTY_PORT" ""; then
 		TARGET_HYPERLINK="http://$TARGET_IPADDR (TTY $TTY_PORT)"
 	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
