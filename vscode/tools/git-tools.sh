@@ -6,6 +6,7 @@
 #   https://github.com/fbzhong/git-gerrit
 
 #set -euo pipefail
+#set -x
 
 SSH_FLAGS=(
 	-o StrictHostKeyChecking=no
@@ -95,12 +96,16 @@ function _error() {
 	fi
 }
 
+#p_base_pid="$$"
+
 function _fatal() {
 	if [[ "$1" != "" ]]; then
 		echo >&2 "FATAL: $1"
 	fi
-	kill $$
-	exit 1
+	#if [[ "$p_base_pid" != "$$" ]]; then
+	#	echo "kill $$"
+	#fi
+	#exit 1
 }
 
 function _warning() {
@@ -318,8 +323,8 @@ function _tty_resolve_ip() {
 
 function ss() {
 	local user="root" pass="root" ip_address
-	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
-	if _is_empty_argument "$1"; then
+	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$*"; then
 		echo "Connecting to $ip_address"
 	fi
 	_set_konsole_title "SSH on $user@$ip_address" "SSH on $user@$ip_address"
@@ -330,8 +335,8 @@ function ss() {
 
 function so() {
 	local ip_address
-	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
-	if _is_empty_argument "$1"; then
+	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$*"; then
 		echo "Opening http://$ip_address"
 	fi
 	xdg-open "http://$ip_address"
@@ -344,8 +349,8 @@ function run() {
 
 function sf() {
 	local user="root" pass="root" ip_address
-	ip_address=$(_resolve_variable "$1" "" "last_ip_addr" "Target IP address parameter expected")
-	if _is_empty_argument "$1"; then
+	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$*"; then
 		echo "Mounting FS of $ip_address"
 	fi
 	local mount_point="$HOME/Devices/$ip_address"
@@ -363,11 +368,12 @@ function sf() {
 function pi() {
 	local device_path
 	device_path=$(
-		_resolve_variable "$1" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
+		_resolve_variable "$*" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
 	)
 	TTY_PORT="$device_path"
+	_tty_resolve_port
 	if ! _tty_login; then
-		_fatal "Can't login to TTY"
+		_fatal "Can not login to TTY $TTY_PORT"
 	fi
 	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
 	_tty_promt "ifconfig"
@@ -380,7 +386,7 @@ function jc() {
 
 function xcd() {
 	local destin
-	destin=$(_resolve_variable "$1" "" "last_destin" "Destination directory expected")
+	destin=$(_resolve_variable "$*" "" "last_destin" "Destination directory expected")
 	echo "Changing directory: $destin"
 	cd "$destin" || true
 }
@@ -390,5 +396,5 @@ function upd() {
 	printf 'Updating %s %s\n' \
 		"${REDHAT_SUPPORT_PRODUCT:-$PRETTY_NAME}" \
 		"${REDHAT_SUPPORT_PRODUCT_VERSION:-$VERSION_ID}"
-	sudo dnf update --refresh $*
+	sudo dnf update --refresh "$@"
 }
