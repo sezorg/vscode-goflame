@@ -367,12 +367,29 @@ class BuiltinLintersRunner:
             if str.isalpha(start) and not str.islower(start):
                 word = BuiltinLintersRunner.select_first_alnum_word(
                     self.line_text[offset:].split()[0])
-                if len(word) == 1 or word.upper() != word:
-                    self.output_message(
-                        type_id, f'Error strings should not be capitalized: \'{word}\'')
+                self.process_wrapcheck_word(type_id, word)
         else:
             self.output_message(
                 type_id, 'Unable to filed error string. Consider to use one-line expression')
+        return
+
+    def process_wrapcheck_word(self, type_id, word):
+        index = 0
+        length = len(word)
+        while index < length:
+            char = word[index]
+            if not char.isupper() and not char.isdigit():
+                break
+            index = index + 1
+        upper = index
+        while index < length:
+            char = word[index]
+            if char.isupper() or char.isdigit():
+                break
+            index = index + 1
+        lower = index
+        if lower == length and upper == 1 and upper != length:
+            self.output_message(type_id, f'Error strings should not be capitalized: \'{word}\'')
         return
 
     def process_declcheck(self):
