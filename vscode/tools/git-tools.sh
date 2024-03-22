@@ -37,6 +37,10 @@ function gh() {
 	return 0
 }
 
+function пр() {
+	gh "$@"
+}
+
 function master_branch_lookup() {
 	local branches=("master" "main" "ipcam" "ecam02" "ecam03")
 	for branch in "${branches[@]}"; do
@@ -54,28 +58,56 @@ function gri() {
 	git rebase --interactive "HEAD~$1"
 }
 
+function пкш() {
+	gri "$@"
+}
+
 function grc() {
 	git rebase --continue
+}
+
+function пкс() {
+	grc "$@"
 }
 
 function grm() {
 	git rebase --update-refs "$(master_branch_lookup)"
 }
 
+function пкь() {
+	grm "$@"
+}
+
 function grx() {
 	git rebase --abort
+}
+
+function пкч() {
+	grx "$@"
 }
 
 function gpc() {
 	git cherry-pick --continue
 }
 
+function пзс() {
+	gpc "$@"
+}
+
 function gs() {
 	git status
 }
 
+function пы() {
+	gs "$@"
+}
+
 function ga() {
 	git add -u
+}
+
+function пф() {
+	ga "$@"
 }
 
 function gp() {
@@ -86,8 +118,16 @@ function gp() {
 	git push origin "HEAD:refs/for/$target"
 }
 
+function пз() {
+	gp "$@"
+}
+
 function gt() {
 	"getags.py" "$@"
+}
+
+function пе() {
+	gt "$@"
 }
 
 function _error() {
@@ -333,6 +373,10 @@ function ss() {
 	_set_konsole_title
 }
 
+function ыы() {
+	ss "$@"
+}
+
 function so() {
 	local ip_address
 	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
@@ -340,6 +384,10 @@ function so() {
 		echo "Opening http://$ip_address"
 	fi
 	xdg-open "http://$ip_address"
+}
+
+function ыщ() {
+	so "$@"
 }
 
 function run() {
@@ -365,6 +413,10 @@ function sf() {
 	fi
 }
 
+function ыа() {
+	sf "$@"
+}
+
 function pi() {
 	local device_path
 	device_path=$(
@@ -380,8 +432,16 @@ function pi() {
 	_set_konsole_title
 }
 
+function зш() {
+	pi "$@"
+}
+
 function jc() {
 	"./jsoncli/jsoncli.sh" "$@"
+}
+
+function ос() {
+	jc "$@"
 }
 
 function xcd() {
@@ -391,10 +451,18 @@ function xcd() {
 	cd "$destin" || true
 }
 
+function чсв() {
+	xcd "$@"
+}
+
 function upd() {
 	. /etc/os-release
 	printf 'Updating %s %s\n' \
 		"${REDHAT_SUPPORT_PRODUCT:-$PRETTY_NAME}" \
 		"${REDHAT_SUPPORT_PRODUCT_VERSION:-$VERSION_ID}"
 	sudo dnf update --refresh "$@"
+}
+
+function гзв() {
+	upd "$@"
 }
