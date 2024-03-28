@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Timeout": "PT1S"
+}
+DELIMITER
+)
+json_test device/ForceNTPSync
+
