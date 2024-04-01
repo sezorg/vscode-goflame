@@ -5,7 +5,7 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Token": "/dev/mmcblk0"
+	"Token": "/dev/mmcblk1"
 }
 DELIMITER
 )
