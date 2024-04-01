@@ -5,7 +5,7 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Timeout": "PT1S"
+	"Timeout": "PT0.155S"
 }
 DELIMITER
 )
