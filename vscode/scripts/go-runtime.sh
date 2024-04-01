@@ -739,14 +739,17 @@ function xtty_resolve_port() {
 	if [[ "$TTY_PORT" == "" ]] || [[ "$TTY_PORT" == "x" ]] || [[ "$TTY_PORT" == "auto" ]]; then
 		TTY_PORT="$(find /dev -name "ttyUSB*" -print -quit)"
 		if [[ "$TTY_PORT" == "" ]]; then
-			_fatal "Unable to find USB TTY port"
+			xfatal "Unable to find USB TTY port"
+			return 1
 		fi
 	fi
 	#xdebug "TTY: port $TTY_PORT"
 }
 
 function xtty_shell() {
-	xtty_resolve_port
+	if ! xtty_resolve_port; then
+		return 1
+	fi
 	local format="" text
 	for ((i = 0; i <= $#; i++)); do
 		format="$format%s\r"
@@ -762,8 +765,14 @@ function xtty_shell() {
 	echo "$text"
 }
 
+function xtty_shell_fatal() {
+	xfatal "Failed to execute TTY shell command on '$TTY_PORT'"
+}
+
 function xtty_promt() {
-	xtty_resolve_port
+	if ! xtty_resolve_port; then
+		return 1
+	fi
 	local format="" text
 	for ((i = 0; i <= $#; i++)); do
 		format="$format%s\r"
@@ -778,23 +787,35 @@ function xtty_promt() {
 }
 
 function xtty_exchange() {
-	[[ "$(xtty_shell "$1")" == *"$2"* ]]
+	local result
+	if ! result="$(xtty_shell "$1")"; then
+		xtty_shell_fatal
+	fi
+	[[ "$result" == *"$2"* ]]
 }
 
 function xtty_logout() {
 	if xtty_exchange "" "#"; then
 		if xtty_exchange "exit" "exit not allowed"; then
 			#xdebug "TTY: Booting u-boot"
-			xtty_shell "boot" >/dev/null 2>&1
+			if ! xtty_shell "boot" >/dev/null 2>&1; then
+				xtty_shell_fatal
+			fi
 		else
 			#xdebug "TTY: Logging out"
-			xtty_shell "" >/dev/null 2>&1
+			if ! xtty_shell "" >/dev/null 2>&1; then
+				xtty_shell_fatal
+			fi
 		fi
 	fi
 }
 
 function xtty_try_login() {
-	case $(xtty_shell "") in
+	local result
+	if ! result="$(xtty_shell "")"; then
+		xtty_shell_fatal
+	fi
+	case $result in
 	*"login:"*)
 		#xdebug "TTY: got login prompt"
 		if xtty_exchange "$TTY_LOGIN" "Password:"; then
@@ -830,7 +851,9 @@ function xtty_peek_ip() {
 	local oldifs text lines=() line match
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
 	# shellcheck disable=SC2207
-	IFS=$'\r' lines=($(xtty_shell "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
+	if ! IFS=$'\r' lines=($(xtty_shell "ifconfig | grep 'inet addr:' | grep 'Bcast:'")); then
+		xtty_shell_fatal
+	fi
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
 	for line in "${lines[@]}"; do
 		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
@@ -881,7 +904,9 @@ function xresolve_target_config() {
 			TTY_PORT="auto"
 		fi
 		if xis_ne "$TTY_PORT" ""; then
-			xtty_resolve_port
+			if ! xtty_resolve_port; then
+				return 1
+			fi
 			xecho "Resolving device IP from TTY '$TTY_PORT'..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "30"; then
