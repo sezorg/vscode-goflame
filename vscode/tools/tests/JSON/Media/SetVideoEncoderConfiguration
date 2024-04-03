@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+  cat <<DELIMITER
+{
+  "Configuration": {
+    "token": "vec-mobile",
+    "Name": "VEC mobile",
+    "UseCount": 1,
+    "Encoding": "H264",
+    "Resolution": {
+      "Width": 640,
+      "Height": 360
+    },
+    "Quality": 3,
+    "RateControl": {
+      "FrameRateLimit": 30,
+      "EncodingInterval": 1,
+      "BitrateLimit": 10240
+    },
+    "H264": {
+      "GovLength": 30,
+      "H264Profile": "High"
+    },
+    "Multicast": {
+      "Address": {
+        "Type": "IPv4",
+        "IPv4Address": "224.1.1.1"
+      },
+      "Port": 5000,
+      "TTL": 1,
+      "AutoStart": false
+    },
+    "SessionTimeout": "PT1M"
+  },
+  "ForcePersistence": false
+}
+DELIMITER
+)
+json_test media/SetVideoEncoderConfiguration
