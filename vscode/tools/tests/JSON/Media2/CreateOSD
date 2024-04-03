@@ -1,0 +1,42 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "OSD": {
+    "token": "c8d3f5ae-733a-465a-93d2-9f5ccebd4b8c",
+    "VideoSourceConfigurationToken": "vsc-common",
+    "Type": "Text",
+    "Position": {
+      "Type": "UpperLeft"
+    },
+    "TextString": {
+      "Type": "Time",
+      "TimeFormat": "H:mm:ss",
+      "FontSize": 10,
+      "FontColor": {
+        "Color": {
+          "X": 255,
+          "Y": 255,
+          "Z": 255,
+          "Colorspace": "http://www.onvif.org/ver10/colorspace/RGB"
+        },
+        "Transparent": 0
+      },
+      "BackgroundColor": {
+        "Color": {
+          "X": 0,
+          "Y": 0,
+          "Z": 0,
+          "Colorspace": "http://www.onvif.org/ver10/colorspace/RGB"
+        },
+        "Transparent": 100
+      }
+    }
+  }
+}
+DELIMITER
+)
+json_test media2/CreateOSD
