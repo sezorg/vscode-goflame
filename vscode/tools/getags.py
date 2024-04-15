@@ -298,11 +298,12 @@ class GerritTags:
         self.repository_url = repository_url
         self.master_branch = master_branch
         self.patchsets = patchsets
+        self.all_users = False
         self.email = ''
         if command is None or command == 'me' or command == '':
             self.email = user_email
         elif command == 'all':
-            self.email = ''
+            self.all_users = True
             if config.rebase_chains and not config.rebase_for_all:
                 fatal(f'Rebase chains for {decorate(command)} users is feature protected')
         elif command == 'del':
@@ -745,7 +746,7 @@ class GerritTags:
         return False
 
     def print_header(self, username_len):
-        if self.patchsets:
+        if self.patchsets or self.all_users:
             index = f'{Colors.gray}---'
         else:
             index = f'{Colors.gray}--'
@@ -768,7 +769,7 @@ class GerritTags:
     def print_branch(self, state, username_len):
         self.branch_index += 1
         index = ''
-        if self.patchsets:
+        if self.patchsets or self.all_users:
             index = f'{Colors.gray}{self.branch_index:03d}'
         else:
             index = f'{Colors.gray}{self.branch_index:02d}'
