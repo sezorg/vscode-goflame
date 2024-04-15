@@ -2,7 +2,7 @@
 
 BASE=$(realpath "$(dirname "$PWD/${BASH_SOURCE[0]}")")
 IP=10.113.11.65
-ARGS=()
+ARGS=("$@")
 
 if [[ -f "$BASE/../../config.ini" ]]; then
 	source "$BASE/../../config.ini"
@@ -17,38 +17,73 @@ if [[ -f "/var/tmp/goflame/config-vscode.ini" ]]; then
 	IP="$TARGET_IPADDR"
 fi
 
+function debug() {
+	#echo "$*" >&2
+	return
+}
+
 function log() {
-	echo "$*"
+	echo "$*" >&2
 }
 
 function error() {
-	echo "ERROR: $*"
+	echo "ERROR: $*" >&2
 }
 
 function fatal() {
-	error "$*"
+	error "$*" >&2
 	exit 1
 }
 
-function parse_args() {
+function sed_exp() {
+	local exp="$1"
+	debug "sed_exp:  input: $exp"
+	exp=${exp//\[\[:space:\]\]/\\s}
+	exp=${exp//\[\[:word:\]\]/\\w}
+	exp=${exp//(/\\(}
+	exp=${exp//)/\\)}
+	debug "sed_exp: output: $exp"
+	echo "$exp"
+}
+
+function sed_json() {
+	local arg_name="$1" arg_data="$2"
+	shift
+	shift
+	while [[ $# -gt 0 ]]; do
+		local arg_exp="$1" arg_rep="$2"
+		shift
+		shift
+		if [[ "$JSON" =~ $arg_exp ]]; then
+			arg_match="1"
+			# shellcheck disable=SC2001
+			JSON=$(sed "s/$(sed_exp "$arg_exp")/$arg_rep/g" <<<"$JSON")
+			return
+		fi
+	done
+	fatal "Failed to replace argument with name \"$arg_name\", value \"$arg_data\""
+}
+
+function parse_json_args() {
 	for arg_pair in "${ARGS[@]}"; do
-		log "$arg_pair"
+		debug "parse_json_args: input entry: $arg_pair"
 		IFS='='
 		# shellcheck disable=SC2206
 		arg_items=($arg_pair)
 		unset IFS
-		if [[ "${#arg_items[@]}" != "2" ]]; then
+		local arg_name arg_data
+		if [[ "${#arg_items[@]}" == "1" ]]; then
+			arg_name="${arg_items[0]}" arg_data=""
+		elif [[ "${#arg_items[@]}" == "2" ]]; then
+			arg_name="${arg_items[0]}" arg_data="${arg_items[1]}"
+		else
 			fatal "Invalid argument entry: \"$arg_pair\""
 		fi
-		local arg_name="${arg_items[0]}"
-		local arg_default="${arg_items[1]}"
-		export "json_$arg_name"="$arg_default"
+		debug "parse_json_args: value: $arg_name"="$arg_data"
+		sed_json "$arg_name" "$arg_data" \
+			"(\"$arg_name\"[[:space:]]*:[[:space:]]*\")(.*)(\")" "\\1$arg_data\\3" \
+			"(\"$arg_name\"[[:space:]]*:[[:space:]]*)([[:alnum:]\.\$_+-]*)" "\\1$arg_data"
 	done
-
-	eval "text=\"$JSON\""
-	echo "$text"
-
-	exit 0
 }
 
 function format_time() {
@@ -90,7 +125,7 @@ function print_json() {
 }
 
 function json_test() {
-	#parse_args
+	parse_json_args
 	local service method output status decoded start_time end_time
 	service="$(dirname "$1")"
 	method="$(basename -- "$1")"
