@@ -51,6 +51,29 @@ function parse_args() {
 	exit 0
 }
 
+function format_time() {
+	local from="$1" to="$2"
+	local time days days_frac hours hours_frac mins secs pad="0000000"
+	time=$(echo "$to - $from" | bc)
+	days=$(echo "$time/86400" | bc)
+	days_frac=$(echo "$time-86400*$days" | bc)
+	hours=$(echo "$days_frac/3600" | bc)
+	hours_frac=$(echo "$days_frac-3600*$hours" | bc)
+	mins=$(echo "$hours_frac/60" | bc)
+	secs=$(echo "$hours_frac-60*$mins" | bc)
+	secs=$(printf "%02.3fs" "$secs")
+	secs="${pad:${#secs}}$secs"
+	if [[ "$days" != "0" ]]; then
+		printf "%dd %02.2dh %02.2dm %s" "$days" "$hours" "$mins" "$secs"
+	elif [[ "$hours" != "0" ]]; then
+		printf "%dh %02.2dm %s" "$hours" "$mins" "$secs"
+	elif [[ "$mins" != "0" ]]; then
+		printf "%dm %s" "$mins" "$secs"
+	else
+		printf "%s" "$secs"
+	fi
+}
+
 function print_json() {
 	local type="$1"
 	shift
@@ -68,18 +91,20 @@ function print_json() {
 
 function json_test() {
 	#parse_args
-	local service method output status decoded
+	local service method output status decoded start_time end_time
 	service="$(dirname "$1")"
 	method="$(basename -- "$1")"
 	log "$IP: $service.$method()"
 	log "IN:"
 	print_json "request" "$JSON"
 	# ecamapi/ecam request -a 10.9.11.104 -u admin -p admin --no-proxy -s recording -c "GetServiceCapabilities" | jq
+	start_time="$(date +%s.%N)"
 	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
 	status=$(echo "$output" | grep "No route to host")
 	if [[ "$status" != "" ]]; then
 		fatal "IP $IP: No route to host."
 	fi
-	log "OUT:"
+	end_time="$(date +%s.%N)"
+	log "OUT in $(format_time "$start_time" "$end_time"):"
 	print_json "response" "$output"
 }
