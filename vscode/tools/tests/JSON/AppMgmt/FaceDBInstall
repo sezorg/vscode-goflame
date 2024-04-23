@@ -1,0 +1,5 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl -v -F 'facedb.app=@"Files/facedb.db"' "http://$IP/upload/facedb"
