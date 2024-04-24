@@ -1,24 +1,16 @@
 #!/bin/bash
+# Copyright 2024 RnD Center "ELVEES", JSC
 
 BASE=$(realpath "$(dirname "$PWD/${BASH_SOURCE[0]}")")
-IP=10.113.11.65
-ARGS=("$@")
 
-if [[ -f "$BASE/../../config.ini" ]]; then
-	source "$BASE/../../config.ini"
-	IP="$TARGET_IPADDR"
-fi
-if [[ -f "$BASE/../../config-user.ini" ]]; then
-	source "$BASE/../../config-user.ini"
-	IP="$TARGET_IPADDR"
-fi
-if [[ -f "/var/tmp/goflame/config-vscode.ini" ]]; then
-	source "/var/tmp/goflame/config-vscode.ini"
-	IP="$TARGET_IPADDR"
-fi
+red=$(printf "\e[31m")
+green=$(printf "\e[32m")
+blue=$(printf "\e[34m")
+gray=$(printf "\e[90m")
+nc=$(printf "\e[0m")
 
 function debug() {
-	#echo "$*" >&2
+	#echo "${green}DEBUG: $*$nc" >&2
 	return
 }
 
@@ -27,13 +19,68 @@ function log() {
 }
 
 function error() {
-	echo "ERROR: $*" >&2
+	echo "$red  *** ERROR: $*$nc" >&2
 }
 
 function fatal() {
-	error "$*" >&2
+	error "$*"
 	exit 1
 }
+
+function help() {
+	log "Usage: $blue./TestScript$nc [$gray<IP>$nc] [${gray}param=value$nc ...]"
+	log "Arguments:"
+	log "   ${blue}TestScript$nc     selected script with JSON/SOAP test template"
+	log "   ${gray}IP$nc             camera IP address"
+	log "   ${gray}param=value$nc    replace JSON/SOAP data with specified value"
+	log "Example:"
+	log "   ${blue}./GetImagingSettings$nc ${gray}192.168.0.1$nc"
+	log "   ${blue}./GetImagingSettings$nc ${gray}VideoSourceToken=\"src\"$nc"
+}
+
+IP=""
+ARGS=()
+while [[ "$#" != 0 ]]; do
+	debug "arg: $1"
+	case "$1" in
+	-h | --help | help)
+		shift
+		help
+		exit 0
+		;;
+	*)
+		if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+			if [[ "$IP" != "" ]]; then
+				fatal "Duplicate IP address"
+			fi
+			IP="$1"
+		else
+			ARGS+=("$1")
+		fi
+		shift
+		;;
+	esac
+done
+
+if [[ "$IP" == "" ]]; then
+	if [[ -f "$BASE/../../config.ini" ]]; then
+		source "$BASE/../../config.ini"
+		IP="$TARGET_IPADDR"
+	fi
+	if [[ -f "$BASE/../../config-user.ini" ]]; then
+		source "$BASE/../../config-user.ini"
+		IP="$TARGET_IPADDR"
+	fi
+	if [[ -f "/var/tmp/goflame/config-vscode.ini" ]]; then
+		source "/var/tmp/goflame/config-vscode.ini"
+		IP="$TARGET_IPADDR"
+	fi
+fi
+
+if [[ "$IP" == "" ]]; then
+	error "No IP specified."
+	exit 1
+fi
 
 function sed_exp() {
 	local exp="$1"
@@ -55,7 +102,6 @@ function sed_json() {
 		shift
 		shift
 		if [[ "$JSON" =~ $arg_exp ]]; then
-			arg_match="1"
 			# shellcheck disable=SC2001
 			JSON=$(sed "s/$(sed_exp "$arg_exp")/$arg_rep/g" <<<"$JSON")
 			return
@@ -126,20 +172,26 @@ function print_json() {
 
 function json_test() {
 	parse_json_args
-	local service method output status decoded start_time end_time
+	local service method output retcode status decoded start_time end_time elapsed
 	service="$(dirname "$1")"
 	method="$(basename -- "$1")"
-	log "$IP: $service.$method()"
+	log "$blue$IP$nc: $gray$service.$method()$nc"
 	log "IN:"
 	print_json "request" "$JSON"
-	# ecamapi/ecam request -a 10.9.11.104 -u admin -p admin --no-proxy -s recording -c "GetServiceCapabilities" | jq
 	start_time="$(date +%s.%N)"
-	output=$(python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
+	# ecamapi/ecam request -a 10.9.11.104 -u admin -p admin --no-proxy -s recording -c "GetServiceCapabilities" | jq
+	output=$(timeout 2 python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
+	retcode="$?"
+	end_time="$(date +%s.%N)"
+	elapsed=$(format_time "$start_time" "$end_time")
+	if [[ "$retcode" == "124" ]]; then
+		fatal "Operation is timed out in $elapsed"
+	fi
 	status=$(echo "$output" | grep "No route to host")
 	if [[ "$status" != "" ]]; then
 		fatal "IP $IP: No route to host."
 	fi
 	end_time="$(date +%s.%N)"
-	log "OUT in $(format_time "$start_time" "$end_time"):"
+	log "OUT in $elapsed:"
 	print_json "response" "$output"
 }
