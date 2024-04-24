@@ -2,8 +2,8 @@
 
 . "./.CameraConfiguration"
 
-# Формирование параметров JSON запроса.
-JSON=$(cat << DELIMITER
+JSON=$(
+	cat <<DELIMITER
 {
 	"ConfigurationToken":"vac",
 	"AnalyticsModule":[
@@ -23,7 +23,4 @@ JSON=$(cat << DELIMITER
 }
 DELIMITER
 )
-
-echo "Analytics.CreateAnalyticsModules(Test3, Test4)"
-#echo "$JSON" > "./Analytics.CreateAnalyticsModules_Test12.json"
-./../../ipcam_request.py -a $IP -s analytics -c CreateAnalyticsModules -l "$JSON" | jq
+json_test analytics/CreateAnalyticsModules

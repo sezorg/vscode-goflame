@@ -2,7 +2,6 @@
 
 . "./.CameraConfiguration"
 
-# Формирование параметров JSON запроса.
 JSON=$(
 	cat <<DELIMITER
 {

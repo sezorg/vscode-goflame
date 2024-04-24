@@ -2,13 +2,11 @@
 
 . "./.CameraConfiguration"
 
-# Формирование параметров JSON запроса.
-JSON=$(cat << DELIMITER
+JSON=$(
+	cat <<DELIMITER
 {
 	"ConfigurationToken": "token"
 }
 DELIMITER
 )
-
-echo "ptz.GetConfigurationOptions()"
-./../../ipcam_request.py -a $IP -s ptz -c GetConfigurationOptions -l "$JSON"
+json_test ptz/GetConfigurationOptions

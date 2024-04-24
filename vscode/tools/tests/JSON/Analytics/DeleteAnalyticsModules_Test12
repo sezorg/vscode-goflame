@@ -2,8 +2,8 @@
 
 . "./.CameraConfiguration"
 
-# Формирование параметров JSON запроса.
-JSON=$(cat << DELIMITER
+JSON=$(
+	cat <<DELIMITER
 {
 	"ConfigurationToken":"vac",
 	"AnalyticsModuleName":[
@@ -13,8 +13,4 @@ JSON=$(cat << DELIMITER
 }
 DELIMITER
 )
-
-# Вызов DeleteAnalyticsModules()
-echo "Analytics.DeleteAnalyticsModules(Test1, Test2)"
-echo "$JSON" > "./Analytics.DeleteAnalyticsModules_Test12.json"
-./ipcam_request.py -a $IP -s analytics -c DeleteAnalyticsModules -l "$JSON" | jq
+json_test analytics/DeleteAnalyticsModules

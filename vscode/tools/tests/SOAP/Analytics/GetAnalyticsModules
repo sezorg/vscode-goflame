@@ -2,7 +2,6 @@
 
 . "./.CameraConfiguration"
 
-# Формирование параметров JSON запроса.
 SOAP=$(cat << DELIMITER
 <?xml version="1.0" encoding="utf-8"?>
 <s:Envelope xmlns:s="http://www.w3.org/2003/05/soap-envelope">
@@ -24,9 +23,4 @@ SOAP=$(cat << DELIMITER
 </s:Envelope>
 DELIMITER
 )
-
-# Вызов DeleteAnalyticsModules()
-echo "Analytics.GetAnalyticsModules()"
-./../../ipcam_request.py -a $IP -S -s analytics -c GetAnalyticsModules -l "$JSON"
-
-
+soap_test analytics/GetAnalyticsModules

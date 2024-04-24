@@ -2,7 +2,8 @@
 
 . "./.CameraConfiguration"
 
-JSON=$(cat << DELIMITER
+JSON=$(
+	cat <<DELIMITER
 {
 	"ConfigurationToken":"vac",
 	"AnalyticsModule":[
@@ -20,7 +21,4 @@ JSON=$(cat << DELIMITER
 }
 DELIMITER
 )
-
-echo "Analytics.ModifyAnalyticsModules(Test1, Test2)"
-echo "$JSON" > "./Analytics.ModifyAnalyticsModules_Test12.json"
-./ipcam_request.py -a $IP -s analytics -c ModifyAnalyticsModules -l "$JSON" | jq
+json_test analytics/ModifyAnalyticsModules
