@@ -9,5 +9,5 @@ JSON=$(
 }
 DELIMITER
 )
+set_timeout 10
 json_test device/ForceNTPSync
-

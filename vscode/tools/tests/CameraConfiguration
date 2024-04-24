@@ -28,18 +28,22 @@ function fatal() {
 }
 
 function help() {
-	log "Usage: $blue./TestScript$nc [$gray<IP>$nc] [${gray}param=value$nc ...]"
+	log "Usage: $blue./TestScript$nc [$gray<args...>$nc] [${gray}IP$nc] [${gray}param=value$nc ...]"
 	log "Arguments:"
-	log "   ${blue}TestScript$nc     selected script with JSON/SOAP test template"
-	log "   ${gray}IP$nc             camera IP address"
-	log "   ${gray}param=value$nc    replace JSON/SOAP data with specified value"
+	log "   ${blue}./TestScript$nc                selected script with JSON/SOAP test template"
+	log "   ${gray}-h, --help, help$nc            print this help screen and exit"
+	log "   ${gray}-t, --timeout, timeout$nc ${green}SEC$nc  specify command timeout in seconds"
+	log "   ${gray}IP$nc                          IPv4 address of the destination camera"
+	log "   ${gray}param=value$nc                 replace JSON/SOAP data with specified value"
 	log "Example:"
-	log "   ${blue}./GetImagingSettings$nc ${gray}192.168.0.1$nc"
+	log "   ${blue}./GetImagingSettings$nc ${gray}192.168.0.1$nc ${gray}--timeout$nc ${green}10$nc"
 	log "   ${blue}./GetImagingSettings$nc ${gray}VideoSourceToken=\"src\"$nc"
 }
 
 IP=""
 ARGS=()
+DEF_TIMEOUT="2"
+TIMEOUT=""
 while [[ "$#" != 0 ]]; do
 	debug "arg: $1"
 	case "$1" in
@@ -47,6 +51,14 @@ while [[ "$#" != 0 ]]; do
 		shift
 		help
 		exit 0
+		;;
+	-t | --timeout | timeout)
+		shift
+		if [[ "$#" == 0 ]]; then
+			fatal "Expected timeout parameter, seconds"
+		fi
+		TIMEOUT="$1"
+		shift
 		;;
 	*)
 		if [[ "$1" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
@@ -170,6 +182,12 @@ function print_json() {
 	return 0
 }
 
+function set_timeout() {
+	if [[ "$TIMEOUT" == "" ]]; then
+		TIMEOUT="$1"
+	fi
+}
+
 function json_test() {
 	parse_json_args
 	local service method output retcode status decoded start_time end_time elapsed
@@ -180,7 +198,10 @@ function json_test() {
 	print_json "request" "$JSON"
 	start_time="$(date +%s.%N)"
 	# ecamapi/ecam request -a 10.9.11.104 -u admin -p admin --no-proxy -s recording -c "GetServiceCapabilities" | jq
-	output=$(timeout 2 python3 "$BASE/ipcam_request.py" -a $IP -s "$service" -c "$method" -l "$JSON" 2>&1)
+	if [[ "$TIMEOUT" == "" ]]; then
+		TIMEOUT="$DEF_TIMEOUT"
+	fi
+	output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" -a "$IP" -s "$service" -c "$method" -l "$JSON" 2>&1)
 	retcode="$?"
 	end_time="$(date +%s.%N)"
 	elapsed=$(format_time "$start_time" "$end_time")
