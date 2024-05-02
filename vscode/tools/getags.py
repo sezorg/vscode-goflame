@@ -285,7 +285,7 @@ class GitConfig:
 class State:
     def __init__(self):
         self.change_id = self.number = self.subject = self.email = \
-            self.username = self.url = self.wip = self.patch_num = \
+            self.username = self.url = self.wip = self.priv = self.patch_num = \
             self.curr_num = self.revision = self.ref = self.mode = ''
         self.parents = []
         self.child_count = 0
@@ -455,6 +455,9 @@ class GerritTags:
                 if line.startswith('  wip: '):
                     state.wip = line[7:].strip()
                     # debug(f'{mode} || wip = {state.wip}')
+                if line.startswith('  isPrivate: '):
+                    state.priv = line[13:].strip()
+                    # debug(f'{mode} || priv = {state.priv}')
                 if line.startswith('  currentPatchSet:'):
                     mode = 'currentPatchSet'
                     # debug(f'{mode} || mode = {mode}')
@@ -589,7 +592,9 @@ class GerritTags:
             entry_name = state.number + self.branch_separator + 'R' + state.patch_num
             if mode == 'currentPatchSetAdd':
                 entry_name = state.number + self.branch_separator + 'CUR'
-        if state.wip == 'true':
+        if state.priv == 'true':
+            entry_name += self.branch_separator + 'PRIV'
+        elif state.wip == 'true':
             entry_name += self.branch_separator + 'WIP'
         # if state.child_count == 0:
         #    entry_name += self.branch_separator + 'TOP'
@@ -785,14 +790,23 @@ class GerritTags:
         info = ''
         post = Colors.nc + '  '
         info += Colors.blue + ' *' if state.child_count == 0 else post
-        info += Colors.yellow + ' W' if state.wip else post
+        priv_color = Colors.gray
+        wip_color = Colors.yellow
+        pref = post
+        if state.priv:
+            pref = priv_color + ' P'
+        elif state.wip:
+            pref = wip_color + ' W'
+        info += pref
         info += Colors.cyan + ' R' if state.branch_name not in self.containing_master else post
         info += Colors.nc + ' |'
         while len(subject) < self.subject_limit:
             subject += ' '
         if len(subject) <= self.subject_limit:
-            if state.wip:
-                subject = Colors.yellow + subject
+            if state.priv:
+                subject = priv_color + subject
+            elif state.wip:
+                subject = wip_color + subject
             else:
                 subject = Colors.nc + subject
         else:
