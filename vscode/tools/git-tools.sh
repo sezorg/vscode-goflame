@@ -18,27 +18,25 @@ SSH_FLAGS=(
 )
 
 function gh() {
-	echo "gri: git rebase --interactive HEAD~\$1"
-	echo "grc: git rebase --continue"
-	echo "grm: git rebase --update-refs master"
-	echo "grx: git rebase --abort"
-	echo "gpc: git cherry-pick --continue"
-	echo "gs: git status"
-	echo "ga: git add -u"
-	echo "gp: git push origin [<master> >>> HEAD:refs/for/master]"
-	echo "gt: gerrit-tags [me/all/username/user@mail]"
-	echo "ss: ssh root-user@[ip_address]"
-	echo "so: xdg-open http://[ip_address]"
-	echo "sf: sshfs root-user@[ip_address]"
-	echo "pi: picocom -b 115200 [/dev/ttyUSB0]"
-	echo "jc: jsoncli.py ...arguments"
-	echo "xcd: cd [directory]"
-	echo "upd: sudo dnf update --refresh"
+	echo "gri:  git rebase --interactive HEAD~\$1"
+	echo "grc:  git rebase --continue"
+	echo "grm:  git rebase --update-refs master"
+	echo "grx:  git rebase --abort"
+	echo "gpc:  git cherry-pick --continue"
+	echo "gs:   git status"
+	echo "ga:   git add -u"
+	echo "gp:   git push origin [<master> >>> HEAD:refs/for/master]"
+	echo "gt:   gerrit-tags [me/all/username/user@mail]"
+	echo "ss:   ssh root-user@[ip_address]"
+	echo "so:   xdg-open http://[ip_address]"
+	echo "sf:   sshfs root-user@[ip_address]"
+	echo "pi:   picocom -b 115200 [/dev/ttyUSB0]"
+	echo "jc:   jsoncli.py ...arguments"
+	echo "xcd:  cd [directory]"
+	echo "upd:  sudo dnf update --refresh"
+	echo "sd:   dnf search <args>"
+	echo "di:   sudo dnf install <args>"
 	return 0
-}
-
-function пр() {
-	gh "$@"
 }
 
 function master_branch_lookup() {
@@ -58,56 +56,28 @@ function gri() {
 	git rebase --interactive "HEAD~$1"
 }
 
-function пкш() {
-	gri "$@"
-}
-
 function grc() {
 	git rebase --continue
-}
-
-function пкс() {
-	grc "$@"
 }
 
 function grm() {
 	git rebase --update-refs "$(master_branch_lookup)"
 }
 
-function пкь() {
-	grm "$@"
-}
-
 function grx() {
 	git rebase --abort
-}
-
-function пкч() {
-	grx "$@"
 }
 
 function gpc() {
 	git cherry-pick --continue
 }
 
-function пзс() {
-	gpc "$@"
-}
-
 function gs() {
 	git status
 }
 
-function пы() {
-	gs "$@"
-}
-
 function ga() {
 	git add -u
-}
-
-function пф() {
-	ga "$@"
 }
 
 function gp() {
@@ -118,16 +88,8 @@ function gp() {
 	git push origin "HEAD:refs/for/$target"
 }
 
-function пз() {
-	gp "$@"
-}
-
 function gt() {
 	"getags.py" "$@"
-}
-
-function пе() {
-	gt "$@"
 }
 
 function _error() {
@@ -373,10 +335,6 @@ function ss() {
 	_set_konsole_title
 }
 
-function ыы() {
-	ss "$@"
-}
-
 function so() {
 	local ip_address
 	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
@@ -384,10 +342,6 @@ function so() {
 		echo "Opening http://$ip_address"
 	fi
 	xdg-open "http://$ip_address"
-}
-
-function ыщ() {
-	so "$@"
 }
 
 function run() {
@@ -413,10 +367,6 @@ function sf() {
 	fi
 }
 
-function ыа() {
-	sf "$@"
-}
-
 function pi() {
 	local device_path
 	device_path=$(
@@ -432,16 +382,8 @@ function pi() {
 	_set_konsole_title
 }
 
-function зш() {
-	pi "$@"
-}
-
 function jc() {
 	"./jsoncli/jsoncli.sh" "$@"
-}
-
-function ос() {
-	jc "$@"
 }
 
 function xcd() {
@@ -449,10 +391,6 @@ function xcd() {
 	destin=$(_resolve_variable "$*" "" "last_destin" "Destination directory expected")
 	echo "Changing directory: $destin"
 	cd "$destin" || true
-}
-
-function чсв() {
-	xcd "$@"
 }
 
 function upd() {
@@ -463,6 +401,10 @@ function upd() {
 	sudo dnf update --refresh "$@"
 }
 
-function гзв() {
-	upd "$@"
+function ds() {
+	dnf search "$@"
+}
+
+function di() {
+	sudo dnf install "$@"
 }
