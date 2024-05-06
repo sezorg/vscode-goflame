@@ -133,6 +133,7 @@ function xunreferenced() {
 }
 
 SSH_FLAGS=(
+	-T
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
@@ -148,6 +149,7 @@ SSH_FLAGS=(
 	-o ControlPath=/var/tmp/ssh-%r@%h-%p
 	-o ForwardAgent=yes
 	-o PreferredAuthentications="password"
+	-x
 )
 
 TEMP_DIR="/var/tmp/goflame"
@@ -234,7 +236,10 @@ LLENCHECK_FAIL=true
 PRECOMMIT_ENABLE=false
 PRECOMMIT_FAIL=true
 
-INSTALL_SSH_KEY=false
+USE_RSYNC_METHOD=false
+USE_ASYNC_LINTERS=true
+USE_SERVICE_MASKS=false
+INSTALL_SSH_KEYS=false
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -1017,21 +1022,37 @@ P_SSH_TARGET_PREF="" # mount -o remount,rw /;
 P_SSH_TARGET_POST=""
 
 function xflash_pending_commands() {
-	if xis_set "$P_SSH_HOST_STDIO${P_SSH_HOST_POST}" ||
-		xis_set "$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST"; then
-		if xis_set "$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST"; then
-			local code="${P_SSH_HOST_STDIO}sshpass -p \"$TARGET_PASS\" "
-			local code="${code}ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR "
-			local code="$code\"$P_SSH_TARGET_PREF${P_SSH_TARGET_STDIO}$P_SSH_TARGET_POST\""
-			xexec "$code"
+	local host_args="$P_SSH_HOST_STDIO$P_SSH_HOST_POST"
+	local target_pref="$P_SSH_TARGET_PREF$P_SSH_TARGET_STDIO"
+	local target_args="$target_pref$P_SSH_TARGET_POST"
+	if xis_set "$host_args" || xis_set "$target_args"; then
+		local ssh_prefix="${P_SSH_HOST_STDIO}sshpass -p \"$TARGET_PASS\""
+		local ssh_prefix="${ssh_prefix} ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR"
+		if xis_true $USE_RSYNC_METHOD; then
+			if xis_set "$target_pref"; then
+				xexec "$ssh_prefix \"$target_pref\""
+			fi
+			local upload_source="$TEMP_DIR/data"
+			xexec rsync -azPL --inplace --partial --numeric-ids --stats --progress \
+				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
+				"\"$upload_source/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
+			xdebug "$EXEC_STDERR"
+			xdebug "$EXEC_STDOUT"
+			if xis_set "$P_SSH_TARGET_POST"; then
+				xexec "$ssh_prefix \"$P_SSH_TARGET_POST\""
+			fi
+		else
+			if xis_set "$target_args"; then
+				xexec "$ssh_prefix \"$target_args\""
+			fi
 		fi
 		xexec "$P_SSH_HOST_POST"
-		P_SSH_HOST_STDIO=""
-		P_SSH_HOST_POST=""
-		P_SSH_TARGET_STDIO=""
-		P_SSH_TARGET_PREF=""
-		P_SSH_TARGET_POST=""
 	fi
+	P_SSH_HOST_STDIO=""
+	P_SSH_HOST_POST=""
+	P_SSH_TARGET_STDIO=""
+	P_SSH_TARGET_PREF=""
+	P_SSH_TARGET_POST=""
 }
 
 function xperform_build_and_deploy() {
@@ -1072,7 +1093,7 @@ function xperform_build_and_deploy() {
 	fi
 
 	if xis_false "$fdebug" && xis_true "$fexec"; then
-		P_SSH_TARGET_PREF="$P_SSH_TARGET_PREF(rm -f \"$DLOOP_RESTART_FILE\"); "
+		P_SSH_TARGET_PREF="rm -f \"$DLOOP_RESTART_FILE\"; ${P_SSH_TARGET_PREF}"
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
 	fi
 
@@ -1089,7 +1110,7 @@ function xperform_build_and_deploy() {
 	xprocesses_start
 
 	if xis_false "$fexec" && xis_false "$fdebug"; then
-		P_SSH_TARGET_PREF="$P_SSH_TARGET_PREF(rm -f \"$DLOOP_ENABLE_FILE\"); "
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f \"$DLOOP_ENABLE_FILE\"; "
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_ENABLE_FILE")
 	fi
 
@@ -1107,7 +1128,7 @@ function xkill() {
 		shift
 	fi
 	for procname in "$@"; do
-		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep $procname > /dev/null; then pkill $procname; fi; "
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}pkill \"$procname\"; "
 	done
 }
 
@@ -1150,8 +1171,8 @@ function xfiles_delete_vargs() {
 		local elements=""
 		for filename in "${list[@]}"; do
 			elements="$elements, $(basename -- "$filename")"
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if [[ -f \"$filename\" ]]; then rm -f \"$filename\"; fi; "
 		done
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "${list[@]}"); "
 		xecho "Removing ${#list[@]} files: ${elements:2}"
 	fi
 }
@@ -1181,7 +1202,7 @@ function xfiles_copy() {
 		return 0
 	fi
 
-	local backup_source="$TEMP_DIR/data"
+	local upload_source="$TEMP_DIR/data"
 	if xis_false "$COPY_CACHE"; then
 		xclean_directory "$P_CACHE_DIR"
 	elif [[ ! -d "$P_CACHE_DIR" ]]; then
@@ -1228,9 +1249,9 @@ function xfiles_copy() {
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
 				if xis_unset "${directories[*]}"; then
-					xclean_directory "$backup_source"
+					xclean_directory "$upload_source"
 				fi
-				local backup_target="$backup_source/${fileB:1}"
+				local backup_target="$upload_source/${fileB:1}"
 				backup_target="${backup_target//\/\//\/}"
 				local backup_subdir
 				backup_subdir=$(dirname "$backup_target")
@@ -1257,13 +1278,17 @@ function xfiles_copy() {
 	fi
 	if xis_set "$uploading"; then
 		if xis_set "$elements"; then
-			xecho "Uploading $count files: ${elements:2}"
-			local pkg="gzip -5"
-			if which pigz >/dev/null 2>&1; then
-				pkg="pigz -p$(nproc) -9"
+			if xis_false $USE_RSYNC_METHOD; then
+				xecho "Uploading $count files: ${elements:2}"
+				local pkg="gzip -5 --no-name"
+				if which pigz >/dev/null 2>&1; then
+					pkg="pigz --processes $(nproc) -9 --no-time --no-name"
+				fi
+				P_SSH_HOST_STDIO="tar -cf - -C \"$upload_source\" --dereference \".\" | $pkg - | "
+				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
+			else
+				xecho "Uploading $count files via rsync: ${elements:2}"
 			fi
-			P_SSH_HOST_STDIO="tar -cf - -C \"$backup_source\" --dereference \".\" | $pkg - | "
-			P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 		fi
 	else
 		xecho "Downloading ${#list[@]} files: ${elements:2}"
@@ -1299,7 +1324,9 @@ function xservices_stop_vargs() {
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="$elements, $service"
-			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
+			if xis_true "$USE_SERVICE_MASKS"; then
+				P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
+			fi
 			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"$service\"; "
 		done
 		xecho "Stopping ${#list[@]} services: ${elements:2}"
@@ -1318,7 +1345,9 @@ function xservices_start_vargs() {
 		local elements=""
 		for service in "${list[@]}"; do
 			elements="$elements, $service"
-			#P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl unmask \"$service\"; "
+			if xis_true "$USE_SERVICE_MASKS"; then
+				P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl unmask \"$service\"; "
+			fi
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"$service\"; "
 		done
 		xecho "Starting ${#list[@]} services: ${elements:2}"
@@ -1334,10 +1363,11 @@ function xprocesses_stop() {
 function xprocesses_stop_vargs() {
 	local list=("$@")
 	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
+		local elements="" procnames=""
 		for procname in "${list[@]}"; do
 			elements="$elements, $procname"
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}if pgrep $procname > /dev/null; then pkill $procname; fi; "
+			procnames="$procnames|$procname"
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}pkill \"$procname\"; "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
 	fi
@@ -1355,7 +1385,7 @@ function xprocesses_start_vargs() {
 		local elements=""
 		for procname in "${list[@]}"; do
 			elements="$elements, $procname"
-			P_SSH_TARGET_POST="$P_SSH_TARGET_POST${procname}; "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}${procname}; "
 		done
 		xecho "Starting ${#list[@]} processes: ${elements:2}"
 	fi
@@ -1397,7 +1427,7 @@ function xexecute_target_commands_vargs() {
 				elements="$elements, ${command%% *}"
 				count=$(("$count" + 1))
 			fi
-			P_SSH_TARGET_POST="$P_SSH_TARGET_POST($command); "
+			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}$command; "
 		done
 		if xis_set "$elements"; then
 			xecho "Executing $count target commands: ${elements:2}"
@@ -1465,6 +1495,18 @@ function xsave_lint_state() {
 		return
 	fi
 	xcache_put "$name_hash" "$file_hash"
+	local items=(
+		"P_GOLANGCI_LINT_DONE"
+		"P_STATICCHECK_DONE"
+		"P_GO_VET_DONE"
+		"P_LLENCHECK_DONE"
+		"P_PRECOMMIT_DONE"
+	)
+	for item in "${items[@]}"; do
+		if [[ -f "$P_CACHE_DIR/__res_$item" ]]; then
+			eval "$item"=true
+		fi
+	done
 	local state=(
 		"$P_GOLANGCI_LINT_DONE"
 		"$P_STATICCHECK_DONE"
@@ -1487,6 +1529,7 @@ function xcheck_results() {
 		fi
 	else
 		eval "$1"=true
+		xexec echo "1" >"$P_CACHE_DIR/__res_$1"
 	fi
 }
 
@@ -1515,6 +1558,11 @@ function xcheck_project() {
 			xis_true "$P_PRECOMMIT_DONE"; then
 			return 0
 		fi
+		xexec rm -f "$P_CACHE_DIR/__res_P_GOLANGCI_LINT_DONE" \
+			"$P_CACHE_DIR/__res_P_STATICCHECK_DONE" \
+			"$P_CACHE_DIR/__res_P_GO_VET_DONE" \
+			"$P_CACHE_DIR/__res_P_LLENCHECK_DONE" \
+			"$P_CACHE_DIR/__res_P_PRECOMMIT_DONE"
 		export PYTHONPYCACHEPREFIX="$TEMP_DIR/pycache"
 		if [[ ! -d "$PYTHONPYCACHEPREFIX" ]]; then
 			xexec mkdir -p "$PYTHONPYCACHEPREFIX"
@@ -1528,136 +1576,164 @@ function xcheck_project() {
 		)
 		xclean_gocache
 	fi
-	if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
-		xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
-		local linter_args=("${GOLANGCI_LINT_ARGUMENTS[@]}") linters_list=()
-		xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
-		if xcontains "all" "${linters_list[@]}"; then
-			local disabled_list=("${GOLANGCI_LINT_DEPRECATED[@]}" "${GOLANGCI_LINT_SUPRESSED[@]}")
-			for linter in "${linters_list[@]}"; do
-				if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
-					continue
-				fi
-				if [[ "$linter" == -* ]]; then
-					disabled_list+=("${linter:1}")
-				fi
-			done
-			xsort_unique disabled_list "${disabled_list[@]}"
-			#linter_args+=("--enable-all")
-			#for linter in "${disabled_list[@]}"; do
-			#	linter_args+=("-D" "$linter")
-			#done
-			xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
-			local known_linters=() enabled_list=()
-			readarray -t known_linters <<<"$EXEC_STDOUT"
-			for linter_desc in "${known_linters[@]}"; do
-				IFS=':'
-				# shellcheck disable=SC2206
-				linter_desc=($linter_desc)
-				unset IFS
-				if xis_eq "${#linter_desc[@]}" "0"; then
-					continue
-				fi
-				linter=${linter_desc[0]}
-				if xis_eq "$linter" "Enabled by default linters" ||
-					xis_eq "$linter" "Disabled by default linters"; then
-					continue
-				fi
-				if xis_eq "$linter" "Linters presets"; then
-					break
-				fi
-				IFS=' '
-				# shellcheck disable=SC2206
-				linter_desc=($linter)
-				unset IFS
-				if xis_eq "${#linter_desc[@]}" "0"; then
-					continue
-				fi
-				if xis_eq "${#linter_desc[@]}" "2" &&
-					xis_eq "${linter_desc[1]}" "[deprecated]"; then
-					continue
-				fi
-				linter="${linter_desc[0]}"
-				enabled_list+=("$linter")
-				#xecho "++$linter ${#linter_desc[@]} ${linter_desc[*]}"
-				if ! xcontains "$linter" "${disabled_list[@]}"; then
-					linter_args+=("-E" "$linter")
-				fi
-			done
-			xsort_unique enabled_list "${enabled_list[@]}"
-			for linter in "${enabled_list[@]}"; do
-				if ! xcontains "$linter" "${disabled_list[@]}"; then
-					linter_args+=("-E" "$linter")
-				fi
-			done
-		else
-			linter_args+=("--disable-all")
-			for linter in "${linters_list[@]}"; do
-				if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
-					continue
-				fi
-				if [[ ! "$linter" == -* ]]; then
-					linter_args+=("-E" "$linter")
-				fi
-			done
+	function run_golangci_lint() {
+		if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
+			xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
+			local linter_args=("${GOLANGCI_LINT_ARGUMENTS[@]}") linters_list=()
+			xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
+			if xcontains "all" "${linters_list[@]}"; then
+				local disabled_list=("${GOLANGCI_LINT_DEPRECATED[@]}" "${GOLANGCI_LINT_SUPRESSED[@]}")
+				for linter in "${linters_list[@]}"; do
+					if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+						continue
+					fi
+					if [[ "$linter" == -* ]]; then
+						disabled_list+=("${linter:1}")
+					fi
+				done
+				xsort_unique disabled_list "${disabled_list[@]}"
+				#linter_args+=("--enable-all")
+				#for linter in "${disabled_list[@]}"; do
+				#	linter_args+=("-D" "$linter")
+				#done
+				xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
+				local known_linters=() enabled_list=()
+				readarray -t known_linters <<<"$EXEC_STDOUT"
+				for linter_desc in "${known_linters[@]}"; do
+					IFS=':'
+					# shellcheck disable=SC2206
+					linter_desc=($linter_desc)
+					unset IFS
+					if xis_eq "${#linter_desc[@]}" "0"; then
+						continue
+					fi
+					linter=${linter_desc[0]}
+					if xis_eq "$linter" "Enabled by default linters" ||
+						xis_eq "$linter" "Disabled by default linters"; then
+						continue
+					fi
+					if xis_eq "$linter" "Linters presets"; then
+						break
+					fi
+					IFS=' '
+					# shellcheck disable=SC2206
+					linter_desc=($linter)
+					unset IFS
+					if xis_eq "${#linter_desc[@]}" "0"; then
+						continue
+					fi
+					if xis_eq "${#linter_desc[@]}" "2" &&
+						xis_eq "${linter_desc[1]}" "[deprecated]"; then
+						continue
+					fi
+					linter="${linter_desc[0]}"
+					enabled_list+=("$linter")
+					#xecho "++$linter ${#linter_desc[@]} ${linter_desc[*]}"
+					if ! xcontains "$linter" "${disabled_list[@]}"; then
+						linter_args+=("-E" "$linter")
+					fi
+				done
+				xsort_unique enabled_list "${enabled_list[@]}"
+				for linter in "${enabled_list[@]}"; do
+					if ! xcontains "$linter" "${disabled_list[@]}"; then
+						linter_args+=("-E" "$linter")
+					fi
+				done
+			else
+				linter_args+=("--disable-all")
+				for linter in "${linters_list[@]}"; do
+					if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+						continue
+					fi
+					if [[ ! "$linter" == -* ]]; then
+						linter_args+=("-E" "$linter")
+					fi
+				done
+			fi
+			local scheck="$TEMP_DIR/golangci-lint.log"
+			xecho "Running $(xdecorate golangci-lint) (details: file://$scheck)"
+			xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
+				"./..." ">" "$scheck" "2>&1"
+			if xis_true "$GOLANGCI_LINT_FILTER"; then
+				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x -z
+			else
+				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x -z
+			fi
+			xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 		fi
-		local scheck="$TEMP_DIR/golangci-lint.log"
-		xecho "Running $(xdecorate golangci-lint) (details: file://$scheck)"
-		xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
-			"./..." ">" "$scheck" "2>&1"
-		if xis_true "$GOLANGCI_LINT_FILTER"; then
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x -z
-		else
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x -z
+	}
+	function run_staticckeck() {
+		if xis_true "$STATICCHECK_ENABLE" && xis_false "$P_STATICCHECK_DONE"; then
+			xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
+			xexport_clean "${GOLANG_EXPORTS[@]}"
+			local flags=() go_version
+			go_version=$("$BUILDROOT_GOBIN" version)
+			go_version=$(awk '{print $3}' <<<"$go_version")
+			go_version="${go_version%.*}"
+			flags+=("-go" "${go_version:2}")
+			if xis_set "$STATICCHECK_CHECKS"; then
+				flags+=("-checks" "$STATICCHECK_CHECKS")
+			fi
+			local scheck="$TEMP_DIR/staticcheck.log"
+			xecho "Running $(xdecorate staticcheck) (details: file://$scheck)"
+			xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
+			if xis_true "$STATICCHECK_FILTER"; then
+				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
+					-e="\"$STATICCHECK_SUPRESS\""
+			else
+				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
+			fi
+			xcheck_results "P_STATICCHECK_DONE" "$STATICCHECK_FAIL" "Staticcheck"
 		fi
-		xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
-	fi
-	if xis_true "$STATICCHECK_ENABLE" && xis_false "$P_STATICCHECK_DONE"; then
-		xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
-		xexport_clean "${GOLANG_EXPORTS[@]}"
-		local flags=() go_version
-		go_version=$("$BUILDROOT_GOBIN" version)
-		go_version=$(awk '{print $3}' <<<"$go_version")
-		go_version="${go_version%.*}"
-		flags+=("-go" "${go_version:2}")
-		if xis_set "$STATICCHECK_CHECKS"; then
-			flags+=("-checks" "$STATICCHECK_CHECKS")
+	}
+	function run_go_vet_check() {
+		if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
+			xecho "Running $(xdecorate go vet) on $(xdecorate ${TARGET_BUILD_LAUNCHER})..."
+			xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
+			xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
 		fi
-		local scheck="$TEMP_DIR/staticcheck.log"
-		xecho "Running $(xdecorate staticcheck) (details: file://$scheck)"
-		xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
-		if xis_true "$STATICCHECK_FILTER"; then
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
-				-e="\"$STATICCHECK_SUPRESS\""
-		else
-			xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
+	}
+	function run_llencheck() {
+		if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
+			local project_name
+			project_name="$(basename -- "$PWD")"
+			xecho "Running $(xdecorate line-length-limit) check on $(xdecorate "$project_name")"
+			if xis_true "$LLENCHECK_FILTER"; then
+				xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
+					-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+			else
+				xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
+					-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+			fi
+			xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
 		fi
-		xcheck_results "P_STATICCHECK_DONE" "$STATICCHECK_FAIL" "Staticcheck"
-	fi
-	if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
-		xecho "Running $(xdecorate go vet) on $(xdecorate ${TARGET_BUILD_LAUNCHER})..."
-		xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
-		xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
-	fi
-	if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
-		local project_name
-		project_name="$(basename -- "$PWD")"
-		xecho "Running $(xdecorate line-length-limit) check on $(xdecorate "$project_name")"
-		if xis_true "$LLENCHECK_FILTER"; then
-			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
-				-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
-		else
-			xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
-				-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+	}
+	function run_precommit_check() {
+		if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
+			local project_name
+			project_name="$(basename -- "$PWD")"
+			xecho "Running $(xdecorate pre-commit-checks) check on $(xdecorate "$project_name")"
+			xexec "$P_CANFAIL" "pre-commit" "run" -a
+			xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
 		fi
-		xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
-	fi
-	if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
-		local project_name
-		project_name="$(basename -- "$PWD")"
-		xecho "Running $(xdecorate pre-commit-checks) check on $(xdecorate "$project_name")"
-		xexec "$P_CANFAIL" "pre-commit" "run" -a
-		xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
+	}
+	if xis_true "$USE_ASYNC_LINTERS"; then
+		SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+		source "$SCRIPT_DIR/go-job-pool.sh"
+		job_pool_init "$(nproc)" 0
+		job_pool_run run_golangci_lint
+		job_pool_run run_staticckeck
+		job_pool_run run_go_vet_check
+		job_pool_run run_llencheck
+		job_pool_run run_precommit_check
+		job_pool_wait
+		job_pool_shutdown
+	else
+		run_golangci_lint
+		run_staticckeck
+		run_go_vet_check
+		run_llencheck
+		run_precommit_check
 	fi
 	xsave_lint_state
 }
@@ -1822,7 +1898,7 @@ function xprepare_runtime_scripts() {
 }
 
 function xistall_ssh_key() {
-	if xis_false "$INSTALL_SSH_KEY"; then
+	if xis_false "$INSTALL_SSH_KEYS"; then
 		return
 	fi
 	local key_a="$HOME/.ssh/goflame-key"
