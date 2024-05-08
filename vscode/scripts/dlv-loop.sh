@@ -156,7 +156,7 @@ while :; do
 	fi
 
 	seltest
-	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://${IP}"
+	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://$IP"
 	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
 	dlv_pid="$!"
 

@@ -60,14 +60,14 @@ function _job_pool_unused() {
 
 # \brief debug output
 function _job_pool_echo() {
-	if [[ "${job_pool_echo_command}" == "1" ]]; then
+	if [[ "$job_pool_echo_command" == "1" ]]; then
 		echo "$@"
 	fi
 }
 
 # \brief cleans up
 function _job_pool_cleanup() {
-	rm -f ${job_pool_job_queue} ${job_pool_result_log}
+	rm -f "$job_pool_job_queue" "$job_pool_result_log"
 }
 
 # \brief signal handler
@@ -79,14 +79,14 @@ function _job_pool_exit_handler() {
 # \brief print the exit codes for each command
 # \param[in] result_log  the file where the exit codes are written to
 function _job_pool_print_result_log() {
-	if [ -f "${job_pool_result_log}" ]; then
+	if [ -f "$job_pool_result_log" ]; then
 		local result_text
-		result_text=$(cat "${job_pool_result_log}")
-		#job_pool_nerrors=$(echo "${result_text}" | grep -c /^ERROR/)
-		_job_pool_unused "${job_pool_nerrors}"
+		result_text=$(cat "$job_pool_result_log")
+		#job_pool_nerrors=$(echo "$result_text" | grep -c /^ERROR/)
+		_job_pool_unused "$job_pool_nerrors"
 		result_text="${result_text//"^ERROR"/""}"
-		if [ "${result_text}" != "" ]; then
-			echo "${result_text}"
+		if [ "$result_text" != "" ]; then
+			echo "$result_text"
 		fi
 	fi
 }
@@ -102,40 +102,40 @@ function _job_pool_worker() {
 	local cmd=
 	local args=
 
-	exec 7<>"${job_queue}"
-	while [[ "${cmd}" != "${job_pool_end_of_jobs}" && -e "${job_queue}" ]]; do
+	exec 7<>"$job_queue"
+	while [[ "$cmd" != "$job_pool_end_of_jobs" && -e "$job_queue" ]]; do
 		# workers block on the exclusive lock to read the job queue
 		flock --exclusive 7
 		IFS=$'\v'
-		read -r cmd args <"${job_queue}"
-		set -- "${args}"
+		read -r cmd args <"$job_queue"
+		set -- "$args"
 		unset IFS
 		flock --unlock 7
 		# the worker should exit if it sees the end-of-job marker or run the
 		# job otherwise and save its exit code to the result log.
-		if [[ "${cmd}" == "${job_pool_end_of_jobs}" ]]; then
+		if [[ "$cmd" == "$job_pool_end_of_jobs" ]]; then
 			# write it one more time for the next sibling so that everyone
 			# will know we are exiting.
-			echo "${cmd}" >&7
+			echo "$cmd" >&7
 		else
-			_job_pool_echo "### _job_pool_worker-${id}: ${cmd}"
+			_job_pool_echo "### _job_pool_worker-$id: $cmd"
 			# run the job
-			{ ${cmd} "$@"; }
+			{ "$cmd" "$@"; }
 			# now check the exit code and prepend "ERROR" to the result log entry
 			# which we will use to count errors and then strip out later.
 			local result=$?
 			local status=
-			if [[ "${result}" != "0" ]]; then
+			if [[ "$result" != "0" ]]; then
 				status=ERROR
 			fi
 			# now write the error to the log, making sure multiple processes
 			# don't trample over each other.
-			exec 8<>"${result_log}"
+			exec 8<>"$result_log"
 			flock --exclusive 8
-			_job_pool_echo "${status}job_pool: exited ${result}: ${cmd} $*" >>"${result_log}"
+			_job_pool_echo "${status}job_pool: exited $result: $cmd $*" >>"$result_log"
 			flock --unlock 8
 			exec 8>&-
-			_job_pool_echo "### _job_pool_worker-${id}: exited ${result}: ${cmd} $*"
+			_job_pool_echo "### _job_pool_worker-$id: exited $result: $cmd $*"
 		fi
 	done
 	exec 7>&-
@@ -145,7 +145,7 @@ function _job_pool_worker() {
 function _job_pool_stop_workers() {
 	# send message to workers to exit, and wait for them to stop before
 	# doing cleanup.
-	echo ${job_pool_end_of_jobs} >>${job_pool_job_queue}
+	echo "$job_pool_end_of_jobs" >>"$job_pool_job_queue"
 	wait
 }
 
@@ -155,8 +155,8 @@ function _job_pool_stop_workers() {
 function _job_pool_start_workers() {
 	local job_queue=$1
 	local result_log=$2
-	for ((i = 0; i < "${job_pool_pool_size}"; i++)); do
-		_job_pool_worker ${i} "${job_queue}" "${result_log}" &
+	for ((i = 0; i < "$job_pool_pool_size"; i++)); do
+		_job_pool_worker "$i" "$job_queue" "$result_log" &
 	done
 }
 
@@ -176,12 +176,12 @@ function job_pool_init() {
 	job_pool_echo_command=${echo_command:=0}
 
 	# create the fifo job queue and create the exit code log
-	rm -rf ${job_pool_job_queue} ${job_pool_result_log}
-	mkfifo ${job_pool_job_queue}
-	touch ${job_pool_result_log}
+	rm -rf "$job_pool_job_queue" "$job_pool_result_log"
+	mkfifo "$job_pool_job_queue"
+	touch "$job_pool_result_log"
 
 	# fork off the workers
-	_job_pool_start_workers ${job_pool_job_queue} ${job_pool_result_log}
+	_job_pool_start_workers "$job_pool_job_queue" "$job_pool_result_log"
 }
 
 # \brief waits for all queued up jobs to complete and shuts down the job pool
@@ -193,11 +193,11 @@ function job_pool_shutdown() {
 
 # \brief run a job in the job pool
 function job_pool_run() {
-	if [[ "${job_pool_pool_size}" == "-1" ]]; then
+	if [[ "$job_pool_pool_size" == "-1" ]]; then
 		job_pool_init "$(nproc)" 0
 	fi
-	printf "%s\v" "$@" >>${job_pool_job_queue}
-	echo >>${job_pool_job_queue}
+	printf "%s\v" "$@" >>"$job_pool_job_queue"
+	echo >>"$job_pool_job_queue"
 }
 
 # \brief waits for all queued up jobs to complete before starting new jobs
@@ -205,7 +205,7 @@ function job_pool_run() {
 # when done with the jobs and then restarting them.
 function job_pool_wait() {
 	_job_pool_stop_workers
-	_job_pool_start_workers ${job_pool_job_queue} ${job_pool_result_log}
+	_job_pool_start_workers "$job_pool_job_queue" "$job_pool_result_log"
 }
 
 #########################################
