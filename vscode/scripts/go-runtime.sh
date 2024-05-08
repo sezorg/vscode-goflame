@@ -8,6 +8,8 @@
 set -euo pipefail
 #set -x
 
+# Lokuup for unnecessary complex variable references: \$\{\w+\}([^\w]|$)
+
 function xis_true() {
 	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
 }
@@ -40,6 +42,10 @@ function xis_exists() {
 	[[ -f "$*" ]]
 }
 
+function xis_executable() {
+	command -v "$1" &>/dev/null
+}
+
 function xis_ipv4_addr() {
 	[[ "$*" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]]
 }
@@ -59,6 +65,24 @@ function xhas_prefix() {
 	input_string="$1"
 	prefix="$2"
 	[[ "$input_string" == "$prefix"* ]]
+}
+
+function xjoin_strings() {
+	local separator="$1" length="${#1}" joined
+	shift
+	joined=$(printf "$separator%s" "$@")
+	echo "${joined:$length}"
+}
+
+function xbegins_with() {
+	case "$1" in
+	"$2"*)
+		true
+		;;
+	*)
+		false
+		;;
+	esac
 }
 
 function xtime() {
@@ -88,10 +112,24 @@ function xformat_time() {
 	fi
 }
 
+RED=$(printf "\e[31m")
+GREEN=$(printf "\e[32m")
+YELLOW=$(printf "\e[33m")
+BLUE=$(printf "\e[34m")
+GRAY=$(printf "\e[90m")
+UNDERLINE=$(printf "\e[4m")
+LINK="$BLUE$UNDERLINE"
+NC=$(printf "\e[0m")
+NCC=$(printf "\e[0m")
+
+P_COLOR_FILTER="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
+P_ELAPSED_PREFIX=""
+P_ELAPSED_COLOR=""
+
 function xelapsed() {
 	local end_time
 	end_time="$(date +%s.%N)"
-	xecho "Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time") (details: file:///var/tmp/goflame/go-wrapper.log)"
+	xecho "$P_ELAPSED_COLOR${P_ELAPSED_PREFIX}Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time") (details: $(xhyperlink "file:///var/tmp/goflame/go-wrapper.log")$P_ELAPSED_COLOR)"
 }
 
 P_TIME_STARTED="$(date +%s.%N)"
@@ -184,11 +222,11 @@ TARGET_SUPRESS_MSSGS=()
 TARGET_BUILD_GOFLAGS=()
 TARGET_BUILD_LDFLAGS=()
 
-TTY_PORT=""
+TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
 TTY_SPEED="115200"
 TTY_PICOCOM="picocom"
-TTY_LOGIN="root"
-TTY_PASS="root"
+TTY_USER=""
+TTY_PASS=""
 TTY_DELAY="200" # milliseconds
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
@@ -236,8 +274,12 @@ LLENCHECK_FAIL=true
 PRECOMMIT_ENABLE=false
 PRECOMMIT_FAIL=true
 
-USE_RSYNC_METHOD=false
+USE_RSYNC_METHOD=true
+USE_RSYNC_BINARY="rsync"
+USE_PIGZ_COMPRESSION=true
+USE_PIGZ_BINARY="pigz"
 USE_ASYNC_LINTERS=true
+USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 INSTALL_SSH_KEYS=false
 
@@ -299,10 +341,23 @@ P_FIRST_ECHO=true
 P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
 P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 
+if xis_true "$USE_NO_COLORS"; then
+	RED=""
+	GREEN=""
+	YELLOW=""
+	BLUE=""
+	GRAY=""
+	UNDERLINE=""
+	LINK=""
+	NC=""
+	NCC=""
+fi
+
 function xemit() {
 	local echo_flag="$1"
 	shift
-	local time_stamp actual_time elapsed_time message_log message_out input=" [$P_MESSAGE_SOURCE] $*"
+	local time_stamp actual_time elapsed_time message_log message_out
+	local input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $*"
 	if xis_set "$input"; then
 		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
 		if xis_unset "$input"; then
@@ -314,27 +369,27 @@ function xemit() {
 	actual_time="$(date +%s.%N)"
 	elapsed_time=" +$(xformat_time "$P_TIME_PREV_LOG" "$actual_time")"
 	P_TIME_PREV_LOG="$actual_time"
-	message_log="$time_stamp$elapsed_time$input"
+	message_log="$GREEN$time_stamp$BLUE$elapsed_time$NC$input"
 	if xis_set "$echo_flag"; then
 		elapsed_time=" +$(xformat_time "$P_TIME_PREV_OUT" "$actual_time")"
 		P_TIME_PREV_OUT="$actual_time"
-		message_out="$time_stamp$elapsed_time$input"
+		message_out="$GREEN$time_stamp$BLUE$elapsed_time$NC$input"
 	fi
 	if xis_unset "$P_FIRST_ECHO"; then
 		if xis_set "$echo_flag"; then
-			echo >&2 "$EP${message_out}"
+			echo >&2 "$EP$message_out$NCC"
 		fi
-		echo "$message_log" >>"$WRAPPER_LOGFILE"
+		echo "$message_log" | sed -r "$P_COLOR_FILTER" >>"$WRAPPER_LOGFILE"
 	else
 		P_FIRST_ECHO=
 		if xis_set "$XECHO_ENABLED" || xis_set "$XDEBUG_ENABLED"; then
 			echo >&2
 		fi
 		if xis_set "$echo_flag"; then
-			echo >&2 "$EP${message_out}"
+			echo >&2 "$EP$message_out$NCC"
 		fi
 		echo >>"$WRAPPER_LOGFILE"
-		echo "$message_log" >>"$WRAPPER_LOGFILE"
+		echo "$message_log" | sed -r "$P_COLOR_FILTER" >>"$WRAPPER_LOGFILE"
 	fi
 }
 
@@ -356,28 +411,59 @@ function xdebug() {
 	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
 }
 
+function xwarn() {
+	xemit "1" "${YELLOW}WARNING: ${*//$NC/$YELLOW}"
+}
+
 function xerror() {
-	xemit "1" "ERROR: $*"
+	P_ELAPSED_PREFIX="ERROR: "
+	P_ELAPSED_COLOR="$RED"
+	xemit "1" "${RED}ERROR: ${*//$NC/$RED}"
 }
 
 function xfatal() {
-	xemit "1" "FATAL: $*"
+	P_ELAPSED_PREFIX="FATAL: "
+	P_ELAPSED_COLOR="$RED"
+	xemit "1" "${RED}FATAL: ${*//$NC/$RED}"
 	xterminate "1"
 }
 
 function xtext() {
-	if xis_unset "$*"; then
+	local color="$1" source text lines
+	shift
+	source="$*"
+	if xis_unset "$source"; then
 		return 0
 	fi
-	local text
-	readarray -t text <<<"$@"
-	for line in "${text[@]}"; do
-		xecho "$line"
+	text="$(sed -r "$P_COLOR_FILTER" <<<"$source")"
+	# shellcheck disable=SC2206
+	IFS=$'\r' lines=($text)
+	for line in "${lines[@]}"; do
+		line="${line//$'\n'/}"
+		if xis_set "$line"; then
+			xecho "$color$line$NC"
+		fi
 	done
 }
 
 function xdecorate() {
-	echo "$PI$*$PO"
+	echo "$GRAY$PI$*$PO$NC"
+}
+
+function xelement() {
+	echo "$GRAY$*$NC"
+}
+
+function xexecutable() {
+	echo "$BLUE$PI$*$PO$NC"
+}
+
+function xexecutable_plain() {
+	echo "$BLUE$*$NC"
+}
+
+function xhyperlink() {
+	echo "$LINK$*$NC"
 }
 
 if xis_false "$P_CONFIG_INI_LOADED"; then
@@ -392,7 +478,6 @@ TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
 WRAPPER_LOGFILE="$TEMP_DIR/go-wrapper.log"
-
 DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
@@ -561,7 +646,7 @@ function xexport_apply() {
 		local value="${!name}"
 		if xis_unset "$value" && xis_ne "$TARGET_ARCH" "host"; then
 			if ! xcontains "$variable" "EXPORT_CGO_LDFLAGS"; then
-				xecho "WARNING: An empty exported variable $variable"
+				xwarn "An empty exported variable $variable"
 			fi
 		fi
 		name=${name:7}
@@ -636,6 +721,34 @@ function xexestat() {
 	fi
 }
 
+function xsuggest_to_install_message() {
+	local executable="$1" lookup packages suggest
+	if [[ -f "$executable" ]]; then
+		return 0
+	fi
+	if xis_executable "$executable" || ! xis_executable "dnf"; then
+		return 0
+	fi
+	# shellcheck disable=SC2207
+	packages=($(dnf search "$executable" --color never | awk 'FNR>=2{ print $1 }'))
+	lookup="$executable."
+	for package in "${packages[@]}"; do
+		if xbegins_with "$package" "$lookup"; then
+			suggest="Try to install it with: ${GRAY}dnf install $(xexecutable_plain "$package")"
+			echo "Command $(xexecutable "$executable") not found. $suggest"
+		fi
+	done
+}
+
+function xsuggest_to_install() {
+	local message
+	message=$(xsuggest_to_install_message "$@")
+	if xis_set "$message"; then
+		xwarn "$message"
+		return 1
+	fi
+}
+
 P_CANFAIL="[CANFAIL]"
 
 function xis_canfail() {
@@ -644,17 +757,19 @@ function xis_canfail() {
 
 # Execute command which can not fail
 function xexec() {
-	xfset "+e"
 	local canfail=
 	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
-	local command="$*"
+	local command="$*" text
 	if xis_unset "$command"; then
 		return 0
 	fi
-	xdebug "Exec: $command"
+	text="${command//$'\r'/\\r}"
+	text="${text//$'\n'/\\n}"
+	xdebug "Exec: $text"
+	xfset "+e"
 	{
 		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "$command" 2>/dev/fd/3)
 		EXEC_STATUS=$?
@@ -663,13 +778,21 @@ function xexec() {
 EOF
 	xfunset
 	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
+		local executable="${text%% *}" message
+		text=${text:${#executable}}
+		xerror "Failed to execute: $(xexecutable_plain "$executable")$GRAY$text"
 		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
-		xerror "Failed to execute: $command"
-		xtext "$EXEC_STDERR"
-		xtext "$EXEC_STDOUT"
+		message=$(xsuggest_to_install_message "$executable")
+		if xis_set "$message"; then
+			xdebug "$EXEC_STDERR"
+			xdebug "$EXEC_STDOUT"
+			xerror "$message"
+		else
+			xtext "$RED" "$EXEC_STDERR"
+			xtext "$RED" "$EXEC_STDOUT"
+		fi
 		xerror "Terminating with status $EXEC_STATUS"
-		xerror "More details in file://$WRAPPER_LOGFILE"
-		xterminate "${EXEC_STATUS}"
+		xterminate "$EXEC_STATUS"
 	elif xis_true "false"; then
 		if xis_set "$EXEC_STDOUT"; then
 			xdebug "EXEC_STDOUT: $EXEC_STDOUT"
@@ -720,7 +843,7 @@ P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
 function xcache_text_hash() {
 	local string_hash
-	string_hash=$(md5sum <<<"$1${P_CACHE_SALT}")
+	string_hash=$(md5sum <<<"$1$P_CACHE_SALT")
 	string_hash="${string_hash:0:32}"
 	echo "$string_hash"
 }
@@ -740,12 +863,26 @@ function xcache_get() {
 	cat "$P_CACHE_DIR/$1" 2>/dev/null
 }
 
+P_TTY_DEBUG=false
+P_TTY_SHELL_OUT=""
+
+function xtty_debug() {
+	if xis_true "$P_TTY_DEBUG"; then
+		xdebug "TTY: $*"
+	fi
+}
+
 function xtty_resolve_port() {
-	if [[ "$TTY_PORT" == "" ]] || [[ "$TTY_PORT" == "x" ]] || [[ "$TTY_PORT" == "auto" ]]; then
+	if xis_unset "$TTY_USER"; then
+		TTY_USER="$TARGET_USER"
+	fi
+	if xis_unset "$TTY_PASS"; then
+		TTY_PASS="$TARGET_PASS"
+	fi
+	if xis_unset "$TTY_PORT" || xis_eq "$TTY_PORT" "auto"; then
 		TTY_PORT="$(find /dev -name "ttyUSB*" -print -quit)"
 		if [[ "$TTY_PORT" == "" ]]; then
 			xfatal "Unable to find USB TTY port"
-			return 1
 		fi
 	fi
 	#xdebug "TTY: port $TTY_PORT"
@@ -761,17 +898,10 @@ function xtty_shell() {
 	done
 	# shellcheck disable=SC2059
 	text="$(printf "$format" "$@")"
-	#xdebug "TTY: send: -->$text<--"
-	if ! text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1); then
-		text=$(echo "$text" | xargs)
-		xfatal "Unable to communicate with TTY '$TTY_PORT': $text"
-	fi
-	#xdebug "TTY: recv: -->$text<--"
-	echo "$text"
-}
-
-function xtty_shell_fatal() {
-	xfatal "Failed to execute TTY shell command on '$TTY_PORT'"
+	xtty_debug "send: -->$text<--"
+	xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1
+	xtty_debug "recv: -->$text<--"
+	P_TTY_SHELL_OUT="$EXEC_STDOUT"
 }
 
 function xtty_promt() {
@@ -787,43 +917,35 @@ function xtty_promt() {
 		text=$(echo "$text" | xargs)
 		xfatal "Unable to communicate with TTY '$TTY_PORT': $text"
 	fi
-	#xdebug "TTY: send: -->$text<--"
-	"$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT" -t "$text"
+	xtty_debug "send: -->$text<--"
+	xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT" -t "\"$text\""
+	P_TTY_SHELL_OUT="$EXEC_STDOUT"
+	xtty_debug "recv: -->$P_TTY_SHELL_OUT<--"
 }
 
 function xtty_exchange() {
-	local result
-	if ! result="$(xtty_shell "$1")"; then
-		xtty_shell_fatal
-	fi
-	[[ "$result" == *"$2"* ]]
+	xtty_shell "$1"
+	[[ "$P_TTY_SHELL_OUT" == *"$2"* ]]
 }
 
 function xtty_logout() {
 	if xtty_exchange "" "#"; then
 		if xtty_exchange "exit" "exit not allowed"; then
 			#xdebug "TTY: Booting u-boot"
-			if ! xtty_shell "boot" >/dev/null 2>&1; then
-				xtty_shell_fatal
-			fi
+			xtty_shell "boot"
 		else
 			#xdebug "TTY: Logging out"
-			if ! xtty_shell "" >/dev/null 2>&1; then
-				xtty_shell_fatal
-			fi
+			xtty_shell ""
 		fi
 	fi
 }
 
 function xtty_try_login() {
-	local result
-	if ! result="$(xtty_shell "")"; then
-		xtty_shell_fatal
-	fi
-	case $result in
+	xtty_shell ""
+	case "$P_TTY_SHELL_OUT" in
 	*"login:"*)
 		#xdebug "TTY: got login prompt"
-		if xtty_exchange "$TTY_LOGIN" "Password:"; then
+		if xtty_exchange "$TTY_USER" "Password:"; then
 			#xdebug "TTY: got password prompt"
 			xtty_exchange "$TTY_PASS" "#"
 			return 0
@@ -832,6 +954,9 @@ function xtty_try_login() {
 	*"#"*)
 		#xdebug "TTY: got command prompt"
 		return 0
+		;;
+	*"=>"*)
+		xfatal "Device on $(xdecorate "$TTY_PORT") is in U-Boot command prompt mode. Please boot up and continue."
 		;;
 	*) return 1 ;;
 	esac
@@ -855,10 +980,9 @@ function xtty_peek_ip() {
 	fi
 	local oldifs text lines=() line match
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
-	# shellcheck disable=SC2207
-	if ! IFS=$'\r' lines=($(xtty_shell "ifconfig | grep 'inet addr:' | grep 'Bcast:'")); then
-		xtty_shell_fatal
-	fi
+	xtty_shell "\"ifconfig | grep 'inet addr:' | grep 'Bcast:'\""
+	# shellcheck disable=SC2206
+	IFS=$'\r' lines=($P_TTY_SHELL_OUT)
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
 	for line in "${lines[@]}"; do
 		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
@@ -906,23 +1030,20 @@ function xresolve_target_config() {
 			TTY_PORT="$TARGET_IPADDR"
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
-			TTY_PORT="auto"
-		fi
-		if xis_ne "$TTY_PORT" ""; then
 			if ! xtty_resolve_port; then
 				return 1
 			fi
-			xecho "Resolving device IP from TTY '$TTY_PORT'..."
+			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT")..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "30"; then
-				xfatal "Unable to get IP from TTY '$TTY_PORT'"
+				xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
 			fi
 			TARGET_IPADDR="$target_ip"
 		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
 			local found=false mac_addr
 			if xhas_prefix "$TARGET_IPADDR" "ASSET-"; then
 				# Not implemented because of missing Jira login/password credentials.
-				xfatal "Failed to resolve asset addrress for '$TARGET_IPADDR': Not implemented."
+				xfatal "Failed to resolve asset addrress for $(xdecorate "$TARGET_IPADDR"): Not implemented."
 			fi
 			if xis_mac_addr "$TARGET_IPADDR"; then
 				mac_addr="$(xto_lowercase "$TARGET_IPADDR")"
@@ -966,6 +1087,31 @@ function xresolve_target_config() {
 				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
 			fi
 		fi
+		local host_system="host system"
+		if xis_true "$USE_RSYNC_METHOD"; then
+			local missing=()
+			if ! xis_executable "$USE_RSYNC_BINARY"; then
+				missing+=("$host_system")
+			fi
+			local command="$USE_RSYNC_BINARY --version &>/dev/null" text
+			local status="/var/tmp/goflame-$USE_RSYNC_BINARY.status"
+			xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
+			xdebug "Resolved $USE_RSYNC_BINARY method status: \"$EXEC_STDOUT\" (\"0\" expected)"
+			if xis_ne "$EXEC_STDOUT" "0"; then
+				missing+=("target device")
+			fi
+			if xis_set "${missing[*]}"; then
+				xwarn "Disabling USE_RSYNC_METHOD: $(xdecorate "$USE_RSYNC_BINARY") is not installed on the $(xjoin_strings " and " "${missing[@]}")."
+				USE_RSYNC_METHOD=false
+			fi
+		fi
+		if xis_true "$USE_PIGZ_COMPRESSION"; then
+			xsuggest_to_install "$USE_PIGZ_BINARY"
+			if ! xis_executable "$USE_PIGZ_BINARY"; then
+				xwarn "Disabling USE_PIGZ_COMPRESSION: $(xdecorate "$USE_PIGZ_BINARY") is not installed on the $host_system."
+				USE_PIGZ_COMPRESSION=false
+			fi
+		fi
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
 		cat <<EOF >"$TEMP_DIR/config-vscode.ini"
 # Machine generated file. Do not modify.
@@ -976,14 +1122,16 @@ TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER=$TARGET_USER
 TARGET_PASS=$TARGET_PASS
 TARGET_TTYPORT=$TTY_PORT
+USE_RSYNC_METHOD=$USE_RSYNC_METHOD
+USE_PIGZ_COMPRESSION=$USE_PIGZ_COMPRESSION
 EOF
 		xcache_put "$cache_name" "$data_hash"
 	fi
 	# shellcheck disable=SC1090
 	source "$P_VSCODE_CONFIG_PATH"
-	TARGET_HYPERLINK="http://$TARGET_HOSTNAME"
+	TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_HOSTNAME")"
 	if xis_ne "$TARGET_TTYPORT" ""; then
-		TARGET_HYPERLINK="http://$TARGET_IPADDR (TTY $TARGET_TTYPORT)"
+		TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_IPADDR") (TTY $(xdecorate "$TARGET_TTYPORT"))"
 	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
 		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
 	elif xis_ne "$TARGET_MACADDR" ""; then
@@ -1006,7 +1154,7 @@ function xcp() {
 }
 
 function xssh() {
-	xdebug "Target exec: $*"
+	#xdebug "Target exec: $*"
 	local canfail=
 	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
@@ -1027,17 +1175,17 @@ function xflash_pending_commands() {
 	local target_args="$target_pref$P_SSH_TARGET_POST"
 	if xis_set "$host_args" || xis_set "$target_args"; then
 		local ssh_prefix="${P_SSH_HOST_STDIO}sshpass -p \"$TARGET_PASS\""
-		local ssh_prefix="${ssh_prefix} ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR"
+		local ssh_prefix="$ssh_prefix ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR"
 		if xis_true $USE_RSYNC_METHOD; then
 			if xis_set "$target_pref"; then
 				xexec "$ssh_prefix \"$target_pref\""
 			fi
 			local upload_source="$TEMP_DIR/data"
-			xexec rsync -azPL --inplace --partial --numeric-ids --stats --progress \
+			xexec $USE_RSYNC_BINARY -azPL --inplace --partial --numeric-ids --stats --progress \
 				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
 				"\"$upload_source/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
-			xdebug "$EXEC_STDERR"
-			xdebug "$EXEC_STDOUT"
+			#xdebug "$EXEC_STDERR"
+			#xdebug "$EXEC_STDOUT"
 			if xis_set "$P_SSH_TARGET_POST"; then
 				xexec "$ssh_prefix \"$P_SSH_TARGET_POST\""
 			fi
@@ -1093,7 +1241,7 @@ function xperform_build_and_deploy() {
 	fi
 
 	if xis_false "$fdebug" && xis_true "$fexec"; then
-		P_SSH_TARGET_PREF="rm -f \"$DLOOP_RESTART_FILE\"; ${P_SSH_TARGET_PREF}"
+		P_SSH_TARGET_PREF="rm -f \"$DLOOP_RESTART_FILE\"; $P_SSH_TARGET_PREF"
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
 	fi
 
@@ -1106,15 +1254,15 @@ function xperform_build_and_deploy() {
 	xfiles_delete
 	xcreate_directories
 	xfiles_copy
+	xexecute_target_commands
 	xservices_start
 	xprocesses_start
 
 	if xis_false "$fexec" && xis_false "$fdebug"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f \"$DLOOP_ENABLE_FILE\"; "
-		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_ENABLE_FILE")
+		xexecute_target_commands_vargs "@echo 1 > $DLOOP_ENABLE_FILE"
 	fi
 
-	xexecute_target_commands
 	xflash_pending_commands
 	if xis_true "$frebuild"; then
 		xcamera_features
@@ -1143,14 +1291,14 @@ function xscp() {
 
 	local one="$1"
 	if [[ "$one" =~ ^\:.* ]]; then
-		one="$dir${one}"
+		one="$dir$one"
 	elif [[ ! "$one" =~ ^\/.* ]]; then
 		one="./$one"
 	fi
 
 	local two="$2"
 	if [[ "$two" =~ ^\:.* ]]; then
-		two="$dir${two}"
+		two="$dir$two"
 	elif [[ ! "$two" =~ ^\/.* ]]; then
 		two="./$two"
 	fi
@@ -1170,7 +1318,7 @@ function xfiles_delete_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for filename in "${list[@]}"; do
-			elements="$elements, $(basename -- "$filename")"
+			elements="$elements, $(xelement "$(basename -- "$filename")")"
 		done
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "${list[@]}"); "
 		xecho "Removing ${#list[@]} files: ${elements:2}"
@@ -1266,7 +1414,7 @@ function xfiles_copy() {
 			fi
 		fi
 		if xis_set "$fileB"; then
-			elements="$elements, $(basename -- "$fileB")"
+			elements="$elements, $(xelement "$(basename -- "$fileB")")"
 			count=$((count + 1))
 		fi
 	done
@@ -1281,13 +1429,13 @@ function xfiles_copy() {
 			if xis_false $USE_RSYNC_METHOD; then
 				xecho "Uploading $count files: ${elements:2}"
 				local pkg="gzip -5 --no-name"
-				if which pigz >/dev/null 2>&1; then
-					pkg="pigz --processes $(nproc) -9 --no-time --no-name"
+				if xis_true "$USE_PIGZ_COMPRESSION"; then
+					pkg="$USE_PIGZ_BINARY --processes $(nproc) -9 --no-time --no-name"
 				fi
 				P_SSH_HOST_STDIO="tar -cf - -C \"$upload_source\" --dereference \".\" | $pkg - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			else
-				xecho "Uploading $count files via rsync: ${elements:2}"
+				xecho "Uploading $count files via $USE_RSYNC_BINARY: ${elements:2}"
 			fi
 		fi
 	else
@@ -1323,7 +1471,7 @@ function xservices_stop_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for service in "${list[@]}"; do
-			elements="$elements, $service"
+			elements="$elements, $(xelement "$service")"
 			if xis_true "$USE_SERVICE_MASKS"; then
 				P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
 			fi
@@ -1344,7 +1492,7 @@ function xservices_start_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for service in "${list[@]}"; do
-			elements="$elements, $service"
+			elements="$elements, $(xelement "$service")"
 			if xis_true "$USE_SERVICE_MASKS"; then
 				P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl unmask \"$service\"; "
 			fi
@@ -1365,8 +1513,8 @@ function xprocesses_stop_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements="" procnames=""
 		for procname in "${list[@]}"; do
-			elements="$elements, $procname"
-			procnames="$procnames|$procname"
+			elements="$elements, $(xelement "$procname")"
+			procnames="$procnames | $procname"
 			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}pkill \"$procname\"; "
 		done
 		xecho "Terminating ${#list[@]} processes: ${elements:2}"
@@ -1384,8 +1532,8 @@ function xprocesses_start_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for procname in "${list[@]}"; do
-			elements="$elements, $procname"
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}${procname}; "
+			elements="$elements, $(xelement "$procname")"
+			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$procname; "
 		done
 		xecho "Starting ${#list[@]} processes: ${elements:2}"
 	fi
@@ -1402,7 +1550,7 @@ function xcreate_directories_vargs() {
 	if xis_ne "${#list[@]}" "0"; then
 		local elements=""
 		for dirname in "${list[@]}"; do
-			elements="$elements, $dirname"
+			elements="$elements, $(xelement "$dirname")"
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"$dirname\"; "
 		done
 		xecho "Creating ${#list[@]} directories: ${elements:2}"
@@ -1424,10 +1572,10 @@ function xexecute_target_commands_vargs() {
 			if xis_eq "${command:0:1}" "@"; then
 				command="${command:1}"
 			else
-				elements="$elements, ${command%% *}"
+				elements="$elements, $(xelement "${command%% *}")"
 				count=$(("$count" + 1))
 			fi
-			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}$command; "
+			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$command; "
 		done
 		if xis_set "$elements"; then
 			xecho "Executing $count target commands: ${elements:2}"
@@ -1456,9 +1604,9 @@ function xtest_installed() {
 	local binary="$2"
 	local instructions="$3"
 	if ! xis_exists "$binary"; then
-		xerror "Reqired binary '$(basename -- "$binary")' is not installed."
+		xerror "Reqired binary $(xexecutable "$(basename -- "$binary")") is not installed."
 		xerror "To disable this feature set $enable_key=false in 'config-user.ini'."
-		xfatal "Check installation instructions: $instructions"
+		xfatal "Check installation instructions: $(xhyperlink "$instructions")"
 	fi
 }
 
@@ -1518,9 +1666,9 @@ function xsave_lint_state() {
 }
 
 function xcheck_results() {
-	xtext "$EXEC_STDOUT"
-	xtext "$EXEC_STDERR"
 	if xis_ne "$EXEC_STATUS" "0"; then
+		xtext "$RED" "$EXEC_STDOUT"
+		xtext "$RED" "$EXEC_STDERR"
 		eval "$1"=false
 		if xis_true "$2"; then
 			xerror "$3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
@@ -1528,6 +1676,8 @@ function xcheck_results() {
 			exit "$EXEC_STATUS"
 		fi
 	else
+		xtext "" "$EXEC_STDOUT"
+		xtext "" "$EXEC_STDERR"
 		eval "$1"=true
 		xexec echo "1" >"$P_CACHE_DIR/__res_$1"
 	fi
@@ -1542,8 +1692,6 @@ function xcheck_project() {
 		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
 			-not -path "\"./.git/*\"" -exec date -r {} \
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
-		xtext "$EXEC_STDOUT"
-		xtext "$EXEC_STDERR"
 		xload_lint_state
 		name_hash=$(xcache_text_hash "$dir_hash")
 		file_hash=$(xcache_file_hash "$dir_hash")
@@ -1651,7 +1799,7 @@ function xcheck_project() {
 				done
 			fi
 			local scheck="$TEMP_DIR/golangci-lint.log"
-			xecho "Running $(xdecorate golangci-lint) (details: file://$scheck)"
+			xecho "Running $(xdecorate "golangci-lint") (details: $(xhyperlink "file://$scheck"))"
 			xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
 				"./..." ">" "$scheck" "2>&1"
 			if xis_true "$GOLANGCI_LINT_FILTER"; then
@@ -1675,7 +1823,7 @@ function xcheck_project() {
 				flags+=("-checks" "$STATICCHECK_CHECKS")
 			fi
 			local scheck="$TEMP_DIR/staticcheck.log"
-			xecho "Running $(xdecorate staticcheck) (details: file://$scheck)"
+			xecho "Running $(xdecorate "staticcheck") (details: $(xhyperlink "file://$scheck"))"
 			xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
 			if xis_true "$STATICCHECK_FILTER"; then
 				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
@@ -1688,7 +1836,7 @@ function xcheck_project() {
 	}
 	function run_go_vet_check() {
 		if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
-			xecho "Running $(xdecorate go vet) on $(xdecorate ${TARGET_BUILD_LAUNCHER})..."
+			xecho "Running $(xdecorate "go vet") on $(xdecorate "$TARGET_BUILD_LAUNCHER")..."
 			xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
 			xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
 		fi
@@ -1697,7 +1845,7 @@ function xcheck_project() {
 		if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
 			local project_name
 			project_name="$(basename -- "$PWD")"
-			xecho "Running $(xdecorate line-length-limit) check on $(xdecorate "$project_name")"
+			xecho "Running $(xdecorate "line-length-limit") check on $(xdecorate "$project_name")"
 			if xis_true "$LLENCHECK_FILTER"; then
 				xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
 					-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
@@ -1712,7 +1860,7 @@ function xcheck_project() {
 		if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
 			local project_name
 			project_name="$(basename -- "$PWD")"
-			xecho "Running $(xdecorate pre-commit-checks) check on $(xdecorate "$project_name")"
+			xecho "Running $(xdecorate "pre-commit-checks") check on $(xdecorate "$project_name")"
 			xexec "$P_CANFAIL" "pre-commit" "run" -a
 			xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
 		fi
@@ -1791,9 +1939,9 @@ function xcamera_features() {
 	for feature in "${CAMERA_FEATURES_ON[@]}"; do
 		local pattern="\"$feature\": set to True"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_on_set="$features_on_set, $feature"
+			features_on_set="$features_on_set, $(xelement "$feature")"
 		else
-			features_on_err="$features_on_err, $feature"
+			features_on_err="$features_on_err, $(xelement "$feature")"
 		fi
 	done
 
@@ -1802,9 +1950,9 @@ function xcamera_features() {
 	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
 		local pattern="\"$feature\": set to False"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_off_set="$features_off_set, $feature"
+			features_off_set="$features_off_set, $(xelement "$feature")"
 		else
-			features_off_err="$features_off_err, $feature"
+			features_off_err="$features_off_err, $(xelement "$feature")"
 		fi
 	done
 
@@ -1828,7 +1976,7 @@ function xcamera_features() {
 		xecho "Camera features set to ${features_set:2}"
 	fi
 	if xis_set "$features_err"; then
-		xecho "WARNING: Failed to set camera features to ${features_err:2}"
+		xwarn "Failed to set camera features to ${features_err:2}"
 	fi
 }
 

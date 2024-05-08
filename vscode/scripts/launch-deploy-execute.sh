@@ -32,4 +32,4 @@ xunreferenced \
 
 xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[EXEC]" \
-	"Building & deploying $PI${TARGET_BIN_NAME}$PO to remote host"
+	"Building & deploying $(xdecorate "$TARGET_BIN_NAME") to remote host"
