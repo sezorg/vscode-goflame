@@ -437,9 +437,9 @@ function xtext() {
 	fi
 	text="$(sed -r "$P_COLOR_FILTER" <<<"$source")"
 	# shellcheck disable=SC2206
-	IFS=$'\r' lines=($text)
+	IFS=$'\n' lines=($text)
 	for line in "${lines[@]}"; do
-		line="${line//$'\n'/}"
+		line="${line//$'\r'/}"
 		if xis_set "$line"; then
 			xecho "$color$line$NC"
 		fi
