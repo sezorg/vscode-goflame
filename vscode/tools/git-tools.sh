@@ -36,6 +36,7 @@ function gh() {
 	echo "upd:  sudo dnf update --refresh"
 	echo "sd:   dnf search <args>"
 	echo "di:   sudo dnf install <args>"
+	echo "pc:   pre-commit run --all-files"
 	return 0
 }
 
@@ -407,4 +408,8 @@ function ds() {
 
 function di() {
 	sudo dnf install "$@"
+}
+
+function pc() {
+	pre-commit run --all-files
 }
