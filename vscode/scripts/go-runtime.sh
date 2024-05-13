@@ -429,7 +429,7 @@ function xfatal() {
 }
 
 function xtext() {
-	local color="$1" source text lines
+	local color="$1" source text lines code_link prefix
 	shift
 	source="$*"
 	if xis_unset "$source"; then
@@ -441,7 +441,14 @@ function xtext() {
 	for line in "${lines[@]}"; do
 		line="${line//$'\r'/}"
 		if xis_set "$line"; then
-			xecho "$color$line$NC"
+			code_link="${line%% *}"
+			# shellcheck disable=SC2001
+			prefix=$(sed 's/:.*//' <<<"$code_link")
+			if [[ -f "./$prefix" ]]; then
+				xecho "$LINK$code_link$NC$color${line:${#code_link}}"
+			else
+				xecho "$color$line$NC"
+			fi
 		fi
 	done
 }
