@@ -737,7 +737,7 @@ function xsuggest_to_install_message() {
 		return 0
 	fi
 	# shellcheck disable=SC2207
-	packages=($(dnf search "$executable" --color never | awk 'FNR>=2{ print $1 }'))
+	packages=($(dnf search "$executable" --color never 2>/dev/null | awk 'FNR>=2{ print $1 }'))
 	lookup="$executable."
 	for package in "${packages[@]}"; do
 		if xbegins_with "$package" "$lookup"; then
@@ -785,9 +785,14 @@ function xexec() {
 EOF
 	xfunset
 	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
-		local executable="${text%% *}" message
-		text=${text:${#executable}}
-		xerror "Failed to execute: $(xexecutable_plain "$executable")$GRAY$text"
+		local executable="${text%% *}" prefix message directory
+		prefix="$executable"
+		text="${text:${#executable}}"
+		directory="$BUILDROOT_HOST_DIR/"
+		if xbegins_with "$executable" "$directory"; then
+			prefix="\$BUILDROOT_HOST/${prefix:${#directory}}"
+		fi
+		xerror "Failed to execute: $(xexecutable_plain "$prefix")$GRAY$text"
 		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 		message=$(xsuggest_to_install_message "$executable")
 		if xis_set "$message"; then
@@ -1241,7 +1246,7 @@ function xperform_build_and_deploy() {
 
 	xresolve_target_config
 	xecho "$* $TARGET_HYPERLINK"
-	if xis_true "$fbuild"; then
+	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
 	else
 		xcheck_project
