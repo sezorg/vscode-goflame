@@ -170,7 +170,7 @@ function xunreferenced() {
 	return 0
 }
 
-SSH_FLAGS=(
+SCP_FLAGS=(
 	-T
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
@@ -187,6 +187,10 @@ SSH_FLAGS=(
 	-o ControlPath=/var/tmp/ssh-%r@%h-%p
 	-o ForwardAgent=yes
 	-o PreferredAuthentications="password"
+)
+
+SSH_FLAGS=(
+	"${SCP_FLAGS[@]}"
 	-x
 )
 
@@ -1099,31 +1103,42 @@ function xresolve_target_config() {
 				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
 			fi
 		fi
-		local host_system="host system"
-		if xis_true "$USE_RSYNC_METHOD"; then
-			local missing=()
-			if ! xis_executable "$USE_RSYNC_BINARY"; then
-				missing+=("$host_system")
+		function resolve_binary() {
+			local enable_option="$1" binary_name="$2" target_path="$3"
+			if xis_false "${!enable_option}"; then
+				return 0
 			fi
-			local command="$USE_RSYNC_BINARY --version &>/dev/null" text
-			local status="/var/tmp/goflame-$USE_RSYNC_BINARY.status"
-			xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
-			xdebug "Resolved $USE_RSYNC_BINARY method status: \"$EXEC_STDOUT\" (\"0\" expected)"
-			if xis_ne "$EXEC_STDOUT" "0"; then
-				missing+=("target device")
+			local missing=()
+			if ! xis_executable "$binary_name"; then
+				xsuggest_to_install "$binary_name"
+				missing+=("host system")
+			fi
+			if xis_set "$target_path"; then
+				local command="$binary_name --version &>/dev/null" text
+				local status="/var/tmp/goflame-$binary_name.status"
+				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
+				if xis_ne "$EXEC_STDOUT" "0"; then
+					if xis_unset "${missing[*]}"; then
+						local source="./.vscode/scripts/overlay/$binary_name-$TARGET_ARCH" target="$target_path/$binary_name"
+						if [[ -f "$source" ]]; then
+							xecho "Installing $(xdecorate "$binary_name-$TARGET_ARCH") to target path $(xdecorate "$target")..."
+							xscp "$source" ":$target"
+						fi
+					fi
+					xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
+					if xis_ne "$EXEC_STDOUT" "0"; then
+						missing+=("target device")
+					fi
+				fi
+				xdebug "Resolved $binary_name method status: \"$EXEC_STDOUT\" (\"0\" expected)"
 			fi
 			if xis_set "${missing[*]}"; then
-				xwarn "Disabling USE_RSYNC_METHOD: $(xdecorate "$USE_RSYNC_BINARY") is not installed on the $(xjoin_strings " and " "${missing[@]}")."
-				USE_RSYNC_METHOD=false
+				xwarn "Disabling $enable_option: $(xdecorate "$binary_name") is not installed on the $(xjoin_strings " and " "${missing[@]}")."
+				export "$enable_option"="false"
 			fi
-		fi
-		if xis_true "$USE_PIGZ_COMPRESSION"; then
-			xsuggest_to_install "$USE_PIGZ_BINARY"
-			if ! xis_executable "$USE_PIGZ_BINARY"; then
-				xwarn "Disabling USE_PIGZ_COMPRESSION: $(xdecorate "$USE_PIGZ_BINARY") is not installed on the $host_system."
-				USE_PIGZ_COMPRESSION=false
-			fi
-		fi
+		}
+		resolve_binary "USE_RSYNC_METHOD" "$USE_RSYNC_BINARY" "/usr/bin"
+		resolve_binary "USE_PIGZ_COMPRESSION" "$USE_PIGZ_BINARY" ""
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
 		cat <<EOF >"$TEMP_DIR/config-vscode.ini"
 # Machine generated file. Do not modify.
@@ -1316,7 +1331,7 @@ function xscp() {
 	fi
 
 	xdebug "Target copy: $canfail $one -> $two"
-	xexec "$canfail" sshpass -p "$TARGET_PASS" scp -C "${SSH_FLAGS[@]}" "$one" "$two"
+	xexec "$canfail" sshpass -p "$TARGET_PASS" scp -C "${SCP_FLAGS[@]}" "$one" "$two"
 }
 
 function xfiles_delete() {
