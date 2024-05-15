@@ -81,7 +81,7 @@ function digest() {
 	fi
 }
 
-function seltest() {
+function self_test() {
 	s2=$(digest "$0")
 	if [[ "$s1" != "$s2" ]]; then
 		log "${GREEN}INFORMATION: The script has been updated via external upload. Restarting...$NC"
@@ -121,7 +121,7 @@ while :; do
 		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"
 		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
 		while [[ ! -f "$DLOOP_ENABLE_FILE" ]]; do
-			seltest
+			self_test
 			sleep 1
 		done
 	fi
@@ -137,7 +137,7 @@ while :; do
 			log "Waiting for the Build&Deploy process to complete..."
 		fi
 		while [[ "$dlv_binary" == "" ]] || [[ ! -f "$0" ]]; do
-			seltest
+			self_test
 			sleep 1
 			safe dlv_binary="$(which dlv)"
 		done
@@ -155,7 +155,7 @@ while :; do
 		continue
 	fi
 
-	seltest
+	self_test
 	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://$IP"
 	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
 	dlv_pid="$!"

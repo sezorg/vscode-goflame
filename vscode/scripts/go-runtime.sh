@@ -232,6 +232,7 @@ TTY_PICOCOM="picocom"
 TTY_USER=""
 TTY_PASS=""
 TTY_DELAY="200" # milliseconds
+TTY_RETRY="10"  # seconds
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -360,8 +361,10 @@ fi
 function xemit() {
 	local echo_flag="$1"
 	shift
-	local time_stamp actual_time elapsed_time message_log message_out
-	local input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $*"
+	local time_stamp actual_time elapsed_time message_log message_out input="$*"
+	input="${input//$'\r'/\\r}"
+	input="${input//$'\n'/\\n}"
+	input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $input"
 	if xis_set "$input"; then
 		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
 		if xis_unset "$input"; then
@@ -398,10 +401,6 @@ function xemit() {
 }
 
 function xterminate() {
-	if xis_ne "$EXEC_STATUS" "0"; then
-		#kill $$
-		:
-	fi
 	exit "$1"
 }
 
@@ -520,13 +519,26 @@ if xis_unset "$TARGET_ARCH"; then
 	fi
 fi
 
+P_TARGET_GOCXX=""
+P_TARGET_PLATFORM=""
+case "$TARGET_ARCH" in
+"arm")
+	P_TARGET_GOCXX="arm-buildroot-linux-gnueabihf"
+	P_TARGET_PLATFORM="armv7l"
+	;;
+"arm64")
+	P_TARGET_GOCXX="aarch64-buildroot-linux-gnu"
+	P_TARGET_PLATFORM="aarch64"
+	;;
+"host")
+	P_TARGET_GOCXX="gcc"
+	P_TARGET_PLATFORM="x86_64"
+	;;
+*) xfatal "Can not determine compiler for TARGET_ARCH=\"$TARGET_ARCH\"" ;;
+esac
+
 if xis_unset "$TARGET_GOCXX"; then
-	case "$TARGET_ARCH" in
-	"arm") TARGET_GOCXX="arm-buildroot-linux-gnueabihf" ;;
-	"arm64") TARGET_GOCXX="aarch64-buildroot-linux-gnu" ;;
-	"host") TARGET_GOCXX="gcc" ;;
-	*) xfatal "Can not determine compiler for TARGET_ARCH=\"$TARGET_ARCH\"" ;;
-	esac
+	TARGET_GOCXX="$P_TARGET_GOCXX"
 fi
 
 EXPORT_DLVBIN="$SCRIPT_DIR/dlv-wrapper.sh"
@@ -712,15 +724,15 @@ function xexestat() {
 	if xis_ne "$status" "0"; then
 		local needStatus=true
 		if xis_set "$stdout"; then
-			xecho "$prefix STATUS $status, STDOUT: $stdout"
+			xecho "$prefix STATUS $(xexec_status "$status"), STDOUT: $stdout"
 			needStatus=false
 		fi
 		if xis_set "$stderr"; then
-			xecho "$prefix STATUS $status, STDERR: $stderr"
+			xecho "$prefix STATUS $(xexec_status "$status"), STDERR: $stderr"
 			needStatus=false
 		fi
 		if xis_true "$needStatus"; then
-			xecho "$prefix STATUS: $status"
+			xecho "$prefix STATUS: $(xexec_status "$status")"
 		fi
 	else
 		if xis_set "$stdout"; then
@@ -807,7 +819,7 @@ EOF
 			xtext "$RED" "$EXEC_STDERR"
 			xtext "$RED" "$EXEC_STDOUT"
 		fi
-		xerror "Terminating with status $EXEC_STATUS"
+		xerror "Terminating with status $(xexec_status "$EXEC_STATUS")"
 		xterminate "$EXEC_STATUS"
 	elif xis_true "false"; then
 		if xis_set "$EXEC_STDOUT"; then
@@ -819,8 +831,22 @@ EOF
 	fi
 }
 
+function xexec_status() {
+	local message=""
+	case "$EXEC_STATUS" in
+	"0") message="success" ;;
+	"1") message="generic fault" ;;
+	"124") message="timeout" ;;
+	esac
+	if xis_set "$message"; then
+		echo "$BLUE$EXEC_STATUS$NC: $message"
+	else
+		echo "$BLUE$EXEC_STATUS$NC"
+	fi
+}
+
 function xexit() {
-	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=$EXEC_STATUS"
+	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=$(xexec_status "$EXEC_STATUS")"
 	if xis_set "$EXEC_STDOUT"; then
 		echo "$EXEC_STDOUT"
 	fi
@@ -851,10 +877,29 @@ function xfunset() {
 	unset "P_OPTIONS_STACK[-1]"
 }
 
-P_CACHE_SALT=$(date -r "$0" "+%m-%d-%Y %H:%M:%S")
-P_CACHE_SALT="$P_CACHE_SALT$PWD$TARGET_ARCH$TARGET_GOCXX$BUILDROOT_DIR"
-P_CACHE_SALT="$P_CACHE_SALT$TARGET_DOMAIN$TARGET_IPADDR$TARGET_IPPORT$TARGET_USER$TARGET_PASS"
-P_CACHE_SALT=$(echo -n "$P_CACHE_SALT" | md5sum)
+P_CACHE_VARIABLES=(
+	"$TARGET_ARCH"
+	"$TARGET_GOCXX"
+	"$BUILDROOT_DIR"
+	"$TARGET_DOMAIN"
+	"$TARGET_IPADDR"
+	"$TARGET_IPPORT"
+	"$TARGET_USER"
+	"$TARGET_PASS"
+	"$TARGET_BIN_DESTIN"
+	"${TARGET_EXEC_ARGS[*]}"
+	"${TARGET_SUPRESS_MSSGS[*]}"
+	"$TTY_PORT"
+	"$TTY_SPEED"
+	"$TTY_PICOCOM"
+	"$TTY_USER"
+	"$TTY_PASS"
+	"$TTY_DELAY"
+	"$TTY_RETRY"
+)
+
+P_CACHE_SALT=$(date -r "./.vscode/scripts/go-runtime.sh" "+%m-%d-%Y %H:%M:%S")
+P_CACHE_SALT=$(echo -n "$P_CACHE_SALT$PWD${P_CACHE_VARIABLES[*]}" | md5sum)
 P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
 function xcache_text_hash() {
@@ -900,23 +945,23 @@ function xtty_resolve_port() {
 		if [[ "$TTY_PORT" == "" ]]; then
 			xfatal "Unable to find USB TTY port"
 		fi
+		xtty_debug "resolved port: $TTY_PORT"
 	fi
-	#xdebug "TTY: port $TTY_PORT"
 }
 
 function xtty_shell() {
 	if ! xtty_resolve_port; then
 		return 1
 	fi
-	local format="" text
+	local format="\r" text
 	for ((i = 0; i <= $#; i++)); do
 		format="$format%s\r"
 	done
 	# shellcheck disable=SC2059
 	text="$(printf "$format" "$@")"
-	xtty_debug "send: -->$text<--"
 	xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1
-	xtty_debug "recv: -->$text<--"
+	xtty_debug "send: -->$text<--"
+	xtty_debug "recv: -->$EXEC_STDOUT<--"
 	P_TTY_SHELL_OUT="$EXEC_STDOUT"
 }
 
@@ -947,10 +992,10 @@ function xtty_exchange() {
 function xtty_logout() {
 	if xtty_exchange "" "#"; then
 		if xtty_exchange "exit" "exit not allowed"; then
-			#xdebug "TTY: Booting u-boot"
+			xtty_debug "Booting u-boot"
 			xtty_shell "boot"
 		else
-			#xdebug "TTY: Logging out"
+			xtty_debug "Logging out"
 			xtty_shell ""
 		fi
 	fi
@@ -960,15 +1005,15 @@ function xtty_try_login() {
 	xtty_shell ""
 	case "$P_TTY_SHELL_OUT" in
 	*"login:"*)
-		#xdebug "TTY: got login prompt"
+		xtty_debug "got login prompt"
 		if xtty_exchange "$TTY_USER" "Password:"; then
-			#xdebug "TTY: got password prompt"
+			xtty_debug "got password prompt"
 			xtty_exchange "$TTY_PASS" "#"
 			return 0
 		fi
 		;;
 	*"#"*)
-		#xdebug "TTY: got command prompt"
+		xtty_debug "got command prompt #: '$P_TTY_SHELL_OUT'"
 		return 0
 		;;
 	*"=>"*)
@@ -991,19 +1036,25 @@ function xtty_login() {
 }
 
 function xtty_peek_ip() {
-	if ! xtty_login; then
-		return 1
+	local output="$1" try_login="$2"
+	if xis_true "$try_login"; then
+		if ! xtty_login; then
+			return 1
+		fi
 	fi
 	local oldifs text lines=() line match
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
-	xtty_shell "\"ifconfig | grep 'inet addr:' | grep 'Bcast:'\""
+	xtty_shell "ifconfig"
+	#xtty_shell "\"ifconfig | grep 'inet addr:' | grep 'Bcast:'\""
 	# shellcheck disable=SC2206
 	IFS=$'\r' lines=($P_TTY_SHELL_OUT)
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
 	for line in "${lines[@]}"; do
-		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
+		match=$(echo "$line" | grep 'inet addr:' | grep 'Bcast:' |
+			grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
 		if [[ "$match" != "" ]]; then
-			eval "$1"="$match"
+			xtty_debug "got IP address: $match"
+			eval "$output"="$match"
 			return 0
 		fi
 	done
@@ -1011,15 +1062,16 @@ function xtty_peek_ip() {
 }
 
 function xtty_resolve_ip() {
-	local start_time current_time elapsed_time ip="$1" timeout="$2"
+	local start_time current_time elapsed_time ip="$1" timeout="$2" try_login=false
 	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
 		timeout="10"
 	fi
 	start_time=$(date +%s)
 	while true; do
-		if xtty_peek_ip "$ip"; then
+		if xtty_peek_ip "$ip" "$try_login"; then
 			return 0
 		fi
+		try_login=true
 		sleep 0.5
 		current_time=$(date +%s)
 		elapsed_time=$((current_time - start_time))
@@ -1038,9 +1090,11 @@ function xdiscard_target_config() {
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
-	local cache_name="__config_vscode.hash" data_hash
+	local cache_name="__config_vscode.hash" data_hash force="$1"
 	data_hash=$(xcache_text_hash "$P_VSCODE_CONFIG_PATH")
-	if xis_ne "$(xcache_get "$cache_name")" "$data_hash" || ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
+	if xis_true "$force" || xis_ne "$(xcache_get "$cache_name")" "$data_hash" ||
+		! xis_exists "$P_VSCODE_CONFIG_PATH"; then
+		xdebug "Hash: $(xcache_get "$cache_name") -- $data_hash"
 		xdebug "Creating target config for $TARGET_IPADDR..."
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
@@ -1051,7 +1105,7 @@ function xresolve_target_config() {
 			fi
 			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT")..."
 			local target_ip=""
-			if ! xtty_resolve_ip "target_ip" "30"; then
+			if ! xtty_resolve_ip "target_ip" "$TTY_RETRY"; then
 				xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
 			fi
 			TARGET_IPADDR="$target_ip"
@@ -1103,6 +1157,23 @@ function xresolve_target_config() {
 				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
 			fi
 		fi
+		xssh "$P_CANFAIL" "uname -m"
+		local target_mach="$EXEC_STDOUT" target_stderr="$EXEC_STDERR"
+		if xis_ne "$EXEC_STATUS" "0"; then
+			xexec "$P_CANFAIL" timeout 1 ping -c 1 "$TARGET_IPADDR"
+			if xis_set "$target_stderr"; then
+				xerror "$target_stderr"
+			fi
+			if xis_ne "$EXEC_STATUS" "0"; then
+				xfatal "Target IP address $(xdecorate "$TARGET_IPADDR") is not accessible (no ping, status $(xexec_status "$EXEC_STATUS"))"
+			else
+				xfatal "Failed to resolve machine type for $(xdecorate "$TARGET_IPADDR")"
+			fi
+		fi
+		if xis_ne "$P_TARGET_PLATFORM" "$target_mach"; then
+			xerror "Unexpected target machine architecture $(xdecorate "$target_mach"), expected $(xdecorate "$P_TARGET_PLATFORM")"
+			xfatal "Check $(xdecorate TARGET_ARCH) and $(xdecorate BUILDROOT_DIR) variables"
+		fi
 		function resolve_binary() {
 			local enable_option="$1" binary_name="$2" target_path="$3"
 			if xis_false "${!enable_option}"; then
@@ -1119,9 +1190,9 @@ function xresolve_target_config() {
 				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
-						local source="./.vscode/scripts/overlay/$binary_name-$TARGET_ARCH" target="$target_path/$binary_name"
+						local source="./.vscode/scripts/overlay/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
 						if [[ -f "$source" ]]; then
-							xecho "Installing $(xdecorate "$binary_name-$TARGET_ARCH") to target path $(xdecorate "$target")..."
+							xecho "Installing $(xdecorate "$binary_name-$P_TARGET_PLATFORM") to target path $(xdecorate "$target")..."
 							xscp "$source" ":$target"
 						fi
 					fi
@@ -1139,8 +1210,23 @@ function xresolve_target_config() {
 		}
 		resolve_binary "USE_RSYNC_METHOD" "$USE_RSYNC_BINARY" "/usr/bin"
 		resolve_binary "USE_PIGZ_COMPRESSION" "$USE_PIGZ_BINARY" ""
+		# prepare runtime scripts
+		local exec_args=""
+		for item in "${TARGET_EXEC_ARGS[@]}"; do
+			exec_args="$exec_args \"$item\""
+		done
+		local supress=""
+		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
+			supress="$supress \"$item\""
+		done
+		xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$TEMP_DIR/dlv-loop.sh"
+		xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$TEMP_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$TEMP_DIR/dlv-loop.sh"
+		xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$TEMP_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$TEMP_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$TEMP_DIR/dlv-loop.sh" "$TEMP_DIR/dlv-exec.sh"
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
-		cat <<EOF >"$TEMP_DIR/config-vscode.ini"
+		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
 TARGET_IPADDR=$TARGET_IPADDR
 TARGET_IPPORT=$TARGET_IPPORT
@@ -1208,7 +1294,7 @@ function xflash_pending_commands() {
 				xexec "$ssh_prefix \"$target_pref\""
 			fi
 			local upload_source="$TEMP_DIR/data"
-			xexec $USE_RSYNC_BINARY -azPL --inplace --partial --numeric-ids --stats --progress \
+			xexec $USE_RSYNC_BINARY -azzPL --inplace --partial --numeric-ids --stats --progress \
 				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
 				"\"$upload_source/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
 			#xdebug "$EXEC_STDERR"
@@ -1259,7 +1345,7 @@ function xperform_build_and_deploy() {
 		PRECOMMIT_ENABLE=true
 	fi
 
-	xresolve_target_config
+	xresolve_target_config "$frebuild"
 	xecho "$* $TARGET_HYPERLINK"
 	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
@@ -1698,7 +1784,7 @@ function xcheck_results() {
 		xtext "$RED" "$EXEC_STDERR"
 		eval "$1"=false
 		if xis_true "$2"; then
-			xerror "$3 warnings has been detected. Fix before continue ($EXEC_STATUS)."
+			xerror "$3 warnings has been detected. Fix before continue (status $(xexec_status "$EXEC_STATUS"))."
 			xsave_lint_state
 			exit "$EXEC_STATUS"
 		fi
@@ -2051,20 +2137,6 @@ function xsed_replace() {
 }
 
 function xprepare_runtime_scripts() {
-	local exec_args=""
-	for item in "${TARGET_EXEC_ARGS[@]}"; do
-		exec_args="$exec_args \"$item\""
-	done
-	local supress=""
-	for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
-		supress="$supress \"$item\""
-	done
-	xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$TEMP_DIR/dlv-loop.sh"
-	xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$TEMP_DIR/dlv-exec.sh"
-	xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$TEMP_DIR/dlv-loop.sh"
-	xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$TEMP_DIR/dlv-exec.sh"
-	xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$TEMP_DIR/dlv-exec.sh"
-	xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$TEMP_DIR/dlv-loop.sh" "$TEMP_DIR/dlv-exec.sh"
 	COPY_FILES+=(
 		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"

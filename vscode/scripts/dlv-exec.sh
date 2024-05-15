@@ -72,13 +72,13 @@ trap cleanup EXIT
 
 function digest() {
 	if [[ -f "$1" ]]; then
-		date -r "$1" "+%m-%d-%Y %H:%M:%S"
+		date -r "$1" "+%m-%d-%Y %H:%M:%S" 2>&1
 	else
 		echo "no-file"
 	fi
 }
 
-function seltest() {
+function self_test() {
 	s2=$(digest "$0")
 	if [[ "$s1" != "$s2" ]]; then
 		log "${GREEN}INFORMATION: The script has been updated via external upload. Restarting...$NC"
@@ -104,7 +104,7 @@ while true; do
 		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"
 		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
 		while [[ ! -f "$DLOOP_ENABLE_FILE" ]]; do
-			seltest
+			self_test
 			usleep 500000
 		done
 	fi
@@ -117,7 +117,7 @@ while true; do
 	if [[ ! -f "$DLOOP_RESTART_FILE" ]]; then
 		log "Waiting for application to be started (Run/Start Debugging)..."
 		while [[ ! -f "$DLOOP_RESTART_FILE" ]]; do
-			seltest
+			self_test
 			usleep 100000
 		done
 	fi
@@ -127,7 +127,7 @@ while true; do
 		log "${YELLOW}Unable to run application: target binary file $EXEC_BINARY_PATH not found.$NC"
 		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
 		while [[ ! -f "$EXEC_BINARY_PATH" ]]; do
-			seltest
+			self_test
 			usleep 500000
 		done
 	fi
@@ -139,7 +139,7 @@ while true; do
 	fi
 
 	while [[ -f "$EXEC_BINARY_PATH" ]] && [[ ! -r "$EXEC_BINARY_PATH" ]]; do
-		seltest
+		self_test
 		usleep 100000
 	done
 
@@ -158,7 +158,7 @@ while true; do
 	EXE_PROCESS_PID="$!"
 
 	while true; do
-		seltest
+		self_test
 		usleep 100000
 		if [ ! -f "/proc/$EXE_PROCESS_PID/status" ]; then
 			rm -f "$DLOOP_RESTART_FILE"

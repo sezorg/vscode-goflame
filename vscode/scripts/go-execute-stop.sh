@@ -11,5 +11,6 @@ set -euo pipefail
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 source "$SCRIPT_DIR/go-runtime.sh"
 
-xssh "[CANFAIL]" rm -f "$DLOOP_RESTART_FILE"
-exit 0
+xresolve_target_config false
+xssh rm -f "$DLOOP_RESTART_FILE"
+exit "$EXEC_STATUS"
