@@ -904,14 +904,14 @@ P_CACHE_SALT=$(date -r "./.vscode/scripts/go-runtime.sh" "+%m-%d-%Y %H:%M:%S")
 P_CACHE_SALT=$(echo -n "$P_CACHE_SALT$PWD${P_CACHE_VARIABLES[*]}" | md5sum)
 P_CACHE_SALT="${P_CACHE_SALT:0:32}"
 
-function xcache_text_hash() {
+function xhash_text() {
 	local string_hash
 	string_hash=$(md5sum <<<"$1$P_CACHE_SALT")
 	string_hash="${string_hash:0:32}"
 	echo "$string_hash"
 }
 
-function xcache_file_hash() {
+function xhash_file() {
 	local file_hash
 	file_hash=$(md5sum "$1")
 	file_hash="${file_hash:0:32}"
@@ -1092,12 +1092,30 @@ function xdiscard_target_config() {
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
-	local cache_name="__config_vscode.hash" data_hash force="$1"
-	data_hash=$(xcache_text_hash "$P_VSCODE_CONFIG_PATH")
-	if xis_true "$force" || xis_ne "$(xcache_get "$cache_name")" "$data_hash" ||
-		! xis_exists "$P_VSCODE_CONFIG_PATH"; then
-		xdebug "Hash: $(xcache_get "$cache_name") -- $data_hash"
-		xdebug "Creating target config for $TARGET_IPADDR..."
+	local current_hash config_hash force="$1" resolve_reason="" resolve_title=""
+	current_hash=$(xhash_text "$P_VSCODE_CONFIG_PATH")
+	if xis_true "$force"; then
+		resolve_reason="forced externally"
+		resolve_title="forced by build"
+	fi
+	if ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
+		resolve_reason="no config file: $P_VSCODE_CONFIG_PATH"
+		resolve_title="new configuration"
+	else
+		function load_config_hash() {
+			CONFIG_HASH=""
+			# shellcheck disable=SC1090
+			source "$P_VSCODE_CONFIG_PATH"
+			echo "$CONFIG_HASH"
+		}
+		config_hash="$(load_config_hash)"
+		if xis_ne "$config_hash" "$current_hash"; then
+			resolve_reason="hash mismatch: '$config_hash' != '$current_hash'"
+			resolve_title="configuration changed"
+		fi
+	fi
+	if xis_set "$resolve_reason"; then
+		xdebug "Creating target config for '$TARGET_IPADDR', reason: $resolve_reason"
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
 		fi
@@ -1105,7 +1123,7 @@ function xresolve_target_config() {
 			if ! xtty_resolve_port; then
 				return 1
 			fi
-			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT")..."
+			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($resolve_title)..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "$TTY_RETRY"; then
 				xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
@@ -1230,17 +1248,17 @@ function xresolve_target_config() {
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
-TARGET_IPADDR=$TARGET_IPADDR
-TARGET_IPPORT=$TARGET_IPPORT
-TARGET_HOSTNAME=$TARGET_HOSTNAME
+TARGET_IPADDR="$TARGET_IPADDR"
+TARGET_IPPORT="$TARGET_IPPORT"
+TARGET_HOSTNAME="$TARGET_HOSTNAME"
 TARGET_MACADDR="$TARGET_MACADDR"
-TARGET_USER=$TARGET_USER
-TARGET_PASS=$TARGET_PASS
-TARGET_TTYPORT=$TTY_PORT
-USE_RSYNC_METHOD=$USE_RSYNC_METHOD
-USE_PIGZ_COMPRESSION=$USE_PIGZ_COMPRESSION
+TARGET_USER="$TARGET_USER"
+TARGET_PASS="$TARGET_PASS"
+TARGET_TTYPORT="$TTY_PORT"
+USE_RSYNC_METHOD="$USE_RSYNC_METHOD"
+USE_PIGZ_COMPRESSION="$USE_PIGZ_COMPRESSION"
+CONFIG_HASH="$current_hash"
 EOF
-		xcache_put "$cache_name" "$data_hash"
 	fi
 	# shellcheck disable=SC1090
 	source "$P_VSCODE_CONFIG_PATH"
@@ -1506,8 +1524,8 @@ function xfiles_copy() {
 			fi
 
 			local name_hash file_hash
-			name_hash=$(xcache_text_hash "$fileA")
-			file_hash=$(xcache_file_hash "$fileA")
+			name_hash=$(xhash_text "$fileA")
+			file_hash=$(xhash_file "$fileA")
 			#xecho "$name_hash :: $file_hash"
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
@@ -1808,8 +1826,8 @@ function xcheck_project() {
 			-not -path "\"./.git/*\"" -exec date -r {} \
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 		xload_lint_state
-		name_hash=$(xcache_text_hash "$dir_hash")
-		file_hash=$(xcache_file_hash "$dir_hash")
+		name_hash=$(xhash_text "$dir_hash")
+		file_hash=$(xhash_file "$dir_hash")
 		#xecho "$name_hash :: $file_hash"
 		if xis_ne "$(xcache_get "$name_hash")" "$file_hash" || xis_true "$CLEAN_GOCACHE"; then
 			xreset_lint_state
