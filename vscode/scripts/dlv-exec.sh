@@ -3,6 +3,9 @@
 #
 # Execute binary on the targets wich does not support Delve debugging.
 
+DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
+DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
+
 if [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
 	while true; do
@@ -12,7 +15,14 @@ if [[ "$instance_guard" == "" ]]; then
 			if [[ "$status" != "155" ]]; then
 				exit "$status"
 			fi
-			sleep 2
+			count="20"
+			while [[ "$count" != "0" ]]; do
+				count=$((count - 1))
+				if [[ -f "$DLOOP_ENABLE_FILE" ]]; then
+					break
+				fi
+				usleep 500000
+			done
 		else
 			usleep 500000
 		fi
@@ -21,9 +31,6 @@ fi
 
 set -euo pipefail
 #set -x
-
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
 RED=$(printf "\e[31m")
 GREEN=$(printf "\e[32m")
@@ -99,6 +106,7 @@ while true; do
 		log " "
 	fi
 
+	self_test
 	if [[ ! -f "$DLOOP_ENABLE_FILE" ]]; then
 		additional_sleep="1"
 		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"

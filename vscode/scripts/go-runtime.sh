@@ -415,19 +415,19 @@ function xdebug() {
 }
 
 function xwarn() {
-	xemit "1" "${YELLOW}WARNING: ${*//$NC/$YELLOW}"
+	xemit "1" "${YELLOW}WARNING: ${*//$NC/$NC$YELLOW}"
 }
 
 function xerror() {
 	P_ELAPSED_PREFIX="ERROR: "
 	P_ELAPSED_COLOR="$RED"
-	xemit "1" "${RED}ERROR: ${*//$NC/$RED}"
+	xemit "1" "${RED}ERROR: ${*//$NC/$NC$RED}"
 }
 
 function xfatal() {
 	P_ELAPSED_PREFIX="FATAL: "
 	P_ELAPSED_COLOR="$RED"
-	xemit "1" "${RED}FATAL: ${*//$NC/$RED}"
+	xemit "1" "${RED}FATAL: ${*//$NC/$NC$RED}"
 	xterminate "1"
 }
 
@@ -477,7 +477,7 @@ function xhyperlink() {
 }
 
 if xis_false "$P_CONFIG_INI_LOADED"; then
-	xerror "Unable to load configuration from \"config-user.ini\" or \"config.ini\"."
+	xerror "Unable to load configuration from $(xhyperlink "file://./.vscode/config-user.ini") or $(xhyperlink "file://./.vscode/config.ini")."
 	xfatal "See documentation for more details."
 fi
 
@@ -836,9 +836,9 @@ EOF
 function xexec_status() {
 	local message=""
 	case "$EXEC_STATUS" in
-	"0") message="success" ;;
-	"1") message="generic fault" ;;
-	"124") message="timeout" ;;
+	"0") message="successfully completed" ;;
+	"1" | "255") message="generic operation fault" ;;
+	"4" | "124") message="operation is timed out" ;;
 	esac
 	if xis_set "$message"; then
 		echo "$BLUE$EXEC_STATUS$NC: $message"
@@ -955,7 +955,7 @@ function xtty_shell() {
 	if ! xtty_resolve_port; then
 		return 1
 	fi
-	local format="\r" text
+	local format="" text
 	for ((i = 0; i <= $#; i++)); do
 		format="$format%s\r"
 	done
@@ -1116,6 +1116,7 @@ function xresolve_target_config() {
 	fi
 	if xis_set "$resolve_reason"; then
 		xdebug "Creating target config for '$TARGET_IPADDR', reason: $resolve_reason"
+		xclean_directory "$P_CACHE_DIR"
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
 		fi
@@ -1191,8 +1192,9 @@ function xresolve_target_config() {
 			fi
 		fi
 		if xis_ne "$P_TARGET_PLATFORM" "$target_mach"; then
-			xerror "Unexpected target machine architecture $(xdecorate "$target_mach"), expected $(xdecorate "$P_TARGET_PLATFORM")"
-			xfatal "Check $(xdecorate TARGET_ARCH) and $(xdecorate BUILDROOT_DIR) variables"
+			xerror "Unexpected target $(xhyperlink "http://$TARGET_IPADDR") architecture $(xdecorate "$target_mach"), expected $(xdecorate "$P_TARGET_PLATFORM")"
+			xerror "Probably invalid values in $(xdecorate TARGET_ARCH) and $(xdecorate BUILDROOT_DIR) variables"
+			xfatal "Check contents of the $(xhyperlink "file://./.vscode/config-user.ini") or $(xhyperlink "file://./.vscode/config.ini")"
 		fi
 		function resolve_binary() {
 			local enable_option="$1" binary_name="$2" target_path="$3"
@@ -1248,8 +1250,9 @@ function xresolve_target_config() {
 		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
-TARGET_IPADDR="$TARGET_IPADDR"
-TARGET_IPPORT="$TARGET_IPPORT"
+# Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
+TARGET_IPADDR=$TARGET_IPADDR
+TARGET_IPPORT=$TARGET_IPPORT
 TARGET_HOSTNAME="$TARGET_HOSTNAME"
 TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER="$TARGET_USER"

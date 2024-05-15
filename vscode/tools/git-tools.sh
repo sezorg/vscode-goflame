@@ -383,6 +383,18 @@ function pi() {
 	_set_konsole_title
 }
 
+function pix() {
+	local device_path
+	device_path=$(
+		_resolve_variable "$*" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
+	)
+	TTY_PORT="$device_path"
+	_tty_resolve_port
+	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
+	_tty_promt "ifconfig"
+	_set_konsole_title
+}
+
 function jc() {
 	"./jsoncli/jsoncli.sh" "$@"
 }
