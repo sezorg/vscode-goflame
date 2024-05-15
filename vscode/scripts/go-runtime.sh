@@ -514,8 +514,10 @@ if xis_unset "$TARGET_ARCH"; then
 		TARGET_ARCH="arm"
 	elif xis_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
 		TARGET_ARCH="arm64"
+	elif ! xis_exists "$BUILDROOT_DIR"; then
+		xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not exist: $BUILDROOT_DIR."
 	else
-		xfatal "Can not determine target architecture from BUILDROOT_DIR: $BUILDROOT_DIR."
+		xfatal "Can not determine target architecture from $(xdecorate "BUILDROOT_DIR"): $BUILDROOT_DIR."
 	fi
 fi
 
