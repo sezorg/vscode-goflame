@@ -1317,7 +1317,8 @@ function xflash_pending_commands() {
 				xexec "$ssh_prefix \"$target_pref\""
 			fi
 			local upload_source="$TEMP_DIR/data"
-			xexec $USE_RSYNC_BINARY -azzPL --inplace --partial --numeric-ids --stats --progress \
+			xexec $USE_RSYNC_BINARY -azzPL --no-owner --no-group --no-perms \
+				--inplace --partial --numeric-ids --stats --progress \
 				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
 				"\"$upload_source/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
 			#xdebug "$EXEC_STDERR"
