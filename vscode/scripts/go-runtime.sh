@@ -194,10 +194,12 @@ SSH_FLAGS=(
 	-x
 )
 
-TEMP_DIR="/var/tmp/goflame"
-P_CACHE_DIR="$TEMP_DIR/cachedb"
+P_TEMP_DIR="/var/tmp/goflame"
+P_CACHEDB_DIR="$P_TEMP_DIR/cachedb"
+P_SCRIPTS_DIR="$P_TEMP_DIR/scripts"
+P_UPLOAD_DIR="$P_TEMP_DIR/upload"
 
-mkdir -p "$TEMP_DIR" "$P_CACHE_DIR"
+mkdir -p "$P_TEMP_DIR" "$P_CACHEDB_DIR" "$P_UPLOAD_DIR"
 
 XECHO_ENABLED=
 XDEBUG_ENABLED=
@@ -487,7 +489,7 @@ BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
 TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
 DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
 BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
-WRAPPER_LOGFILE="$TEMP_DIR/go-wrapper.log"
+WRAPPER_LOGFILE="$P_TEMP_DIR/go-wrapper.log"
 DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
@@ -838,7 +840,13 @@ function xexec_status() {
 	case "$EXEC_STATUS" in
 	"0") message="successfully completed" ;;
 	"1" | "255") message="generic operation fault" ;;
+	"2") message="invalid options or missing arguments" ;;
 	"4" | "124") message="operation is timed out" ;;
+	"125") message="out of memory" ;;
+	"126") message="command cannot execute" ;;
+	"127") message="command not found" ;;
+	"128") message="invalid argument" ;;
+	"130") message="terminated by Ctrl-C" ;;
 	esac
 	if xis_set "$message"; then
 		echo "$BLUE$EXEC_STATUS$NC: $message"
@@ -879,34 +887,18 @@ function xfunset() {
 	unset "P_OPTIONS_STACK[-1]"
 }
 
-P_CACHE_VARIABLES=(
-	"$TARGET_ARCH"
-	"$TARGET_GOCXX"
-	"$BUILDROOT_DIR"
-	"$TARGET_DOMAIN"
-	"$TARGET_IPADDR"
-	"$TARGET_IPPORT"
-	"$TARGET_USER"
-	"$TARGET_PASS"
-	"$TARGET_BIN_DESTIN"
-	"${TARGET_EXEC_ARGS[*]}"
-	"${TARGET_SUPRESS_MSSGS[*]}"
-	"$TTY_PORT"
-	"$TTY_SPEED"
-	"$TTY_PICOCOM"
-	"$TTY_USER"
-	"$TTY_PASS"
-	"$TTY_DELAY"
-	"$TTY_RETRY"
+P_CONFIG_HASH_INITIAL=(
+	"$PWD"
+	"$(find -L "./.vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L "./.vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
 )
 
-P_CACHE_SALT=$(date -r "./.vscode/scripts/go-runtime.sh" "+%m-%d-%Y %H:%M:%S")
-P_CACHE_SALT=$(echo -n "$P_CACHE_SALT$PWD${P_CACHE_VARIABLES[*]}" | md5sum)
-P_CACHE_SALT="${P_CACHE_SALT:0:32}"
+P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
+P_CONFIG_HASH="${P_CONFIG_HASH:0:32}"
 
 function xhash_text() {
 	local string_hash
-	string_hash=$(md5sum <<<"$1$P_CACHE_SALT")
+	string_hash=$(md5sum <<<"$1$P_CONFIG_HASH")
 	string_hash="${string_hash:0:32}"
 	echo "$string_hash"
 }
@@ -915,18 +907,18 @@ function xhash_file() {
 	local file_hash
 	file_hash=$(md5sum "$1")
 	file_hash="${file_hash:0:32}"
-	echo "$file_hash-$P_CACHE_SALT"
+	echo "$file_hash-$P_CONFIG_HASH"
 }
 
 function xcache_put() {
-	echo "$2" >"$P_CACHE_DIR/$1"
+	echo "$2" >"$P_CACHEDB_DIR/$1"
 }
 
 function xcache_get() {
-	cat "$P_CACHE_DIR/$1" 2>/dev/null
+	cat "$P_CACHEDB_DIR/$1" 2>/dev/null
 }
 
-P_TTY_DEBUG=false
+P_TTY_DEBUG=true
 P_TTY_SHELL_OUT=""
 
 function xtty_debug() {
@@ -1038,13 +1030,14 @@ function xtty_login() {
 }
 
 function xtty_peek_ip() {
-	local output="$1" try_login="$2"
+	local output_ip="$1" try_login="$2"
 	if xis_true "$try_login"; then
 		if ! xtty_login; then
+			eval "$output_ip='failed to login to device'"
 			return 1
 		fi
 	fi
-	local oldifs text lines=() line match
+	local oldifs text lines=() line match have_eth=false
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
 	xtty_shell "ifconfig"
 	#xtty_shell "\"ifconfig | grep 'inet addr:' | grep 'Bcast:'\""
@@ -1052,25 +1045,35 @@ function xtty_peek_ip() {
 	IFS=$'\r' lines=($P_TTY_SHELL_OUT)
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
 	for line in "${lines[@]}"; do
+		match=$(echo "$line" | grep 'Link encap:Ethernet')
+		if xis_set "$match"; then
+			have_eth=true
+		fi
 		match=$(echo "$line" | grep 'inet addr:' | grep 'Bcast:' |
 			grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
 		if [[ "$match" != "" ]]; then
 			xtty_debug "got IP address: $match"
-			eval "$output"="$match"
+			eval "$output_ip='$match'"
 			return 0
 		fi
 	done
+	if xis_true "$have_eth"; then
+		eval "$output_ip='device have no IP address'"
+	else
+		eval "$output_ip='no response from ifconfig'"
+	fi
 	return 1
 }
 
 function xtty_resolve_ip() {
-	local start_time current_time elapsed_time ip="$1" timeout="$2" try_login=false
+	local start_time current_time elapsed_time output_ip="$1" timeout="$2" try_login=false
 	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
 		timeout="10"
 	fi
 	start_time=$(date +%s)
 	while true; do
-		if xtty_peek_ip "$ip" "$try_login"; then
+		eval "$output_ip=''"
+		if xtty_peek_ip "$output_ip" "$try_login"; then
 			return 0
 		fi
 		try_login=true
@@ -1083,7 +1086,7 @@ function xtty_resolve_ip() {
 	done
 }
 
-P_VSCODE_CONFIG_PATH="$TEMP_DIR/config-vscode.ini"
+P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/config-vscode.ini"
 
 function xdiscard_target_config() {
 	rm "$P_VSCODE_CONFIG_PATH"
@@ -1092,13 +1095,11 @@ function xdiscard_target_config() {
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
-	local current_hash config_hash force="$1" resolve_reason="" resolve_title=""
-	current_hash=$(xhash_text "$P_VSCODE_CONFIG_PATH")
+	local config_hash force="$1" resolve_reason="" resolve_title=""
 	if xis_true "$force"; then
 		resolve_reason="forced externally"
-		resolve_title="forced by build"
-	fi
-	if ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
+		resolve_title="forced by rebuild"
+	elif ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
 		resolve_reason="no config file: $P_VSCODE_CONFIG_PATH"
 		resolve_title="new configuration"
 	else
@@ -1109,14 +1110,15 @@ function xresolve_target_config() {
 			echo "$CONFIG_HASH"
 		}
 		config_hash="$(load_config_hash)"
-		if xis_ne "$config_hash" "$current_hash"; then
-			resolve_reason="hash mismatch: '$config_hash' != '$current_hash'"
+		if xis_ne "$config_hash" "$P_CONFIG_HASH"; then
+			resolve_reason="hash mismatch: '$config_hash' != '$P_CONFIG_HASH'"
 			resolve_title="configuration changed"
 		fi
 	fi
 	if xis_set "$resolve_reason"; then
 		xdebug "Creating target config for '$TARGET_IPADDR', reason: $resolve_reason"
-		xclean_directory "$P_CACHE_DIR"
+		xclean_directory "$P_CACHEDB_DIR"
+		xclean_directory "$P_UPLOAD_DIR"
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
 		fi
@@ -1127,7 +1129,11 @@ function xresolve_target_config() {
 			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($resolve_title)..."
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "$TTY_RETRY"; then
-				xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
+				if xis_set "$target_ip"; then
+					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
+				else
+					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
+				fi
 			fi
 			TARGET_IPADDR="$target_ip"
 		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
@@ -1233,21 +1239,22 @@ function xresolve_target_config() {
 		resolve_binary "USE_RSYNC_METHOD" "$USE_RSYNC_BINARY" "/usr/bin"
 		resolve_binary "USE_PIGZ_COMPRESSION" "$USE_PIGZ_BINARY" ""
 		# prepare runtime scripts
-		local exec_args=""
+		local exec_args=" \n"
 		for item in "${TARGET_EXEC_ARGS[@]}"; do
-			exec_args="$exec_args \"$item\""
+			exec_args="$exec_args\t\"$item\"\n"
 		done
-		local supress=""
+		local supress=" \n"
 		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
-			supress="$supress \"$item\""
+			supress="$supress\t\"$item\"\n"
 		done
-		xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$TEMP_DIR/dlv-loop.sh"
-		xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$TEMP_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$TEMP_DIR/dlv-loop.sh"
-		xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$TEMP_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$TEMP_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$TEMP_DIR/dlv-loop.sh" "$TEMP_DIR/dlv-exec.sh"
-		xdebug "Writing config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS."
+		xexec mkdir -p "$P_SCRIPTS_DIR"
+		xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-loop.sh"
+		xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$P_SCRIPTS_DIR/dlv-loop.sh"
+		xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$P_SCRIPTS_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$P_SCRIPTS_DIR/dlv-exec.sh"
+		xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$P_SCRIPTS_DIR/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
+		xdebug "Writing target config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS to $P_VSCODE_CONFIG_PATH."
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
 # Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
@@ -1260,7 +1267,7 @@ TARGET_PASS="$TARGET_PASS"
 TARGET_TTYPORT="$TTY_PORT"
 USE_RSYNC_METHOD="$USE_RSYNC_METHOD"
 USE_PIGZ_COMPRESSION="$USE_PIGZ_COMPRESSION"
-CONFIG_HASH="$current_hash"
+CONFIG_HASH="$P_CONFIG_HASH"
 EOF
 	fi
 	# shellcheck disable=SC1090
@@ -1316,11 +1323,10 @@ function xflash_pending_commands() {
 			if xis_set "$target_pref"; then
 				xexec "$ssh_prefix \"$target_pref\""
 			fi
-			local upload_source="$TEMP_DIR/data"
 			xexec $USE_RSYNC_BINARY -azzPL --no-owner --no-group --no-perms \
 				--inplace --partial --numeric-ids --stats --progress \
 				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
-				"\"$upload_source/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
+				"\"$P_UPLOAD_DIR/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
 			#xdebug "$EXEC_STDERR"
 			#xdebug "$EXEC_STDOUT"
 			if xis_set "$P_SSH_TARGET_POST"; then
@@ -1487,11 +1493,10 @@ function xfiles_copy() {
 		return 0
 	fi
 
-	local upload_source="$TEMP_DIR/data"
 	if xis_false "$COPY_CACHE"; then
-		xclean_directory "$P_CACHE_DIR"
-	elif [[ ! -d "$P_CACHE_DIR" ]]; then
-		xexec mkdir -p "$P_CACHE_DIR"
+		xclean_directory "$P_CACHEDB_DIR"
+	elif [[ ! -d "$P_CACHEDB_DIR" ]]; then
+		xexec mkdir -p "$P_CACHEDB_DIR"
 	fi
 
 	local elements=""
@@ -1534,9 +1539,9 @@ function xfiles_copy() {
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
 				if xis_unset "${directories[*]}"; then
-					xclean_directory "$upload_source"
+					xclean_directory "$P_UPLOAD_DIR"
 				fi
-				local backup_target="$upload_source/${fileB:1}"
+				local backup_target="$P_UPLOAD_DIR/${fileB:1}"
 				backup_target="${backup_target//\/\//\/}"
 				local backup_subdir
 				backup_subdir=$(dirname "$backup_target")
@@ -1569,7 +1574,7 @@ function xfiles_copy() {
 				if xis_true "$USE_PIGZ_COMPRESSION"; then
 					pkg="$USE_PIGZ_BINARY --processes $(nproc) -9 --no-time --no-name"
 				fi
-				P_SSH_HOST_STDIO="tar -cf - -C \"$upload_source\" --dereference \".\" | $pkg - | "
+				P_SSH_HOST_STDIO="tar -cf - -C \"$P_UPLOAD_DIR\" --dereference \".\" | $pkg - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			else
 				xecho "Uploading $count files via $USE_RSYNC_BINARY: ${elements:2}"
@@ -1763,7 +1768,7 @@ function xreset_lint_state() {
 
 function xload_lint_state() {
 	local state=()
-	IFS=' ' read -r -a state <<<"$(cat "$P_CACHE_DIR/__linters_result.state" 2>/dev/null)"
+	IFS=' ' read -r -a state <<<"$(cat "$P_CACHEDB_DIR/__linters_result.state" 2>/dev/null)"
 	if xis_eq "${#state[@]}" "5"; then
 		P_GOLANGCI_LINT_DONE="${state[0]}"
 		P_STATICCHECK_DONE="${state[1]}"
@@ -1788,7 +1793,7 @@ function xsave_lint_state() {
 		"P_PRECOMMIT_DONE"
 	)
 	for item in "${items[@]}"; do
-		if [[ -f "$P_CACHE_DIR/__res_$item" ]]; then
+		if [[ -f "$P_CACHEDB_DIR/__res_$item" ]]; then
 			eval "$item"=true
 		fi
 	done
@@ -1799,7 +1804,7 @@ function xsave_lint_state() {
 		"$P_LLENCHECK_DONE"
 		"$P_PRECOMMIT_DONE"
 	)
-	echo "${state[@]}" >"$P_CACHE_DIR/__linters_result.state"
+	echo "${state[@]}" >"$P_CACHEDB_DIR/__linters_result.state"
 }
 
 function xcheck_results() {
@@ -1816,12 +1821,12 @@ function xcheck_results() {
 		xtext "" "$EXEC_STDOUT"
 		xtext "" "$EXEC_STDERR"
 		eval "$1"=true
-		xexec echo "1" >"$P_CACHE_DIR/__res_$1"
+		xexec echo "1" >"$P_CACHEDB_DIR/__res_$1"
 	fi
 }
 
 function xcheck_project() {
-	local name_hash="" file_hash="" dir_hash="$P_CACHE_DIR/__project_checklist.log"
+	local name_hash="" file_hash="" dir_hash="$P_CACHEDB_DIR/__project_checklist.log"
 	local diff_filter_args=() diff_filter_command=""
 	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
 		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE" ||
@@ -1843,12 +1848,12 @@ function xcheck_project() {
 			xis_true "$P_PRECOMMIT_DONE"; then
 			return 0
 		fi
-		xexec rm -f "$P_CACHE_DIR/__res_P_GOLANGCI_LINT_DONE" \
-			"$P_CACHE_DIR/__res_P_STATICCHECK_DONE" \
-			"$P_CACHE_DIR/__res_P_GO_VET_DONE" \
-			"$P_CACHE_DIR/__res_P_LLENCHECK_DONE" \
-			"$P_CACHE_DIR/__res_P_PRECOMMIT_DONE"
-		export PYTHONPYCACHEPREFIX="$TEMP_DIR/pycache"
+		xexec rm -f "$P_CACHEDB_DIR/__res_P_GOLANGCI_LINT_DONE" \
+			"$P_CACHEDB_DIR/__res_P_STATICCHECK_DONE" \
+			"$P_CACHEDB_DIR/__res_P_GO_VET_DONE" \
+			"$P_CACHEDB_DIR/__res_P_LLENCHECK_DONE" \
+			"$P_CACHEDB_DIR/__res_P_PRECOMMIT_DONE"
+		export PYTHONPYCACHEPREFIX="$P_TEMP_DIR/pycache"
 		if [[ ! -d "$PYTHONPYCACHEPREFIX" ]]; then
 			xexec mkdir -p "$PYTHONPYCACHEPREFIX"
 		fi
@@ -1935,7 +1940,7 @@ function xcheck_project() {
 					fi
 				done
 			fi
-			local scheck="$TEMP_DIR/golangci-lint.log"
+			local scheck="$P_TEMP_DIR/golangci-lint.log"
 			xecho "Running $(xdecorate "golangci-lint") (details: $(xhyperlink "file://$scheck"))"
 			xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
 				"./..." ">" "$scheck" "2>&1"
@@ -1959,7 +1964,7 @@ function xcheck_project() {
 			if xis_set "$STATICCHECK_CHECKS"; then
 				flags+=("-checks" "$STATICCHECK_CHECKS")
 			fi
-			local scheck="$TEMP_DIR/staticcheck.log"
+			local scheck="$P_TEMP_DIR/staticcheck.log"
 			xecho "Running $(xdecorate "staticcheck") (details: $(xhyperlink "file://$scheck"))"
 			xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
 			if xis_true "$STATICCHECK_FILTER"; then
@@ -2162,8 +2167,8 @@ function xsed_replace() {
 
 function xprepare_runtime_scripts() {
 	COPY_FILES+=(
-		"$TEMP_DIR/dlv-loop.sh|:/usr/bin/dl"
-		"$TEMP_DIR/dlv-exec.sh|:/usr/bin/de"
+		"$P_SCRIPTS_DIR/dlv-loop.sh|:/usr/bin/dl"
+		"$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
 		"$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 }
