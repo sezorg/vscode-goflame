@@ -30,7 +30,8 @@ function gh() {
 	echo "ss:   ssh root-user@[ip_address]"
 	echo "so:   xdg-open http://[ip_address]"
 	echo "sf:   sshfs root-user@[ip_address]"
-	echo "pi:   picocom -b 115200 [/dev/ttyUSB0]"
+	echo "pp:   picocom -b 115200 [/dev/ttyUSB0]"
+	echo "pi:   picocom -b 115200 [/dev/ttyUSB0] && login && ifconfig"
 	echo "jc:   jsoncli.py ...arguments"
 	echo "xcd:  cd [directory]"
 	echo "upd:  sudo dnf update --refresh"
@@ -240,6 +241,10 @@ function _tty_promt() {
 	fi
 }
 
+function _tty_run() {
+	"$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT"
+}
+
 function _tty_exchange() {
 	[[ "$(_tty_shell "$1")" == *"$2"* ]]
 }
@@ -368,6 +373,18 @@ function sf() {
 	fi
 }
 
+function pp() {
+	local device_path
+	device_path=$(
+		_resolve_variable "$*" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
+	)
+	TTY_PORT="$device_path"
+	_tty_resolve_port
+	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
+	_tty_promt ""
+	_set_konsole_title
+}
+
 function pi() {
 	local device_path
 	device_path=$(
@@ -378,18 +395,6 @@ function pi() {
 	if ! _tty_login; then
 		_fatal "Can not login to TTY $TTY_PORT"
 	fi
-	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
-	_tty_promt "ifconfig"
-	_set_konsole_title
-}
-
-function pix() {
-	local device_path
-	device_path=$(
-		_resolve_variable "$*" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
-	)
-	TTY_PORT="$device_path"
-	_tty_resolve_port
 	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
 	_tty_promt "ifconfig"
 	_set_konsole_title
