@@ -921,6 +921,7 @@ function xcache_get() {
 
 P_TTY_DEBUG=false
 P_TTY_SHELL_OUT=""
+P_TTY_RESOLVE=""
 
 function xtty_debug() {
 	if xis_true "$P_TTY_DEBUG"; then
@@ -942,6 +943,7 @@ function xtty_resolve_port() {
 		fi
 		xtty_debug "resolved port: $TTY_PORT"
 	fi
+	xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($P_TTY_RESOLVE)..."
 	if xis_true "$TTY_DIRECT"; then
 		xexec stty -F "$TTY_PORT" raw -echo "$TTY_SPEED"
 	fi
@@ -1023,15 +1025,19 @@ function xtty_login() {
 function xtty_peek_ip() {
 	local output_ip="$1" try_login="$2"
 	if xis_true "$try_login"; then
-		if ! xtty_login; then
-			eval "$output_ip='failed to login to device'"
+		xtty_login
+		if xis_ne "$?" "0"; then
+			if xis_set "$P_TTY_SHELL_OUT"; then
+				eval "$output_ip='failed to login to device'"
+			else
+				eval "$output_ip='no response from device'"
+			fi
 			return 1
 		fi
 	fi
 	local oldifs text lines=() line match have_eth=false
 	${IFS+"false"} && unset oldifs || oldifs="$IFS"
 	xtty_shell "ifconfig"
-	#xtty_shell "\"ifconfig | grep 'inet addr:' | grep 'Bcast:'\""
 	# shellcheck disable=SC2206
 	IFS=$'\r' lines=($P_TTY_SHELL_OUT)
 	${oldifs+"false"} && unset IFS || IFS="$oldifs"
@@ -1048,7 +1054,9 @@ function xtty_peek_ip() {
 			return 0
 		fi
 	done
-	if xis_true "$have_eth"; then
+	if xis_unset "$P_TTY_SHELL_OUT"; then
+		eval "$output_ip='no response from device'"
+	elif xis_true "$have_eth"; then
 		eval "$output_ip='device have no IP address'"
 	else
 		eval "$output_ip='no response from ifconfig'"
@@ -1115,10 +1123,7 @@ function xresolve_target_config() {
 			TTY_PORT="$TARGET_IPADDR"
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
-			if ! xtty_resolve_port; then
-				return 1
-			fi
-			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($resolve_title)..."
+			P_TTY_RESOLVE="$resolve_title"
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "$TTY_TIMEOUT"; then
 				if xis_set "$target_ip"; then
