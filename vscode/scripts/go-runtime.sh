@@ -231,10 +231,11 @@ TARGET_BUILD_LDFLAGS=()
 TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
 TTY_SPEED="115200"
 TTY_PICOCOM="picocom"
+TTY_DIRECT=true
 TTY_USER=""
 TTY_PASS=""
 TTY_DELAY="200" # milliseconds
-TTY_RETRY="10"  # seconds
+TTY_TIMEOUT="5" # seconds
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -918,7 +919,7 @@ function xcache_get() {
 	cat "$P_CACHEDB_DIR/$1" 2>/dev/null
 }
 
-P_TTY_DEBUG=true
+P_TTY_DEBUG=false
 P_TTY_SHELL_OUT=""
 
 function xtty_debug() {
@@ -941,6 +942,9 @@ function xtty_resolve_port() {
 		fi
 		xtty_debug "resolved port: $TTY_PORT"
 	fi
+	if xis_true "$TTY_DIRECT"; then
+		xexec stty -F "$TTY_PORT" raw -echo "$TTY_SPEED"
+	fi
 }
 
 function xtty_shell() {
@@ -953,29 +957,16 @@ function xtty_shell() {
 	done
 	# shellcheck disable=SC2059
 	text="$(printf "$format" "$@")"
-	xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1
+	if xis_true "$TTY_DIRECT"; then
+		echo "$text" >"$TTY_PORT"
+		local seconds=$(("$TTY_DELAY" / 1000)) milliseconds=$(("$TTY_DELAY" % 1000))
+		EXEC_STDOUT=$(timeout "$(printf "%d.%03d" $seconds $milliseconds)" cat "$TTY_PORT")
+	else
+		xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1
+	fi
 	xtty_debug "send: -->$text<--"
 	xtty_debug "recv: -->$EXEC_STDOUT<--"
 	P_TTY_SHELL_OUT="$EXEC_STDOUT"
-}
-
-function xtty_promt() {
-	if ! xtty_resolve_port; then
-		return 1
-	fi
-	local format="" text
-	for ((i = 0; i <= $#; i++)); do
-		format="$format%s\r"
-	done
-	# shellcheck disable=SC2059
-	if ! text="$(printf "$format" "$@")"; then
-		text=$(echo "$text" | xargs)
-		xfatal "Unable to communicate with TTY '$TTY_PORT': $text"
-	fi
-	xtty_debug "send: -->$text<--"
-	xexec "$TTY_PICOCOM" -qrb "$TTY_SPEED" "$TTY_PORT" -t "\"$text\""
-	P_TTY_SHELL_OUT="$EXEC_STDOUT"
-	xtty_debug "recv: -->$P_TTY_SHELL_OUT<--"
 }
 
 function xtty_exchange() {
@@ -1077,7 +1068,8 @@ function xtty_resolve_ip() {
 			return 0
 		fi
 		try_login=true
-		sleep 0.5
+		P_TTY_DEBUG=true
+		sleep 1.0
 		current_time=$(date +%s)
 		elapsed_time=$((current_time - start_time))
 		if [[ "$elapsed_time" -ge "$timeout" ]]; then
@@ -1128,7 +1120,7 @@ function xresolve_target_config() {
 			fi
 			xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($resolve_title)..."
 			local target_ip=""
-			if ! xtty_resolve_ip "target_ip" "$TTY_RETRY"; then
+			if ! xtty_resolve_ip "target_ip" "$TTY_TIMEOUT"; then
 				if xis_set "$target_ip"; then
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
 				else
