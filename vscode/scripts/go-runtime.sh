@@ -921,7 +921,7 @@ function xcache_get() {
 
 P_TTY_DEBUG=false
 P_TTY_SHELL_OUT=""
-P_TTY_RESOLVE=""
+P_RESOLVE_REASON=""
 
 function xtty_debug() {
 	if xis_true "$P_TTY_DEBUG"; then
@@ -943,7 +943,7 @@ function xtty_resolve_port() {
 		fi
 		xtty_debug "resolved port: $TTY_PORT"
 	fi
-	xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($P_TTY_RESOLVE)..."
+	xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($P_RESOLVE_REASON)..."
 	if xis_true "$TTY_DIRECT"; then
 		xexec stty -F "$TTY_PORT" raw -echo "$TTY_SPEED"
 	fi
@@ -1095,13 +1095,12 @@ function xdiscard_target_config() {
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
-	local config_hash force="$1" resolve_reason="" resolve_title=""
+	local config_hash force="$1"
+	P_RESOLVE_REASON=""
 	if xis_true "$force"; then
-		resolve_reason="forced externally"
-		resolve_title="forced by rebuild"
+		P_RESOLVE_REASON="forced by rebuild"
 	elif ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
-		resolve_reason="no config file: $P_VSCODE_CONFIG_PATH"
-		resolve_title="new configuration"
+		P_RESOLVE_REASON="new configuration"
 	else
 		function load_config_hash() {
 			CONFIG_HASH=""
@@ -1111,19 +1110,17 @@ function xresolve_target_config() {
 		}
 		config_hash="$(load_config_hash)"
 		if xis_ne "$config_hash" "$P_CONFIG_HASH"; then
-			resolve_reason="hash mismatch: '$config_hash' != '$P_CONFIG_HASH'"
-			resolve_title="configuration changed"
+			P_RESOLVE_REASON="configuration changed"
 		fi
 	fi
-	if xis_set "$resolve_reason"; then
-		xdebug "Creating target config for '$TARGET_IPADDR', reason: $resolve_reason"
+	if xis_set "$P_RESOLVE_REASON"; then
+		xdebug "Creating target config for '$TARGET_IPADDR', reason: $P_RESOLVE_REASON"
 		xclean_directory "$P_CACHEDB_DIR"
 		xclean_directory "$P_UPLOAD_DIR"
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
-			P_TTY_RESOLVE="$resolve_title"
 			local target_ip=""
 			if ! xtty_resolve_ip "target_ip" "$TTY_TIMEOUT"; then
 				if xis_set "$target_ip"; then
@@ -1152,12 +1149,11 @@ function xresolve_target_config() {
 					fi
 				}
 				function refresh_arg_cache_table() {
-					for network in $(ifconfig | grep -oE 'inet (addr:)?([0-9]+\.){3}[0-9]+' |
-						awk '{print $2}'); do
-						if xis_eq "$network" "127.0.0.1"; then
-							continue
+					local network filter="inet (addr:)?([0-9]+\\.){3}[0-9]+"
+					for network in $(ifconfig | grep -oE "$filter" | awk "{print \$2}"); do
+						if xis_ne "$network" "127.0.0.1"; then
+							xexec "$P_CANFAIL" nmap -sP "$network"
 						fi
-						xexec "$P_CANFAIL" nmap -sP "$network"
 					done
 				}
 				resolve_ip_from_mac_addr
@@ -1565,17 +1561,20 @@ function xfiles_copy() {
 	fi
 	if xis_set "$uploading"; then
 		if xis_set "$elements"; then
+			local upload_method="unknown"
 			if xis_false $USE_RSYNC_METHOD; then
-				xecho "Uploading $count files: ${elements:2}"
 				local pkg="gzip -5 --no-name"
+				upload_method="ssh+gzip"
 				if xis_true "$USE_PIGZ_COMPRESSION"; then
 					pkg="$USE_PIGZ_BINARY --processes $(nproc) -9 --no-time --no-name"
+					upload_method="ssh+$USE_PIGZ_BINARY"
 				fi
 				P_SSH_HOST_STDIO="tar -cf - -C \"$P_UPLOAD_DIR\" --dereference \".\" | $pkg - | "
 				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
 			else
-				xecho "Uploading $count files via $USE_RSYNC_BINARY: ${elements:2}"
+				upload_method="$USE_RSYNC_BINARY"
 			fi
+			xecho "Uploading $count files via $upload_method: ${elements:2}"
 		fi
 	else
 		xecho "Downloading ${#list[@]} files: ${elements:2}"
@@ -1818,7 +1817,7 @@ function xcheck_results() {
 		xtext "" "$EXEC_STDOUT"
 		xtext "" "$EXEC_STDERR"
 		eval "$1"=true
-		xexec echo "1" >"$P_CACHEDB_DIR/__res_$1"
+		xexec "echo true >\"$P_CACHEDB_DIR/__res_$1\" 2>&1"
 	fi
 }
 
