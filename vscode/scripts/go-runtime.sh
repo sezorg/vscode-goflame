@@ -1482,10 +1482,9 @@ function xfiles_delete_vargs() {
 function xclean_directories() {
 	local clean=() create=()
 	for path in "$@"; do
+		create+=("$path")
 		if xis_dir_exists "$path"; then
 			clean+=("$path/*")
-		else
-			create+=("$path/*")
 		fi
 	done
 	if xis_ne "${#clean[@]}" "0"; then
@@ -1516,7 +1515,7 @@ function xfiles_copy() {
 	local elements=""
 	local count="0"
 	local uploading=""
-	local directories=("$P_CACHEDB_DIR")
+	local directories=()
 	local symlinks=""
 	for pair in "${list[@]}"; do
 		IFS='|'
@@ -1552,7 +1551,7 @@ function xfiles_copy() {
 			#xecho "$name_hash :: $file_hash"
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
-				if xis_eq "${#directories[@]}" "1"; then
+				if xis_eq "${#directories[@]}" "0"; then
 					directories+=("$P_UPLOAD_DIR")
 				fi
 				local backup_target="$P_UPLOAD_DIR/${fileB:1}"
@@ -2184,9 +2183,9 @@ function xsed_replace() {
 
 function xprepare_runtime_scripts() {
 	COPY_FILES+=(
-		"$P_SCRIPTS_DIR/dlv-loop.sh|:/usr/bin/dl"
-		"$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
-		"$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
+		"?$P_SCRIPTS_DIR/dlv-loop.sh|:/usr/bin/dl"
+		"?$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
+		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 }
 
