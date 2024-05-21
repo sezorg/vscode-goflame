@@ -25,9 +25,10 @@ xcp "init/timesyncd-static.conf" ".vscode/launch/lib/onvifd/timesyncd-static.con
 xcp "init/users.toml" ".vscode/launch/lib/onvifd/users.toml"
 xcp "init/wpa_supplicant.tmpl" ".vscode/launch/lib/onvifd/wpa_supplicant.tmpl"
 
-TARGET_BUILD_GOFLAGS+=(
-	"-C" "$PWD"
+TARGET_BUILD_GOFLAGS=(
+	"-C" "$PWD" # -C flag must be first flag on command line
 	"-o" "./onvifd"
+	"${TARGET_BUILD_GOFLAGS[@]}"
 )
 
 TARGET_BUILD_LDFLAGS=(
