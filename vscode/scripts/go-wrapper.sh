@@ -97,7 +97,6 @@ HAVE_LOCAL_COMMAND=
 
 function xparse_go_arguments() {
 	local modified=false result=() item="" prev_item=""
-	xdebug "Go Args: ${SRCIPT_ARGS[*]}"
 	for ((i = 0; i < ${#SRCIPT_ARGS[@]}; i++)); do
 		prev_item="$item"
 		item="${SRCIPT_ARGS[$i]}"
@@ -148,8 +147,8 @@ function xparse_go_arguments() {
 			# force debug build
 			result+=("${TARGET_BUILD_FLAGS[@]}")
 		fi
+		xdebug "Go wrapper args: original: '${SRCIPT_ARGS[*]}'; modified: '${result[*]}'"
 		SRCIPT_ARGS=("${result[@]}")
-		xdebug "Modified args: $BUILDROOT_GOBIN ${SRCIPT_ARGS[*]}"
 		return 0
 	fi
 	return 1
@@ -157,7 +156,6 @@ function xparse_go_arguments() {
 
 if xparse_go_arguments; then
 	set "${SRCIPT_ARGS[@]}"
-	xdebug "New Args: $*"
 fi
 
 if xis_set "$HAVE_LOCAL_COMMAND"; then
@@ -188,7 +186,7 @@ if xis_true "$HAVE_BUILD_COMMAND"; then
 	if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
 		xprepare_runtime_scripts
 		xperform_build_and_deploy "[REBUILD]" \
-			"Rebuild & install $(xdecorate "$TARGET_BIN_NAME") to remote host"
+			"Rebuild & install $(xdecorate "$TARGET_BIN_NAME")"
 		exit "0"
 	else
 		xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
@@ -196,7 +194,7 @@ if xis_true "$HAVE_BUILD_COMMAND"; then
 	fi
 else
 	# Execute original Golang command
-	xecho "$BUILDROOT_GOBIN $@"
+	xecho "$BUILDROOT_GOBIN $*"
 	xexport_apply "${GOLANG_EXPORTS[@]}"
 	xexec "$BUILDROOT_GOBIN" "$@"
 fi

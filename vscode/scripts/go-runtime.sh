@@ -38,8 +38,20 @@ function xis_ne() {
 	[[ "$1" != "$2" ]]
 }
 
-function xis_exists() {
+function xis_succeeded() {
+	xis_eq "$?" "0"
+}
+
+function xis_failed() {
+	xis_ne "$?" "0"
+}
+
+function xis_file_exists() {
 	[[ -f "$*" ]]
+}
+
+function xis_dir_exists() {
+	[[ -d "$*" ]]
 }
 
 function xis_executable() {
@@ -157,7 +169,7 @@ function xat_error() {
 
 trap 'xat_error $LINENO' ERR
 
-if ! xis_exists "$HOME/.shellcheckrc"; then
+if ! xis_file_exists "$HOME/.shellcheckrc"; then
 	echo "external-sources=true" >"$HOME/.shellcheckrc"
 fi
 
@@ -231,11 +243,11 @@ TARGET_BUILD_LDFLAGS=()
 TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
 TTY_SPEED="115200"
 TTY_PICOCOM="picocom"
-TTY_DIRECT=true
+TTY_DIRECT=false
 TTY_USER=""
 TTY_PASS=""
 TTY_DELAY="200" # milliseconds
-TTY_TIMEOUT="5" # seconds
+TTY_RETRIES="5"
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -332,12 +344,12 @@ LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
 LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
 P_CONFIG_INI_LOADED=false
-if xis_exists "$SCRIPT_DIR/../config.ini"; then
+if xis_file_exists "$SCRIPT_DIR/../config.ini"; then
 	# shellcheck disable=SC1091
 	source "$SCRIPT_DIR/../config.ini"
 	P_CONFIG_INI_LOADED=true
 fi
-if xis_exists "$SCRIPT_DIR/../config-user.ini"; then
+if xis_file_exists "$SCRIPT_DIR/../config-user.ini"; then
 	# shellcheck disable=SC1091
 	source "$SCRIPT_DIR/../config-user.ini"
 	P_CONFIG_INI_LOADED=true
@@ -450,7 +462,7 @@ function xtext() {
 			code_link="${line%% *}"
 			# shellcheck disable=SC2001
 			prefix=$(sed 's/:.*//' <<<"$code_link")
-			if [[ -f "./$prefix" ]]; then
+			if xis_file_exists "./$prefix"; then
 				xecho "$LINK$code_link$NC$color${line:${#code_link}}"
 			else
 				xecho "$color$line$NC"
@@ -513,11 +525,11 @@ xunreferenced \
 	"$DLOOP_RESTART_FILE"
 
 if xis_unset "$TARGET_ARCH"; then
-	if xis_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
+	if xis_file_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
 		TARGET_ARCH="arm"
-	elif xis_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
+	elif xis_file_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
 		TARGET_ARCH="arm64"
-	elif ! xis_exists "$BUILDROOT_DIR"; then
+	elif ! xis_dir_exists "$BUILDROOT_DIR"; then
 		xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not exist: $BUILDROOT_DIR."
 	else
 		xfatal "Can not determine target architecture from $(xdecorate "BUILDROOT_DIR"): $BUILDROOT_DIR."
@@ -751,7 +763,7 @@ function xexestat() {
 
 function xsuggest_to_install_message() {
 	local executable="$1" lookup packages suggest
-	if [[ -f "$executable" ]]; then
+	if xis_file_exists "$executable"; then
 		return 0
 	fi
 	if xis_executable "$executable" || ! xis_executable "dnf"; then
@@ -950,15 +962,13 @@ function xtty_resolve_port() {
 }
 
 function xtty_shell() {
-	if ! xtty_resolve_port; then
-		return 1
-	fi
 	local format="" text
-	for ((i = 0; i <= $#; i++)); do
+	for ((i = 0; i < $#; i++)); do
 		format="$format%s\r"
 	done
+	xtty_debug "form: -->$format<--"
 	# shellcheck disable=SC2059
-	text="$(printf "$format" "$@")"
+	text="$(printf "$format\r" "$@")"
 	if xis_true "$TTY_DIRECT"; then
 		echo "$text" >"$TTY_PORT"
 		local seconds=$(("$TTY_DELAY" / 1000)) milliseconds=$(("$TTY_DELAY" % 1000))
@@ -977,8 +987,10 @@ function xtty_exchange() {
 }
 
 function xtty_logout() {
-	if xtty_exchange "" "#"; then
-		if xtty_exchange "exit" "exit not allowed"; then
+	xtty_exchange "" "#"
+	if xis_succeeded; then
+		xtty_exchange "exit" "exit not allowed"
+		if xis_succeeded; then
 			xtty_debug "Booting u-boot"
 			xtty_shell "boot"
 		else
@@ -1012,11 +1024,13 @@ function xtty_try_login() {
 }
 
 function xtty_login() {
-	if xtty_try_login; then
+	xtty_try_login
+	if xis_succeeded; then
 		return 0
 	fi
 	xtty_logout
-	if xtty_try_login; then
+	xtty_try_login
+	if xis_succeeded; then
 		return 0
 	fi
 	return 1
@@ -1026,7 +1040,7 @@ function xtty_peek_ip() {
 	local output_ip="$1" try_login="$2"
 	if xis_true "$try_login"; then
 		xtty_login
-		if xis_ne "$?" "0"; then
+		if xis_failed; then
 			if xis_set "$P_TTY_SHELL_OUT"; then
 				eval "$output_ip='failed to login to device'"
 			else
@@ -1065,25 +1079,26 @@ function xtty_peek_ip() {
 }
 
 function xtty_resolve_ip() {
-	local start_time current_time elapsed_time output_ip="$1" timeout="$2" try_login=false
-	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
-		timeout="10"
+	local output_ip="$1" retries="$2" try_login=false
+	if [[ "$retries" == "" ]] || [[ "$retries" -le "0" ]]; then
+		retries="10"
 	fi
-	start_time=$(date +%s)
-	while true; do
+	xtty_resolve_port
+	if xis_failed; then
+		return 1
+	fi
+	while [[ "$retries" -gt "0" ]]; do
 		eval "$output_ip=''"
-		if xtty_peek_ip "$output_ip" "$try_login"; then
+		xtty_peek_ip "$output_ip" "$try_login"
+		if xis_succeeded; then
 			return 0
 		fi
-		try_login=true
-		P_TTY_DEBUG=true
 		sleep 1.0
-		current_time=$(date +%s)
-		elapsed_time=$((current_time - start_time))
-		if [[ "$elapsed_time" -ge "$timeout" ]]; then
-			return 1
-		fi
+		P_TTY_DEBUG=true
+		try_login=true
+		retries=$((retries - 1))
 	done
+	return 1
 }
 
 P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/config-vscode.ini"
@@ -1099,7 +1114,7 @@ function xresolve_target_config() {
 	P_RESOLVE_REASON=""
 	if xis_true "$force"; then
 		P_RESOLVE_REASON="forced by rebuild"
-	elif ! xis_exists "$P_VSCODE_CONFIG_PATH"; then
+	elif ! xis_file_exists "$P_VSCODE_CONFIG_PATH"; then
 		P_RESOLVE_REASON="new configuration"
 	else
 		function load_config_hash() {
@@ -1114,15 +1129,15 @@ function xresolve_target_config() {
 		fi
 	fi
 	if xis_set "$P_RESOLVE_REASON"; then
-		xdebug "Creating target config for '$TARGET_IPADDR', reason: $P_RESOLVE_REASON"
-		xclean_directory "$P_CACHEDB_DIR"
-		xclean_directory "$P_UPLOAD_DIR"
+		xdebug "Creating target config for '$TARGET_IPADDR' in $P_VSCODE_CONFIG_PATH, reason: $P_RESOLVE_REASON"
+		xclean_directories "$P_CACHEDB_DIR" "$P_UPLOAD_DIR" "$P_SCRIPTS_DIR"
 		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			TTY_PORT="$TARGET_IPADDR"
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
 			local target_ip=""
-			if ! xtty_resolve_ip "target_ip" "$TTY_TIMEOUT"; then
+			xtty_resolve_ip "target_ip" "$TTY_RETRIES"
+			if xis_failed; then
 				if xis_set "$target_ip"; then
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
 				else
@@ -1212,7 +1227,7 @@ function xresolve_target_config() {
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
 						local source="./.vscode/scripts/overlay/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
-						if [[ -f "$source" ]]; then
+						if xis_file_exists "$source"; then
 							xecho "Installing $(xdecorate "$binary_name-$P_TARGET_PLATFORM") to target path $(xdecorate "$target")..."
 							xscp "$source" ":$target"
 						fi
@@ -1222,7 +1237,7 @@ function xresolve_target_config() {
 						missing+=("target device")
 					fi
 				fi
-				xdebug "Resolved $binary_name method status: \"$EXEC_STDOUT\" (\"0\" expected)"
+				xdebug "Resolved $binary_name method status: $(xexec_status "$EXEC_STDOUT")"
 			fi
 			if xis_set "${missing[*]}"; then
 				xwarn "Disabling $enable_option: $(xdecorate "$binary_name") is not installed on the $(xjoin_strings " and " "${missing[@]}")."
@@ -1240,14 +1255,12 @@ function xresolve_target_config() {
 		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
 			supress="$supress\t\"$item\"\n"
 		done
-		xexec mkdir -p "$P_SCRIPTS_DIR"
 		xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-loop.sh"
 		xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
 		xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$P_SCRIPTS_DIR/dlv-loop.sh"
 		xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$P_SCRIPTS_DIR/dlv-exec.sh"
 		xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$P_SCRIPTS_DIR/dlv-exec.sh"
 		xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$P_SCRIPTS_DIR/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
-		xdebug "Writing target config: $TARGET_IPADDR/$TARGET_IPPORT/$TARGET_USER/$TARGET_PASS to $P_VSCODE_CONFIG_PATH."
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
 # Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
@@ -1276,12 +1289,17 @@ EOF
 }
 
 function xrm() {
-	for i in "$@"; do
-		if [[ -f "$i" ]]; then
-			xdebug "Deleting $i"
-			rm -rf "$i"
+	local files=""
+	for file in "$@"; do
+		if xis_file_exists "$file"; then
+			xdebug "Deleting '$file'"
+			files="$files \"$file\""
+
 		fi
 	done
+	if xis_set "$files"; then
+		xexec rm -rf "$files"
+	fi
 }
 
 function xcp() {
@@ -1369,7 +1387,7 @@ function xperform_build_and_deploy() {
 	fi
 
 	xresolve_target_config "$frebuild"
-	xecho "$* $TARGET_HYPERLINK"
+	xecho "$* to $P_TARGET_PLATFORM host $TARGET_HYPERLINK"
 	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
 	else
@@ -1461,11 +1479,20 @@ function xfiles_delete_vargs() {
 	fi
 }
 
-function xclean_directory() {
-	if [[ -d "$1" ]]; then
-		xexec rm -rf "$1/*"
-	else
-		xexec mkdir -p "$1"
+function xclean_directories() {
+	local clean=() create=()
+	for path in "$@"; do
+		if xis_dir_exists "$path"; then
+			clean+=("$path/*")
+		else
+			create+=("$path/*")
+		fi
+	done
+	if xis_ne "${#clean[@]}" "0"; then
+		xexec rm -rf "${clean[@]}"
+	fi
+	if xis_ne "${#create[@]}" "0"; then
+		xexec mkdir -p "${create[@]}"
 	fi
 }
 
@@ -1486,16 +1513,10 @@ function xfiles_copy() {
 		return 0
 	fi
 
-	if xis_false "$COPY_CACHE"; then
-		xclean_directory "$P_CACHEDB_DIR"
-	elif [[ ! -d "$P_CACHEDB_DIR" ]]; then
-		xexec mkdir -p "$P_CACHEDB_DIR"
-	fi
-
 	local elements=""
 	local count="0"
 	local uploading=""
-	local directories=()
+	local directories=("$P_CACHEDB_DIR")
 	local symlinks=""
 	for pair in "${list[@]}"; do
 		IFS='|'
@@ -1513,9 +1534,9 @@ function xfiles_copy() {
 			if xis_eq "$prefA" "?"; then
 				fileA="${fileA:1}"
 			fi
-			if xis_exists "$PWD/$fileA"; then
+			if xis_file_exists "$PWD/$fileA"; then
 				fileA="$PWD/$fileA"
-			elif xis_exists "$fileA"; then
+			elif xis_file_exists "$fileA"; then
 				:
 			elif xis_eq "$prefA" "?"; then
 				xecho "File \"$fileA\" does not exists, skipping"
@@ -1531,8 +1552,8 @@ function xfiles_copy() {
 			#xecho "$name_hash :: $file_hash"
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
-				if xis_unset "${directories[*]}"; then
-					xclean_directory "$P_UPLOAD_DIR"
+				if xis_eq "${#directories[@]}" "1"; then
+					directories+=("$P_UPLOAD_DIR")
 				fi
 				local backup_target="$P_UPLOAD_DIR/${fileB:1}"
 				backup_target="${backup_target//\/\//\/}"
@@ -1553,9 +1574,7 @@ function xfiles_copy() {
 			count=$((count + 1))
 		fi
 	done
-	if xis_ne "${#directories[@]}" "0"; then
-		xexec mkdir -p "${directories[@]}"
-	fi
+	xclean_directories "${directories[@]}"
 	if xis_ne "$symlinks" ""; then
 		xexec "$symlinks"
 	fi
@@ -1729,8 +1748,7 @@ function xclean_gocache() {
 	fi
 	P_GOCACHE_CLEANED=true
 	xecho "Cleaning Go compiler & linters cache..."
-	xclean_directory "$EXPORT_GOCACHE"
-	xclean_directory "$HOME/.cache/go-build"
+	xclean_directories "$EXPORT_GOCACHE" "$HOME/.cache/go-build"
 	xexec go clean -cache
 	if xis_true "$GOLANGCI_LINT_ENABLE"; then
 		xexec "$LOCAL_GOLANGCI_LINT" cache clean
@@ -1741,7 +1759,7 @@ function xtest_installed() {
 	local enable_key="$1"
 	local binary="$2"
 	local instructions="$3"
-	if ! xis_exists "$binary"; then
+	if ! xis_file_exists "$binary"; then
 		xerror "Reqired binary $(xexecutable "$(basename -- "$binary")") is not installed."
 		xerror "To disable this feature set $enable_key=false in 'config-user.ini'."
 		xfatal "Check installation instructions: $(xhyperlink "$instructions")"
@@ -1789,7 +1807,7 @@ function xsave_lint_state() {
 		"P_PRECOMMIT_DONE"
 	)
 	for item in "${items[@]}"; do
-		if [[ -f "$P_CACHEDB_DIR/__res_$item" ]]; then
+		if xis_file_exists "$P_CACHEDB_DIR/__res_$item"; then
 			eval "$item"=true
 		fi
 	done
@@ -2033,6 +2051,9 @@ function xbuild_project() {
 	#flags+=("-msan")
 	#flags+=("-asan")
 
+	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
+	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
+
 	flags+=("${TARGET_BUILD_GOFLAGS[@]}")
 	if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
 		flags+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
@@ -2122,7 +2143,7 @@ function xtruncate_text_file() {
 	local name="$1"
 	local limit="$2"
 	local target="$3"
-	if ! xis_exists "$name"; then
+	if ! xis_file_exists "$name"; then
 		return 0
 	fi
 	local actual
@@ -2175,7 +2196,7 @@ function xistall_ssh_key() {
 	fi
 	local key_a="$HOME/.ssh/goflame-key"
 	local key_b="$HOME/.ssh/goflame-key.pub"
-	if ! xis_exists "$key_a" || ! xis_exists "$key_b"; then
+	if ! xis_file_exists "$key_a" || ! xis_file_exists "$key_b"; then
 		xexec rm -f "$key_a" "$key_b"
 		xexec ssh-keygen -t ed25519 -C "goflame@elvees.com" -P "\"\"" -f "$key_a"
 	fi

@@ -17,7 +17,7 @@ COPY_FILES+=(
 	"$TARGET_BIN_SOURCE|:$TARGET_BIN_DESTIN"
 )
 
-EXECUTE_STUB_PATH="$TEMP_DIR"
+EXECUTE_STUB_PATH="$P_TEMP_DIR"
 EXECUTE_STUB_NAME="$EXECUTE_STUB_PATH/go-execute-stub"
 if [[ ! -f "$EXECUTE_STUB_NAME" ]]; then
 	xexec mkdir -p "$EXECUTE_STUB_PATH"
@@ -32,4 +32,4 @@ xunreferenced \
 
 xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[EXEC]" \
-	"Building & deploying $(xdecorate "$TARGET_BIN_NAME") to remote host"
+	"Building & deploying $(xdecorate "$TARGET_BIN_NAME")"
