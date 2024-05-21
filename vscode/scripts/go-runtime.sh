@@ -86,6 +86,22 @@ function xjoin_strings() {
 	echo "${joined:$length}"
 }
 
+function xjoin_elements() {
+	local basename="$1"
+	shift
+	local result=""
+	if xis_ne "$#" "0"; then
+		for element in "$@"; do
+			if xis_true "$basename"; then
+				element="$(basename -- "$element")"
+			fi
+			result="$result, $(xelement "$element")"
+		done
+		result="${result:2}"
+	fi
+	echo "$result"
+}
+
 function xbegins_with() {
 	case "$1" in
 	"$2"*)
@@ -247,7 +263,7 @@ TTY_DIRECT=false
 TTY_USER=""
 TTY_PASS=""
 TTY_DELAY="200" # milliseconds
-TTY_RETRIES="5"
+TTY_RETRY="5"
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -734,10 +750,7 @@ EXEC_STDERR=
 EXEC_STATUS=
 
 function xexestat() {
-	local prefix="$1"
-	local stdout="$2"
-	local stderr="$3"
-	local status="$4"
+	local prefix="$1" stdout="$2" stderr="$3" status="$4"
 	if xis_ne "$status" "0"; then
 		local needStatus=true
 		if xis_set "$stdout"; then
@@ -1136,7 +1149,7 @@ function xresolve_target_config() {
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
 			local target_ip=""
-			xtty_resolve_ip "target_ip" "$TTY_RETRIES"
+			xtty_resolve_ip "target_ip" "$TTY_RETRY"
 			if xis_failed; then
 				if xis_set "$target_ip"; then
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
@@ -1468,14 +1481,9 @@ function xfiles_delete() {
 
 # shellcheck disable=SC2120
 function xfiles_delete_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		for filename in "${list[@]}"; do
-			elements="$elements, $(xelement "$(basename -- "$filename")")"
-		done
-		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "${list[@]}"); "
-		xecho "Removing ${#list[@]} files: ${elements:2}"
+	if xis_ne "$#" "0"; then
+		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "$@"); "
+		xecho "Removing $# files: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1512,11 +1520,7 @@ function xfiles_copy() {
 		return 0
 	fi
 
-	local elements=""
-	local count="0"
-	local uploading=""
-	local directories=()
-	local symlinks=""
+	local uploading=false uploads=() skipped=() directories=() symlinks=""
 	for pair in "${list[@]}"; do
 		IFS='|'
 		# shellcheck disable=SC2206
@@ -1528,7 +1532,7 @@ function xfiles_copy() {
 		local fileA="${files[0]}"
 		local fileB="${files[1]}"
 		if [[ "$fileB" =~ ^\:.* ]]; then
-			uploading="1"
+			uploading=true
 			local prefA="${fileA:0:1}"
 			if xis_eq "$prefA" "?"; then
 				fileA="${fileA:1}"
@@ -1538,7 +1542,7 @@ function xfiles_copy() {
 			elif xis_file_exists "$fileA"; then
 				:
 			elif xis_eq "$prefA" "?"; then
-				xecho "File \"$fileA\" does not exists, skipping"
+				skipped+=("$fileA")
 				continue
 			else
 				xerror "Unable to find \"$fileA\" for upload"
@@ -1569,16 +1573,18 @@ function xfiles_copy() {
 			fi
 		fi
 		if xis_set "$fileB"; then
-			elements="$elements, $(xelement "$(basename -- "$fileB")")"
-			count=$((count + 1))
+			uploads+=("$fileB")
 		fi
 	done
 	xclean_directories "${directories[@]}"
 	if xis_ne "$symlinks" ""; then
 		xexec "$symlinks"
 	fi
-	if xis_set "$uploading"; then
-		if xis_set "$elements"; then
+	if xis_true "$uploading"; then
+		if xis_ne "${#skipped[@]}" "0"; then
+			xwarn "Skipping ${#skipped[@]} files: $(xjoin_elements false "${skipped[@]}")"
+		fi
+		if xis_ne "${#uploads[@]}" "0"; then
 			local upload_method="unknown"
 			if xis_false $USE_RSYNC_METHOD; then
 				local pkg="gzip -5 --no-name"
@@ -1592,10 +1598,10 @@ function xfiles_copy() {
 			else
 				upload_method="$USE_RSYNC_BINARY"
 			fi
-			xecho "Uploading $count files via $upload_method: ${elements:2}"
+			xecho "Uploading ${#uploads[@]} files via $upload_method: $(xjoin_elements true "${uploads[@]}")"
 		fi
 	else
-		xecho "Downloading ${#list[@]} files: ${elements:2}"
+		xecho "Downloading ${#uploads[@]} files: $(xjoin_elements true "${uploads[@]}")"
 	fi
 
 	for pair in "${list[@]}"; do
@@ -1623,17 +1629,14 @@ function xservices_stop() {
 
 # shellcheck disable=SC2120
 function xservices_stop_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		for service in "${list[@]}"; do
-			elements="$elements, $(xelement "$service")"
+	if xis_ne "$#" "0"; then
+		for service in "$@"; do
 			if xis_true "$USE_SERVICE_MASKS"; then
 				P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
 			fi
 			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"$service\"; "
 		done
-		xecho "Stopping ${#list[@]} services: ${elements:2}"
+		xecho "Stopping $# services: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1644,17 +1647,14 @@ function xservices_start() {
 
 # shellcheck disable=SC2120
 function xservices_start_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		for service in "${list[@]}"; do
-			elements="$elements, $(xelement "$service")"
+	if xis_ne "$#" "0"; then
+		for service in "$@"; do
 			if xis_true "$USE_SERVICE_MASKS"; then
 				P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl unmask \"$service\"; "
 			fi
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"$service\"; "
 		done
-		xecho "Starting ${#list[@]} services: ${elements:2}"
+		xecho "Starting $# services: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1665,15 +1665,11 @@ function xprocesses_stop() {
 
 # shellcheck disable=SC2120
 function xprocesses_stop_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements="" procnames=""
-		for procname in "${list[@]}"; do
-			elements="$elements, $(xelement "$procname")"
-			procnames="$procnames | $procname"
+	if xis_ne "$#" "0"; then
+		for procname in "$@"; do
 			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}pkill \"$procname\"; "
 		done
-		xecho "Terminating ${#list[@]} processes: ${elements:2}"
+		xecho "Terminating $# processes: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1684,14 +1680,11 @@ function xprocesses_start() {
 
 # shellcheck disable=SC2120
 function xprocesses_start_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		for procname in "${list[@]}"; do
-			elements="$elements, $(xelement "$procname")"
+	if xis_ne "$#" "0"; then
+		for procname in "$@"; do
 			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$procname; "
 		done
-		xecho "Starting ${#list[@]} processes: ${elements:2}"
+		xecho "Starting $# processes: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1702,14 +1695,11 @@ function xcreate_directories() {
 
 # shellcheck disable=SC2120
 function xcreate_directories_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		for dirname in "${list[@]}"; do
-			elements="$elements, $(xelement "$dirname")"
+	if xis_ne "$#" "0"; then
+		for dirname in "$@"; do
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"$dirname\"; "
 		done
-		xecho "Creating ${#list[@]} directories: ${elements:2}"
+		xecho "Creating $# directories: $(xjoin_elements false "$@")"
 	fi
 }
 
@@ -1720,21 +1710,18 @@ function xexecute_target_commands() {
 
 # shellcheck disable=SC2120
 function xexecute_target_commands_vargs() {
-	local list=("$@")
-	if xis_ne "${#list[@]}" "0"; then
-		local elements=""
-		local count=$((0))
-		for command in "${list[@]}"; do
+	if xis_ne "$#" "0"; then
+		local commands=()
+		for command in "$@"; do
 			if xis_eq "${command:0:1}" "@"; then
 				command="${command:1}"
 			else
-				elements="$elements, $(xelement "${command%% *}")"
-				count=$(("$count" + 1))
+				commands+=("${command%% *}")
 			fi
 			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$command; "
 		done
-		if xis_set "$elements"; then
-			xecho "Executing $count target commands: ${elements:2}"
+		if xis_ne "${#commands[@]}" "0"; then
+			xecho "Executing ${#commands[@]} target commands: $(xjoin_elements false "${commands[@]}")"
 		fi
 	fi
 }
@@ -2044,16 +2031,9 @@ function xcheck_project() {
 function xbuild_project() {
 	xclean_gocache
 	xcheck_project
-	local flags=()
-	flags+=("build")
-	#flags+=("-race")
-	#flags+=("-msan")
-	#flags+=("-asan")
-
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
-
-	flags+=("${TARGET_BUILD_GOFLAGS[@]}")
+	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
 	if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
 		flags+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
 	fi
@@ -2092,42 +2072,40 @@ function xcamera_features() {
 	local response="${EXEC_STDOUT//[$'\t\r\n']/}"
 	xdebug "WGET response: $response"
 
-	local features_on_set=""
-	local features_on_err=""
+	local features_on_set=() features_on_err=()
 	for feature in "${CAMERA_FEATURES_ON[@]}"; do
 		local pattern="\"$feature\": set to True"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_on_set="$features_on_set, $(xelement "$feature")"
+			features_on_set+=("$feature")
 		else
-			features_on_err="$features_on_err, $(xelement "$feature")"
+			features_on_err+=("$feature")
 		fi
 	done
 
-	local features_off_set=""
-	local features_off_err=""
+	local features_off_set=() features_off_err=()
 	for feature in "${CAMERA_FEATURES_OFF[@]}"; do
 		local pattern="\"$feature\": set to False"
 		if grep -i -q "$pattern" <<<"$response"; then
-			features_off_set="$features_off_set, $(xelement "$feature")"
+			features_off_set+=("$feature")
 		else
-			features_off_err="$features_off_err, $(xelement "$feature")"
+			features_off_err+=("$feature")
 		fi
 	done
 
 	local features_set=""
-	if xis_set "$features_on_set"; then
-		features_set="$features_set; TRUE: ${features_on_set:2}"
+	if xis_ne "${#features_on_set[@]}" "0"; then
+		features_set="$features_set; TRUE: $(xjoin_elements true "${features_on_set[@]}")"
 	fi
-	if xis_set "$features_off_set"; then
-		features_set="$features_set; FALSE: ${features_off_set:2}"
+	if xis_ne "${#features_off_set[@]}" "0"; then
+		features_set="$features_set; FALSE: $(xjoin_elements true "${features_off_set[@]}")"
 	fi
 
 	local features_err=""
-	if xis_set "$features_on_err"; then
-		features_err="$features_err; TRUE: ${features_on_err:2}"
+	if xis_ne "${#features_on_err[@]}" "0"; then
+		features_err="$features_err; TRUE: $(xjoin_elements true "${features_on_err[@]}")"
 	fi
-	if xis_set "$features_off_err"; then
-		features_err="$features_err; FALSE: ${features_off_err:2}"
+	if xis_ne "${#features_off_err[@]}" "0"; then
+		features_err="$features_err; FALSE: $(xjoin_elements true "${features_off_err[@]}")"
 	fi
 
 	if xis_set "$features_set"; then
