@@ -1260,20 +1260,20 @@ function xresolve_target_config() {
 		resolve_binary "USE_RSYNC_METHOD" "$USE_RSYNC_BINARY" "/usr/bin"
 		resolve_binary "USE_PIGZ_COMPRESSION" "$USE_PIGZ_BINARY" ""
 		# prepare runtime scripts
-		local exec_args=" \n"
+		local exec_args=" \n" supress=" \n" pattern
 		for item in "${TARGET_EXEC_ARGS[@]}"; do
 			exec_args="$exec_args\t\"$item\"\n"
 		done
-		local supress=" \n"
 		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
 			supress="$supress\t\"$item\"\n"
 		done
-		xexec cp "$PWD/.vscode/scripts/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-loop.sh"
-		xexec cp "$PWD/.vscode/scripts/dlv-exec.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_IPPORT__" "$TARGET_IPPORT" "$P_SCRIPTS_DIR/dlv-loop.sh"
-		xsed_replace "__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" "$P_SCRIPTS_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_BINARY_ARGS__" "${exec_args:1}" "$P_SCRIPTS_DIR/dlv-exec.sh"
-		xsed_replace "__TARGET_SUPRESS_MSSGS__" "${supress:1}" "$P_SCRIPTS_DIR/dlv-loop.sh" "$P_SCRIPTS_DIR/dlv-exec.sh"
+		xexec cp "$PWD/.vscode/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
+		pattern=$(xsed_pattern \
+			"__TARGET_IPPORT__" "$TARGET_IPPORT" \
+			"__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" \
+			"__TARGET_BINARY_ARGS__" "${exec_args:1}" \
+			"__TARGET_SUPRESS_MSSGS__" "${supress:1}")
+		xsed_replace "$pattern" "$P_SCRIPTS_DIR/{dlv-loop.sh,dlv-exec.sh}"
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
 # Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
@@ -2148,14 +2148,21 @@ function xsed_escape() {
 	printf '%s' "$*" | sed -e 's/[\/&-\"]/\\&/g'
 }
 
+function xsed_pattern() {
+	local result=()
+	while [[ $# -gt 0 ]]; do
+		result+=("-e" "\"s/$(xsed_escape "$1")/$(xsed_escape "$2")/g\"")
+		shift
+		shift
+	done
+	echo "${result[*]}"
+}
+
 function xsed_replace() {
-	local in="$1" out="$2"
-	in="$(xsed_escape "$in")"
-	out="$(xsed_escape "$out")"
-	shift
+	local pattern="$1"
 	shift
 	for file in "$@"; do
-		xexec sed -i "\"s/$in/$out/g\"" "$file"
+		xexec sed -i "$pattern" "$file"
 	done
 }
 
