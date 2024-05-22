@@ -8,6 +8,8 @@
 #set -euo pipefail
 #set -x
 
+SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+
 SSH_FLAGS=(
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
@@ -30,6 +32,7 @@ function gh() {
 	echo "ss:   ssh root-user@[ip_address]"
 	echo "so:   xdg-open http://[ip_address]"
 	echo "sf:   sshfs root-user@[ip_address]"
+	echo "tt:   ./tty.sh [/dev/ttyUSB0]"
 	echo "pp:   picocom -b 115200 [/dev/ttyUSB0]"
 	echo "pi:   picocom -b 115200 [/dev/ttyUSB0] && login && ifconfig"
 	echo "jc:   jsoncli.py ...arguments"
@@ -371,6 +374,18 @@ function sf() {
 	elif [[ -x "$(command -v nautilus)" ]]; then
 		nautilus "$mount_point"
 	fi
+}
+
+function tt() {
+	local device_path
+	device_path=$(
+		_resolve_variable "$*" "/dev/ttyUSB0" "tty_device" "TTY device path parameter expected"
+	)
+	TTY_PORT="$device_path"
+	_tty_resolve_port
+	_set_konsole_title "TTY on $TTY_PORT" "TTY on $TTY_PORT"
+	"$SCRIPT_DIR/tty.sh" "$TTY_PORT" "$TTY_SPEED"
+	_set_konsole_title
 }
 
 function pp() {
