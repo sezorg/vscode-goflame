@@ -27,7 +27,7 @@ stty -F "$port" raw -echo "$@"
 # * "isig intr ^Q" will make Ctrl+Q send SIGINT to this script
 stty raw -echo isig intr ^Q quit undef susp undef
 
-echo "Connecting to $port. Press Ctrl+Q to exit."
+printf "Connecting to %s. Press Ctrl+Q to exit.\n\r# " "$port"
 
 # Let cat read the serial port to the screen in the background
 # Capture PID of background process so it is possible to terminate it
