@@ -1239,7 +1239,7 @@ function xresolve_target_config() {
 				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
-						local source="./.vscode/scripts/overlay/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
+						local source="./.vscode/scripts/bin/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
 						if xis_file_exists "$source"; then
 							xecho "Installing $(xdecorate "$binary_name-$P_TARGET_PLATFORM") to target path $(xdecorate "$target")..."
 							xscp "$source" ":$target"
@@ -1400,7 +1400,7 @@ function xperform_build_and_deploy() {
 	fi
 
 	xresolve_target_config "$frebuild"
-	xecho "$* to $P_TARGET_PLATFORM host $TARGET_HYPERLINK"
+	xecho "$* to $P_TARGET_PLATFORM target $TARGET_HYPERLINK"
 	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
 	else
@@ -1470,7 +1470,11 @@ function xscp() {
 		two="./$two"
 	fi
 
-	xdebug "Target copy: $canfail $one -> $two"
+	if xis_set "$canfail"; then
+		xdebug "Target copy: $canfail $one -> $two"
+	else
+		xdebug "Target copy: $one -> $two"
+	fi
 	xexec "$canfail" sshpass -p "$TARGET_PASS" scp -C "${SCP_FLAGS[@]}" "$one" "$two"
 }
 
@@ -2172,6 +2176,17 @@ function xprepare_runtime_scripts() {
 		"?$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
 		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
+	local files=() path="$PWD/.vscode/overlay" prefix target
+	while IFS= read -r -d $'\0'; do
+		files+=("$REPLY")
+	done < <(find "$path" -type f -print0)
+	prefix="${#path}"
+	for file in "${files[@]}"; do
+		target=${file:$prefix}
+		if xis_ne "$target" "/README.rst"; then
+			COPY_FILES+=("?$file|:${target}")
+		fi
+	done
 }
 
 function xistall_ssh_key() {
