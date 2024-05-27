@@ -317,8 +317,8 @@ USE_PIGZ_BINARY="pigz"
 USE_ASYNC_LINTERS=true
 USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
-INSTALL_SSH_KEYS=false
 USE_OVERLAY_DIR=true
+INSTALL_SSH_KEYS=false
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -822,6 +822,7 @@ function xexec() {
 	fi
 	text="${command//$'\r'/\\r}"
 	text="${text//$'\n'/\\n}"
+	text=$(xargs <<<"$text")
 	xdebug "Exec: $text"
 	xfset "+e"
 	{
@@ -1206,7 +1207,7 @@ function xresolve_target_config() {
 				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
 			fi
 		fi
-		xssh "$P_CANFAIL" "uname -m"
+		xssh "uname -m"
 		local target_mach="$EXEC_STDOUT" target_stderr="$EXEC_STDERR"
 		if xis_ne "$EXEC_STATUS" "0"; then
 			xexec "$P_CANFAIL" timeout 1 ping -c 1 "$TARGET_IPADDR"
