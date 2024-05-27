@@ -318,6 +318,7 @@ USE_ASYNC_LINTERS=true
 USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 INSTALL_SSH_KEYS=false
+USE_OVERLAY_DIR=true
 
 # Cimpiler messages to be ignored
 MESSAGES_IGNORE=()
@@ -2176,17 +2177,19 @@ function xprepare_runtime_scripts() {
 		"?$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
 		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
-	local files=() path="$PWD/.vscode/overlay" prefix target
-	while IFS= read -r -d $'\0'; do
-		files+=("$REPLY")
-	done < <(find "$path" -type f -print0)
-	prefix="${#path}"
-	for file in "${files[@]}"; do
-		target=${file:$prefix}
-		if xis_ne "$target" "/README.rst"; then
-			COPY_FILES+=("?$file|:${target}")
-		fi
-	done
+	if xis_true "$USE_OVERLAY_DIR"; then
+		local files=() path="$PWD/.vscode/overlay" prefix target
+		while IFS= read -r -d $'\0'; do
+			files+=("$REPLY")
+		done < <(find "$path" -type f -print0)
+		prefix="${#path}"
+		for file in "${files[@]}"; do
+			target=${file:$prefix}
+			if xis_ne "$target" "/README.rst"; then
+				COPY_FILES+=("?$file|:${target}")
+			fi
+		done
+	fi
 }
 
 function xistall_ssh_key() {
