@@ -1635,10 +1635,10 @@ function xservices_stop() {
 function xservices_stop_vargs() {
 	if xis_ne "$#" "0"; then
 		for service in "$@"; do
+			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"$service\"; "
 			if xis_true "$USE_SERVICE_MASKS"; then
 				P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
 			fi
-			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl stop \"$service\"; "
 		done
 		xecho "Stopping $# services: $(xjoin_elements true "$@")"
 	fi
