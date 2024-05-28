@@ -822,7 +822,7 @@ function xexec() {
 	fi
 	text="${command//$'\r'/\\r}"
 	text="${text//$'\n'/\\n}"
-	text=$(xargs <<<"$text")
+	text=$(xargs -0 <<<"$text")
 	xdebug "Exec: $text"
 	xfset "+e"
 	{
