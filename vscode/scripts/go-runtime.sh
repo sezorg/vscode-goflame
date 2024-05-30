@@ -463,6 +463,13 @@ function xfatal() {
 	xterminate "1"
 }
 
+function xclean() {
+	local input="$*"
+	input="${input//$'\r'/}"
+	input="${input//$'\n'/}"
+	echo "$input"
+}
+
 function xtext() {
 	local color="$1" source text lines code_link prefix
 	shift
@@ -471,8 +478,7 @@ function xtext() {
 		return 0
 	fi
 	text="$(sed -r "$P_COLOR_FILTER" <<<"$source")"
-	# shellcheck disable=SC2206
-	IFS=$'\n' lines=($text)
+	IFS=$'\n' read -r -a lines -d '' <<<"$text"
 	for line in "${lines[@]}"; do
 		line="${line//$'\r'/}"
 		if xis_set "$line"; then
@@ -681,15 +687,6 @@ function xsort_unique() {
 	eval "$output_name=(${joined_list:1})"
 }
 
-function xdecode_array() {
-	local output_name="$1" joined_list
-	shift
-	local text joined_list
-	readarray -t text <<<"$@"
-	joined_list=$(printf " \"%s\"" "${text[@]}")
-	eval "$output_name=(${joined_list:1})"
-}
-
 P_EXPORTED_STATE=false
 
 function xexport_apply() {
@@ -783,8 +780,8 @@ function xsuggest_to_install_message() {
 	if xis_executable "$executable" || ! xis_executable "dnf"; then
 		return 0
 	fi
-	# shellcheck disable=SC2207
-	packages=($(dnf search "$executable" --color never 2>/dev/null | awk 'FNR>=2{ print $1 }'))
+	lookup=$(dnf search "$executable" --color never 2>/dev/null | awk 'FNR>=2{ print $1 }')
+	IFS=$'\n' read -r -a packages -d '' <<<"$lookup"
 	lookup="$executable."
 	for package in "${packages[@]}"; do
 		if xbegins_with "$package" "$lookup"; then
@@ -822,7 +819,7 @@ function xexec() {
 	fi
 	text="${command//$'\r'/\\r}"
 	text="${text//$'\n'/\\n}"
-	text=$(xargs -0 <<<"$text")
+	text=$(xargs <<<"$text" 2>/dev/null)
 	xdebug "Exec: $text"
 	xfset "+e"
 	{
@@ -977,13 +974,8 @@ function xtty_resolve_port() {
 }
 
 function xtty_shell() {
-	local format="" text
-	for ((i = 0; i < $#; i++)); do
-		format="$format%s\r"
-	done
-	xtty_debug "form: -->$format<--"
-	# shellcheck disable=SC2059
-	text="$(printf "$format\r" "$@")"
+	local text
+	text="$(printf "%s\r" "$@" "")"
 	if xis_true "$TTY_DIRECT"; then
 		echo "$text" >"$TTY_PORT"
 		local seconds=$(("$TTY_DELAY" / 1000)) milliseconds=$(("$TTY_DELAY" % 1000))
@@ -1064,12 +1056,9 @@ function xtty_peek_ip() {
 			return 1
 		fi
 	fi
-	local oldifs text lines=() line match have_eth=false
-	${IFS+"false"} && unset oldifs || oldifs="$IFS"
+	local text lines=() line match have_eth=false
 	xtty_shell "ifconfig"
-	# shellcheck disable=SC2206
-	IFS=$'\r' lines=($P_TTY_SHELL_OUT)
-	${oldifs+"false"} && unset IFS || IFS="$oldifs"
+	IFS=$'\n' read -r -a lines -d '' <<<"$P_TTY_SHELL_OUT"
 	for line in "${lines[@]}"; do
 		match=$(echo "$line" | grep 'Link encap:Ethernet')
 		if xis_set "$match"; then
@@ -1485,7 +1474,7 @@ function xfiles_delete() {
 	xfiles_delete_vargs "${DELETE_FILES[@]}"
 }
 
-# shellcheck disable=SC2120
+# xshellcheck disable=SC2120
 function xfiles_delete_vargs() {
 	if xis_ne "$#" "0"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "$@"); "
@@ -1528,15 +1517,11 @@ function xfiles_copy() {
 
 	local uploading=false uploads=() skipped=() directories=() symlinks=""
 	for pair in "${list[@]}"; do
-		IFS='|'
-		# shellcheck disable=SC2206
-		files=($pair)
-		unset IFS
+		IFS='|' read -r -a files -d '' <<<"$pair"
 		if xis_ne "${#files[@]}" "2"; then
 			xfatal "Invalid copy command: \"$pair\""
 		fi
-		local fileA="${files[0]}"
-		local fileB="${files[1]}"
+		local fileA="${files[0]}" fileB="${files[1]}"
 		if [[ "$fileB" =~ ^\:.* ]]; then
 			uploading=true
 			local prefA="${fileA:0:1}"
@@ -1611,12 +1596,11 @@ function xfiles_copy() {
 	fi
 
 	for pair in "${list[@]}"; do
-		IFS='|'
-		# shellcheck disable=SC2206
-		files=($pair)
-		unset IFS
-		local fileA="${files[0]}"
-		local fileB="${files[1]}"
+		IFS='|' read -r -a files -d '' <<<"$pair"
+		if xis_ne "${#files[@]}" "2"; then
+			xfatal "Invalid copy command: \"$pair\""
+		fi
+		local fileA="${files[0]}" fileB="${files[1]}"
 		if [[ ! "$fileB" =~ ^\:.* ]]; then
 			xdebug "    ${fileB#":"}"
 			if xis_set "$canfail"; then
@@ -1896,10 +1880,7 @@ function xcheck_project() {
 				local known_linters=() enabled_list=()
 				readarray -t known_linters <<<"$EXEC_STDOUT"
 				for linter_desc in "${known_linters[@]}"; do
-					IFS=':'
-					# shellcheck disable=SC2206
-					linter_desc=($linter_desc)
-					unset IFS
+					IFS=':' read -r -a linter_desc -d '' <<<"$linter_desc"
 					if xis_eq "${#linter_desc[@]}" "0"; then
 						continue
 					fi
@@ -1911,20 +1892,19 @@ function xcheck_project() {
 					if xis_eq "$linter" "Linters presets"; then
 						break
 					fi
-					IFS=' '
-					# shellcheck disable=SC2206
-					linter_desc=($linter)
-					unset IFS
+					IFS=' ' read -r -a linter_desc -d '' <<<"$linter"
 					if xis_eq "${#linter_desc[@]}" "0"; then
 						continue
 					fi
 					if xis_eq "${#linter_desc[@]}" "2" &&
-						xis_eq "${linter_desc[1]}" "[deprecated]"; then
+						xis_eq "$(xclean "${linter_desc[1]}")" "[deprecated]"; then
 						continue
 					fi
-					linter="${linter_desc[0]}"
+					linter="$(xclean "${linter_desc[0]}")"
+					if xis_unset "$linter"; then
+						continue
+					fi
 					enabled_list+=("$linter")
-					#xecho "++$linter ${#linter_desc[@]} ${linter_desc[*]}"
 					if ! xcontains "$linter" "${disabled_list[@]}"; then
 						linter_args+=("-E" "$linter")
 					fi
