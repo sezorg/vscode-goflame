@@ -257,6 +257,7 @@ TARGET_BUILD_GOFLAGS=()
 TARGET_BUILD_LDFLAGS=()
 
 TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
+TTY_MASK="ttyUSB*"
 TTY_SPEED="115200"
 TTY_PICOCOM="picocom"
 TTY_DIRECT=false
@@ -471,14 +472,13 @@ function xclean() {
 }
 
 function xtext() {
-	local color="$1" source text lines code_link prefix
+	local color="$1" source lines code_link prefix
 	shift
 	source="$*"
 	if xis_unset "$source"; then
 		return 0
 	fi
-	text="$(sed -r "$P_COLOR_FILTER" <<<"$source")"
-	IFS=$'\n' read -r -a lines -d '' <<<"$text"
+	xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
 	for line in "${lines[@]}"; do
 		line="${line//$'\r'/}"
 		if xis_set "$line"; then
@@ -680,11 +680,20 @@ function xcontains() {
 }
 
 function xsort_unique() {
-	local output_name="$1" joined_list
+	local output="$1"
 	shift
-	readarray -t sorted_list <<<"$(printf "%s\n" "$@" | sort -u)"
-	joined_list=$(printf " \"%s\"" "${sorted_list[@]}")
-	eval "$output_name=(${joined_list:1})"
+	readarray -t "$output" < <(printf "%s\n" "$@" | sort -u)
+	#eval "xecho \"xsort_unique:\$(printf \"\\\"%s\\\" \" \"\${$output[@]}\")\""
+}
+
+function xsplit() {
+	local input="$3"
+	if xis_eq "$1" $'\n'; then
+		input="${input//$'\r\n'/$'\n'}"
+		input="${input//$'\n\r'/$'\n'}"
+	fi
+	readarray -d "$1" -t "$2" < <(printf '%s' "$input")
+	#eval "xecho \"xsplit:\$(printf \"\\\"%s\\\" \" \"\${$2[@]}\")\""
 }
 
 P_EXPORTED_STATE=false
@@ -781,7 +790,7 @@ function xsuggest_to_install_message() {
 		return 0
 	fi
 	lookup=$(dnf search "$executable" --color never 2>/dev/null | awk 'FNR>=2{ print $1 }')
-	IFS=$'\n' read -r -a packages -d '' <<<"$lookup"
+	xsplit $'\n' packages "$lookup"
 	lookup="$executable."
 	for package in "${packages[@]}"; do
 		if xbegins_with "$package" "$lookup"; then
@@ -961,9 +970,15 @@ function xtty_resolve_port() {
 		TTY_PASS="$TARGET_PASS"
 	fi
 	if xis_unset "$TTY_PORT" || xis_eq "$TTY_PORT" "auto"; then
-		TTY_PORT="$(find /dev -name "ttyUSB*" -print -quit)"
-		if [[ "$TTY_PORT" == "" ]]; then
-			xfatal "Unable to find USB TTY port"
+		local all_ports ports=() search_mask="$TTY_MASK"
+		all_ports="$(find /dev -name "$TTY_MASK" -print)"
+		xsplit $'\n' ports "$all_ports"
+		if xis_eq "${#ports[@]}" "0"; then
+			xfatal "Unable to find USB TTY port (search mask: \"$search_mask\")"
+		elif xis_eq "${#ports[@]}" "1"; then
+			TTY_PORT="${ports[0]}"
+		else
+			xfatal "To many USB TTY ports: ${#ports[@]} (search mask: \"$search_mask\")"
 		fi
 		xtty_debug "resolved port: $TTY_PORT"
 	fi
@@ -1058,7 +1073,7 @@ function xtty_peek_ip() {
 	fi
 	local text lines=() line match have_eth=false
 	xtty_shell "ifconfig"
-	IFS=$'\n' read -r -a lines -d '' <<<"$P_TTY_SHELL_OUT"
+	xsplit $'\n' lines "$P_TTY_SHELL_OUT"
 	for line in "${lines[@]}"; do
 		match=$(echo "$line" | grep 'Link encap:Ethernet')
 		if xis_set "$match"; then
@@ -1515,9 +1530,9 @@ function xfiles_copy() {
 		return 0
 	fi
 
-	local uploading=false uploads=() skipped=() directories=() symlinks=""
+	local files=() uploading=false uploads=() skipped=() directories=() symlinks=""
 	for pair in "${list[@]}"; do
-		IFS='|' read -r -a files -d '' <<<"$pair"
+		xsplit "|" files "$pair"
 		if xis_ne "${#files[@]}" "2"; then
 			xfatal "Invalid copy command: \"$pair\""
 		fi
@@ -1596,7 +1611,7 @@ function xfiles_copy() {
 	fi
 
 	for pair in "${list[@]}"; do
-		IFS='|' read -r -a files -d '' <<<"$pair"
+		xsplit "|" files "$pair"
 		if xis_ne "${#files[@]}" "2"; then
 			xfatal "Invalid copy command: \"$pair\""
 		fi
@@ -1758,7 +1773,7 @@ function xreset_lint_state() {
 
 function xload_lint_state() {
 	local state=()
-	IFS=' ' read -r -a state <<<"$(cat "$P_CACHEDB_DIR/__linters_result.state" 2>/dev/null)"
+	xsplit " " state "$(cat "$P_CACHEDB_DIR/__linters_result.state" 2>/dev/null)"
 	if xis_eq "${#state[@]}" "5"; then
 		P_GOLANGCI_LINT_DONE="${state[0]}"
 		P_STATICCHECK_DONE="${state[1]}"
@@ -1878,9 +1893,9 @@ function xcheck_project() {
 				#done
 				xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
 				local known_linters=() enabled_list=()
-				readarray -t known_linters <<<"$EXEC_STDOUT"
+				xsplit $'\n' known_linters "$EXEC_STDOUT"
 				for linter_desc in "${known_linters[@]}"; do
-					IFS=':' read -r -a linter_desc -d '' <<<"$linter_desc"
+					xsplit ":" linter_desc "$linter_desc"
 					if xis_eq "${#linter_desc[@]}" "0"; then
 						continue
 					fi
@@ -1892,7 +1907,7 @@ function xcheck_project() {
 					if xis_eq "$linter" "Linters presets"; then
 						break
 					fi
-					IFS=' ' read -r -a linter_desc -d '' <<<"$linter"
+					xsplit " " linter_desc "$linter"
 					if xis_eq "${#linter_desc[@]}" "0"; then
 						continue
 					fi
@@ -2159,10 +2174,9 @@ function xprepare_runtime_scripts() {
 		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 	if xis_true "$USE_OVERLAY_DIR"; then
-		local files=() path="$PWD/.vscode/overlay" prefix target
-		while IFS= read -r -d $'\0'; do
-			files+=("$REPLY")
-		done < <(find "$path" -type f -print0)
+		local file_list files=() path="$PWD/.vscode/overlay" prefix target
+		file_list="$(find "$path" -type f -print)"
+		xsplit $'\n' files "$file_list"
 		prefix="${#path}"
 		for file in "${files[@]}"; do
 			target=${file:$prefix}
