@@ -263,7 +263,7 @@ TTY_PICOCOM="picocom"
 TTY_DIRECT=false
 TTY_USER=""
 TTY_PASS=""
-TTY_DELAY="200" # milliseconds
+TTY_DELAY="300" # milliseconds
 TTY_RETRY="5"
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
@@ -826,9 +826,7 @@ function xexec() {
 	if xis_unset "$command"; then
 		return 0
 	fi
-	text="${command//$'\r'/\\r}"
-	text="${text//$'\n'/\\n}"
-	text=$(xargs <<<"$text" 2>/dev/null)
+	text=$(xargs <<<"$command" 2>/dev/null)
 	xdebug "Exec: $text"
 	xfset "+e"
 	{
@@ -1536,12 +1534,20 @@ function xfiles_copy() {
 		if xis_ne "${#files[@]}" "2"; then
 			xfatal "Invalid copy command: \"$pair\""
 		fi
-		local fileA="${files[0]}" fileB="${files[1]}"
+		local fileA="${files[0]}" fileB="${files[1]}" platform
 		if [[ "$fileB" =~ ^\:.* ]]; then
 			uploading=true
 			local prefA="${fileA:0:1}"
 			if xis_eq "$prefA" "?"; then
 				fileA="${fileA:1}"
+			fi
+			platform="$(grep -o '.*#' <<<"$fileA")"
+			if xis_set "$platform"; then
+				fileA="${fileA:${#platform}}"
+				if xis_ne "$platform" "$P_TARGET_PLATFORM#"; then
+					skipped+=("$platform$(basename -- "$fileA")")
+					continue
+				fi
 			fi
 			if xis_file_exists "$PWD/$fileA"; then
 				fileA="$PWD/$fileA"
@@ -1588,7 +1594,7 @@ function xfiles_copy() {
 	fi
 	if xis_true "$uploading"; then
 		if xis_ne "${#skipped[@]}" "0"; then
-			xwarn "Skipping ${#skipped[@]} files: $(xjoin_elements false "${skipped[@]}")"
+			xwarn "Skipping ${#skipped[@]} files: $(xjoin_elements true "${skipped[@]}")"
 		fi
 		if xis_ne "${#uploads[@]}" "0"; then
 			local upload_method="unknown"
@@ -2174,15 +2180,21 @@ function xprepare_runtime_scripts() {
 		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 	if xis_true "$USE_OVERLAY_DIR"; then
-		local file_list files=() path="$PWD/.vscode/overlay" prefix target
-		file_list="$(find "$path" -type f -print)"
-		xsplit $'\n' files "$file_list"
-		prefix="${#path}"
-		for file in "${files[@]}"; do
-			target=${file:$prefix}
-			if xis_ne "$target" "/README.rst"; then
-				COPY_FILES+=("?$file|:${target}")
+		local file_list files=() prefix target
+		local paths=("$PWD/.vscode/overlay/common" "$PWD/.vscode/overlay/$P_TARGET_PLATFORM")
+		for path in "${paths[@]}"; do
+			if ! xis_dir_exists "$path"; then
+				continue
 			fi
+			file_list="$(find "$path" -type f -print)"
+			xsplit $'\n' files "$file_list"
+			prefix="${#path}"
+			for file in "${files[@]}"; do
+				target=${file:$prefix}
+				if xis_ne "$target" "/README.rst"; then
+					COPY_FILES+=("?$file|:${target}")
+				fi
+			done
 		done
 	fi
 }
