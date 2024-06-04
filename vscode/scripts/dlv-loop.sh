@@ -64,10 +64,9 @@ trap cleanup EXIT
 
 if [[ -f "$DLOOP_STATUS_FILE" ]]; then
 	dlv_pid="$(cat "$DLOOP_STATUS_FILE")"
-	rm -f "$DLOOP_STATUS_FILE"
-	function xnull() { return 0; }
-	xnull "$(pkill -P "$dlv_pid >/dev/null")"
-	xnull "$(kill "$dlv_pid >/dev/null")"
+	pkill -P "$dlv_pid" >/dev/null 2>&1
+	kill "$dlv_pid" >/dev/null 2>&1
+	rm -f "$DLOOP_STATUS_FILE" >/dev/null 2>&1
 	unset dlv_pid
 fi
 
