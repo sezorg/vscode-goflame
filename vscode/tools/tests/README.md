@@ -128,6 +128,7 @@ Imaging> $ ./GetImagingSettings
 |          |                    | StartUploadAudio_Remove             |                                            |
 |          | **Media2**         | CreateOSD                           |                                            |
 |          |                    | GetOSDs                             |                                            |
+|          |                    | GetServiceCapabilities              |                                            |
 |          | **PTZ**            | AbsoluteMove                        |                                            |
 |          |                    | ContinuousMove                      |                                            |
 |          |                    | GetConfigurationOptions             |                                            |
