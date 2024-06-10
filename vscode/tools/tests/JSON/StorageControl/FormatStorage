@@ -9,4 +9,5 @@ JSON=$(
 }
 DELIMITER
 )
+TIMEOUT=20
 json_test storagecontrol/FormatStorage
