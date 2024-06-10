@@ -1127,6 +1127,7 @@ function xdiscard_target_config() {
 function xresolve_target_config() {
 	TARGET_HOSTNAME="$TARGET_IPADDR"
 	TARGET_MACADDR=""
+	TARGET_TTYPORT=""
 	local config_hash force="$1"
 	P_RESOLVE_REASON=""
 	if xis_true "$force"; then
@@ -1161,6 +1162,7 @@ function xresolve_target_config() {
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT")"
 				fi
 			fi
+			TARGET_TTYPORT="$TTY_PORT"
 			TARGET_IPADDR="$target_ip"
 		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
 			local found=false mac_addr
@@ -1287,7 +1289,7 @@ TARGET_HOSTNAME="$TARGET_HOSTNAME"
 TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER="$TARGET_USER"
 TARGET_PASS="$TARGET_PASS"
-TARGET_TTYPORT="$TTY_PORT"
+TARGET_TTYPORT="$TARGET_TTYPORT"
 USE_RSYNC_METHOD="$USE_RSYNC_METHOD"
 USE_PIGZ_COMPRESSION="$USE_PIGZ_COMPRESSION"
 CONFIG_HASH="$P_CONFIG_HASH"
@@ -1408,7 +1410,7 @@ function xperform_build_and_deploy() {
 	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
 	else
-		xcheck_project
+		xcheck_project false
 	fi
 
 	if xis_false "$fdebug" && xis_true "$fexec"; then
@@ -1438,6 +1440,8 @@ function xperform_build_and_deploy() {
 	if xis_true "$frebuild"; then
 		xcamera_features
 	fi
+
+	xcheck_project_wait
 }
 
 function xkill() {
@@ -1791,11 +1795,15 @@ function xload_lint_state() {
 	fi
 }
 
+P_CHECK_PROJECT_WAIT=false
+P_CHECK_NAME_HASH=""
+P_CHECK_FILE_HASH=""
+
 function xsave_lint_state() {
-	if xis_eq "$name_hash" ""; then
+	if xis_eq "$P_CHECK_NAME_HASH" ""; then
 		return
 	fi
-	xcache_put "$name_hash" "$file_hash"
+	xcache_put "$P_CHECK_NAME_HASH" "$P_CHECK_FILE_HASH"
 	local items=(
 		"P_GOLANGCI_LINT_DONE"
 		"P_STATICCHECK_DONE"
@@ -1837,7 +1845,7 @@ function xcheck_results() {
 }
 
 function xcheck_project() {
-	local name_hash="" file_hash="" dir_hash="$P_CACHEDB_DIR/__project_checklist.log"
+	local wait_done="$1" dir_hash="$P_CACHEDB_DIR/__project_checklist.log"
 	local diff_filter_args=() diff_filter_command=""
 	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
 		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE" ||
@@ -1846,10 +1854,10 @@ function xcheck_project() {
 			-not -path "\"./.git/*\"" -exec date -r {} \
 			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 		xload_lint_state
-		name_hash=$(xhash_text "$dir_hash")
-		file_hash=$(xhash_file "$dir_hash")
-		#xecho "$name_hash :: $file_hash"
-		if xis_ne "$(xcache_get "$name_hash")" "$file_hash" || xis_true "$CLEAN_GOCACHE"; then
+		P_CHECK_NAME_HASH=$(xhash_text "$dir_hash")
+		P_CHECK_FILE_HASH=$(xhash_file "$dir_hash")
+		#xecho "$P_CHECK_NAME_HASH :: $P_CHECK_FILE_HASH"
+		if xis_ne "$(xcache_get "$P_CHECK_NAME_HASH")" "$P_CHECK_FILE_HASH" || xis_true "$CLEAN_GOCACHE"; then
 			xreset_lint_state
 		fi
 		if xis_true "$P_GOLANGCI_LINT_DONE" &&
@@ -2023,8 +2031,10 @@ function xcheck_project() {
 		job_pool_run run_go_vet_check
 		job_pool_run run_llencheck
 		job_pool_run run_precommit_check
-		job_pool_wait
-		job_pool_shutdown
+		if xis_true "$wait_done"; then
+			job_pool_wait
+			job_pool_shutdown
+		fi
 	else
 		run_golangci_lint
 		run_staticckeck
@@ -2032,12 +2042,24 @@ function xcheck_project() {
 		run_llencheck
 		run_precommit_check
 	fi
-	xsave_lint_state
+	if xis_true "$wait_done"; then
+		xsave_lint_state
+	else
+		P_CHECK_PROJECT_WAIT=true
+	fi
+}
+
+function xcheck_project_wait() {
+	if xis_true "$P_CHECK_PROJECT_WAIT"; then
+		job_pool_wait
+		job_pool_shutdown
+		xsave_lint_state
+	fi
 }
 
 function xbuild_project() {
 	xclean_gocache
-	xcheck_project
+	xcheck_project false
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
 	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
@@ -2058,6 +2080,8 @@ function xbuild_project() {
 	else
 		xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 	fi
+
+	xcheck_project_wait
 }
 
 # Set camera features
