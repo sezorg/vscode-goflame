@@ -1407,10 +1407,9 @@ function xperform_build_and_deploy() {
 
 	xresolve_target_config "$frebuild"
 	xecho "$* to $P_TARGET_PLATFORM target $TARGET_HYPERLINK"
+	xcheck_project false
 	if xis_true "$fbuild" || xis_true "$frebuild"; then
 		xbuild_project
-	else
-		xcheck_project false
 	fi
 
 	if xis_false "$fdebug" && xis_true "$fexec"; then
@@ -2059,7 +2058,6 @@ function xcheck_project_wait() {
 
 function xbuild_project() {
 	xclean_gocache
-	xcheck_project false
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
 	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
@@ -2080,8 +2078,6 @@ function xbuild_project() {
 	else
 		xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 	fi
-
-	xcheck_project_wait
 }
 
 # Set camera features
