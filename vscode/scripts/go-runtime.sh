@@ -1048,6 +1048,9 @@ function xtty_login() {
 	if xis_succeeded; then
 		return 0
 	fi
+	if xis_unset "$P_TTY_SHELL_OUT"; then
+		return 1
+	fi
 	xtty_logout
 	xtty_try_login
 	if xis_succeeded; then
@@ -1114,6 +1117,7 @@ function xtty_resolve_ip() {
 		P_TTY_DEBUG=true
 		try_login=true
 		retries=$((retries - 1))
+		xtty_debug "Retries left: $retries"
 	done
 	return 1
 }
