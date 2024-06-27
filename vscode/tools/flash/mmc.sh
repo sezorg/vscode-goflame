@@ -28,13 +28,15 @@ fatal() {
 usage() {
 	local filename
 	filename=$(basename "$0")
-	log "Usage: $filename [-c] [-d] [-f <format-mmc.sh>] [<sd-card>] [<swu-file>]"
+	log "Usage: $filename [-r] [-c] [-d] [-f <format-mmc.sh>] [<sd-card>] [<swu-file>]"
 	log "where:"
+	log "    -r                  create recovery partition"
+	log "    -m                  create MBR partition table (defaults to GPT)"
+	log "    -c                  clean any cached data, force download"
+	log "    -d                  enable debug messages"
+	log "    -f <format-mmc.sh>  name of the script should be executed to flash MMC"
 	log "    sd-card             optional sd card device /dev/<sd-card>"
 	log "    swu-file            local or remote swu file"
-	log "    -f <format-mmc.sh>  name of the script should be executed to flash MMC"
-	log "    -c                  clean any cached data, force download"
-	log "    -c                  enable debug messages"
 	log ""
 	log "examples:"
 	log "    $filename sda 6cba2361dc4f4e258dc258b425828f4a"
@@ -45,6 +47,8 @@ usage() {
 arg_mmc_name=""
 arg_swu_file=""
 arg_format_mmc_path=""
+arg_create_recovery=""
+arg_create_mbr=""
 arg_purge_cache=""
 arg_debug_mode=""
 
@@ -57,6 +61,14 @@ while [[ "$#" != "0" ]]; do
 		if [[ ! -f "$arg_format_mmc_path" ]]; then
 			fatal "Argument '-f': unable to find file '$arg_format_mmc_path'."
 		fi
+		;;
+	-r)
+		arg_create_recovery="true"
+		shift
+		;;
+	-m)
+		arg_create_mbr="true"
+		shift
 		;;
 	-c)
 		arg_purge_cache="1"
@@ -222,9 +234,42 @@ function resolve_source_swu_path() {
 
 resolve_source_swu_path
 
+filter_messages=(
+	" blocks"
+	" records in"
+	" records out"
+	"GPT fdisk"
+	"Command (? for help)"
+	"Recovery/transformation command"
+	"MBR command (? for help)"
+	"Finalize and exit? (Y/N)"
+)
+filter_pattern="$(printf "\n%s" "${filter_messages[@]}")"
+filter_pattern="${filter_pattern:1}"
+
+filter_output() {
+	grep -v -e "$filter_pattern" -e '^[[:space:]]*$'
+}
+
 log "Flashing $(basename "$arg_swu_file") image to '$target_mmc_device'..."
-if [[ "$(whoami | awk '{print $1}')" != "root" ]]; then
-	sudo "$arg_format_mmc_path" "$source_swu_path" "$target_mmc_device"
-else
-	"$arg_format_mmc_path" "$source_swu_path" "$target_mmc_device"
+format_mmc_args_list=()
+if [[ "$arg_create_recovery" != "" ]]; then
+	format_mmc_args_list+=("-r")
 fi
+format_mmc_args_list+=(
+	"$source_swu_path"
+	"$target_mmc_device"
+)
+(sudo "$arg_format_mmc_path" "${format_mmc_args_list[@]}") 2>&1 | filter_output
+if [[ "$arg_create_mbr" != "" ]]; then
+	(
+		sudo gdisk "$target_mmc_device" <<EOF
+r
+g
+w
+y
+EOF
+	) 2>&1 | filter_output
+fi
+
+fdisk -l "$target_mmc_device"
