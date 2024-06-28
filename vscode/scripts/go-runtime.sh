@@ -264,7 +264,7 @@ TTY_DIRECT=false
 TTY_USER=""
 TTY_PASS=""
 TTY_DELAY="300" # milliseconds
-TTY_RETRY="5"
+TTY_RETRY="3"
 
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
@@ -1006,116 +1006,116 @@ function xtty_exchange() {
 	[[ "$P_TTY_SHELL_OUT" == *"$2"* ]]
 }
 
-function xtty_logout() {
-	xtty_exchange "" "#"
-	if xis_succeeded; then
-		xtty_exchange "exit" "exit not allowed"
-		if xis_succeeded; then
-			xtty_debug "Booting u-boot"
-			xtty_shell "boot"
-		else
-			xtty_debug "Logging out"
-			xtty_shell ""
-		fi
-	fi
-}
-
-function xtty_try_login() {
-	xtty_shell ""
-	case "$P_TTY_SHELL_OUT" in
-	*"login:"*)
-		xtty_debug "got login prompt"
-		if xtty_exchange "$TTY_USER" "Password:"; then
-			xtty_debug "got password prompt"
-			xtty_exchange "$TTY_PASS" "#"
-			return 0
-		fi
-		;;
-	*"#"*)
-		xtty_debug "got command prompt #: '$P_TTY_SHELL_OUT'"
-		return 0
-		;;
-	*"=>"*)
-		xfatal "Device on $(xdecorate "$TTY_PORT") is in U-Boot command prompt mode. Please boot up and continue."
-		;;
-	*) return 1 ;;
-	esac
-	return 1
-}
-
-function xtty_login() {
-	xtty_try_login
-	if xis_succeeded; then
-		return 0
-	fi
-	if xis_unset "$P_TTY_SHELL_OUT"; then
-		return 1
-	fi
-	xtty_logout
-	xtty_try_login
-	if xis_succeeded; then
-		return 0
-	fi
-	return 1
+function xtty_fatal() {
+	xfatal "Device on $(xdecorate "$TTY_PORT") login failed: $*."
 }
 
 function xtty_peek_ip() {
-	local output_ip="$1" try_login="$2"
-	if xis_true "$try_login"; then
-		xtty_login
-		if xis_failed; then
-			if xis_set "$P_TTY_SHELL_OUT"; then
-				eval "$output_ip='failed to login to device'"
-			else
-				eval "$output_ip='no response from device'"
+	local output="$1" prompt=true ifconfig=false error="" have_eth=false
+	local step="1" max_steps="5" lines=() line=""
+	P_TTY_SHELL_OUT=""
+	while xis_unset "$error"; do
+		if xis_true "$prompt"; then
+			prompt=false
+			if ! xtty_shell ""; then
+				error="failed to send command to device"
+				break
 			fi
-			return 1
 		fi
-	fi
-	local text lines=() line match have_eth=false
-	xtty_shell "ifconfig"
-	xsplit $'\n' lines "$P_TTY_SHELL_OUT"
-	for line in "${lines[@]}"; do
-		match=$(echo "$line" | grep 'Link encap:Ethernet')
-		if xis_set "$match"; then
-			have_eth=true
+		if xis_true "$ifconfig"; then
+			ifconfig=false
+			if ! xtty_shell "ifconfig"; then
+				error="failed to 'ifconfig' send command to device"
+				break
+			fi
+			xsplit $'\n' lines "$P_TTY_SHELL_OUT"
+			for line in "${lines[@]}"; do
+				match=$(echo "$line" | grep 'Link encap:Ethernet')
+				if xis_set "$match"; then
+					have_eth=true
+				fi
+				match=$(echo "$line" | grep 'inet addr:' | grep 'Bcast:' |
+					grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
+				if [[ "$match" != "" ]]; then
+					xtty_debug "got IP address: $match"
+					eval "$output='$match'"
+					return 0
+				fi
+			done
+			if xis_false "$have_eth"; then
+				error="device have Ethernet"
+			else
+				error="device have no IP address"
+			fi
+			break
 		fi
-		match=$(echo "$line" | grep 'inet addr:' | grep 'Bcast:' |
-			grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
-		if [[ "$match" != "" ]]; then
-			xtty_debug "got IP address: $match"
-			eval "$output_ip='$match'"
-			return 0
+		xtty_debug "step $step/$max_steps; output: '$P_TTY_SHELL_OUT'"
+		case "$P_TTY_SHELL_OUT" in
+		*"#"*)
+			xtty_debug "got command prompt"
+			ifconfig=true
+			;;
+		*"=>"*)
+			xtty_debug "got bootup prompt"
+			xtty_fatal "login failed: U-Boot command prompt mode, please boot up and continue."
+			;;
+		*"login: bad"*)
+			xtty_debug "got login bad salt message"
+			xtty_fatal "login failed: probably release firmware."
+			;;
+		*"Login incorrect"*)
+			xtty_debug "got login incorrect message"
+			xtty_fatal "login failed: incorrect user/pass credentials."
+			;;
+		*"login:"*)
+			xtty_debug "got login prompt"
+			if ! xtty_exchange "$TTY_USER" "Password:"; then
+				error="login failed: missing promt after password"
+			fi
+			;;
+		*"Password:"*)
+			xtty_debug "got password prompt"
+			if ! xtty_exchange "$TTY_PASS" "#"; then
+				error="login failed: missing '#' promt after password"
+			fi
+			xtty_debug "got command after login"
+			ifconfig=true
+			;;
+		"")
+			xtty_debug "got empty TTY response"
+			error="no response from device"
+			;;
+		*)
+			xtty_debug "got invalid/unknown TTY response"
+			error="invalid/unknown response from device"
+			;;
+		esac
+		step=$((step + 1))
+		if [[ "$step" -gt "$max_steps" ]]; then
+			error="max TTY retry/steps reached"
 		fi
 	done
-	if xis_unset "$P_TTY_SHELL_OUT"; then
-		eval "$output_ip='no response from device'"
-	elif xis_true "$have_eth"; then
-		eval "$output_ip='device have no IP address'"
-	else
-		eval "$output_ip='no response from ifconfig'"
+	if xis_unset "$error" && xis_unset "$P_TTY_SHELL_OUT"; then
+		error="no response from device"
 	fi
+	eval "$output='$error'"
 	return 1
 }
 
 function xtty_resolve_ip() {
-	local output_ip="$1" retries="$2" try_login=false
-	if [[ "$retries" == "" ]] || [[ "$retries" -le "0" ]]; then
-		retries="10"
-	fi
-	xtty_resolve_port
-	if xis_failed; then
+	local output="$1" retries="$TTY_RETRY"
+	xtty_debug "Retries initial: $retries"
+	if ! xtty_resolve_port; then
 		return 1
 	fi
-	while [[ "$retries" -gt "0" ]]; do
-		eval "$output_ip=''"
-		xtty_peek_ip "$output_ip" "$try_login"
+	while xis_ne "$retries" "0"; do
+		eval "$output=''"
+		xtty_peek_ip "$output"
 		if xis_succeeded; then
 			return 0
 		fi
-		sleep 1.0
+		sleep 0.1
 		P_TTY_DEBUG=true
-		try_login=true
 		retries=$((retries - 1))
 		xtty_debug "Retries left: $retries"
 	done
@@ -1158,8 +1158,7 @@ function xresolve_target_config() {
 		fi
 		if xis_eq "$TARGET_IPADDR" "tty"; then
 			local target_ip=""
-			xtty_resolve_ip "target_ip" "$TTY_RETRY"
-			if xis_failed; then
+			if ! xtty_resolve_ip "target_ip"; then
 				if xis_set "$target_ip"; then
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
 				else
