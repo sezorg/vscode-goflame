@@ -97,6 +97,10 @@ function gt() {
 	"getags.py" "$@"
 }
 
+function gt2() {
+	"getags2.py" "$@"
+}
+
 function _error() {
 	if [[ "$1" != "" ]]; then
 		echo >&2 "ERROR: $1"
