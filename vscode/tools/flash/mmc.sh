@@ -22,7 +22,7 @@ error() {
 
 fatal() {
 	error "$*"
-
+	exit 1
 }
 
 usage() {
@@ -30,7 +30,7 @@ usage() {
 	filename=$(basename "$0")
 	log "Usage: $filename [-r] [-c] [-d] [-f <format-mmc.sh>] [<sd-card>] [<swu-file>]"
 	log "where:"
-	log "    -r                  create recovery partition"
+	log "    -r                  do not create recovery partition"
 	log "    -m                  create MBR partition table (defaults to GPT)"
 	log "    -c                  clean any cached data, force download"
 	log "    -d                  enable debug messages"
@@ -47,7 +47,7 @@ usage() {
 arg_mmc_name=""
 arg_swu_file=""
 arg_format_mmc_path=""
-arg_create_recovery=""
+arg_create_recovery="true"
 arg_create_mbr=""
 arg_purge_cache=""
 arg_debug_mode=""
@@ -63,7 +63,7 @@ while [[ "$#" != "0" ]]; do
 		fi
 		;;
 	-r)
-		arg_create_recovery="true"
+		arg_create_recovery=""
 		shift
 		;;
 	-m)
@@ -192,15 +192,15 @@ function resolve_format_mmc_path() {
 		source="$(dirname "$arg_swu_file")/$format_mmc_name"
 		if [[ -f "$source" ]]; then
 			arg_format_mmc_path="$source"
-			debug "Using FMMC: $arg_format_mmc_path..."
+			debug "Using FMMC-1: $arg_format_mmc_path..."
 		elif begins_with "$arg_swu_file" "http"; then
 			download_file "$source"
 			arg_format_mmc_path="$download_target"
 			chmod +x "$arg_format_mmc_path"
-			debug "Using FMMC: $source..."
+			debug "Using FMMC-2: $source..."
 		elif [[ -f "./$format_mmc_name" ]]; then
 			arg_format_mmc_path="./$format_mmc_name"
-			debug "Using FMMC: $format_mmc_name from current directory..."
+			debug "Using FMMC-3: $format_mmc_name from current directory..."
 		fi
 
 	fi
@@ -260,6 +260,7 @@ format_mmc_args_list+=(
 	"$source_swu_path"
 	"$target_mmc_device"
 )
+debug "Executing: $arg_format_mmc_path ${format_mmc_args_list[*]}"
 (sudo "$arg_format_mmc_path" "${format_mmc_args_list[@]}") 2>&1 | filter_output
 if [[ "$arg_create_mbr" != "" ]]; then
 	(
