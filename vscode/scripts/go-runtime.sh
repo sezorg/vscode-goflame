@@ -38,6 +38,10 @@ function xis_ne() {
 	[[ "$1" != "$2" ]]
 }
 
+function xis_array() {
+	[[ "$(declare -p "$1")" =~ "declare -a" ]]
+}
+
 function xis_succeeded() {
 	xis_eq "$?" "0"
 }
@@ -397,6 +401,9 @@ function xemit() {
 	local time_stamp actual_time elapsed_time message_log message_out input="$*"
 	input="${input//$'\r'/\\r}"
 	input="${input//$'\n'/\\n}"
+	input="${input//" $BUILDROOT_DIR/"/" \$BUILDROOT_DIR/"}"
+	input="${input//" $PWD/"/" ./"}"
+	input="${input//" $HOME/"/" \$HOME/"}"
 	input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $input"
 	if xis_set "$input"; then
 		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
@@ -515,7 +522,7 @@ function xhyperlink() {
 }
 
 if xis_false "$P_CONFIG_INI_LOADED"; then
-	xerror "Unable to load configuration from $(xhyperlink "file://./.vscode/config-user.ini") or $(xhyperlink "file://./.vscode/config.ini")."
+	xerror "Unable to load configuration from $(xhyperlink "file://.vscode/config-user.ini") or $(xhyperlink "file://.vscode/config.ini")."
 	xfatal "See documentation for more details."
 fi
 
@@ -595,18 +602,55 @@ EXPORT_GO111MODULE="on"
 EXPORT_GOWORK="off"
 EXPORT_GOVCS="*:all"
 EXPORT_GOARCH="$TARGET_ARCH"
-#EXPORT_GOFLAGS="-mod=vendor"
-EXPORT_GOFLAGS="-mod=mod"
+EXPORT_GOFLAGS="-mod=mod" # "-mod=vendor"
 
 EXPORT_CGO_ENABLED="1"
-#EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
-#EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O3 -g2 -D_FORTIFY_SOURCE=1"
-EXPORT_CGO_CFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
-EXPORT_CGO_CXXFLAGS="-D_LARGEFILE_SOURCE -D_LARGEFILE64_SOURCE -D_FILE_OFFSET_BITS=64 -O0 -g2"
-EXPORT_CGO_LDFLAGS=""
+EXPORT_CGO_CYYFLAGS=(
+	#"-D_LARGEFILE_SOURCE"
+	#"-D_LARGEFILE64_SOURCE"
+	#"-D_FILE_OFFSET_BITS=64"
+	#"-D_FORTIFY_SOURCE=1"
+	#"-O2"
+	#"-g2"
+	#"--verbose"
+)
+EXPORT_CGO_CFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
+EXPORT_CGO_CXXFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
+EXPORT_CGO_LDFLAGS=()
 
 EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
 EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
+
+function xresolve_buildroot_real_compilers() {
+	local real="$$1.br_real"
+	if xis_file_exists "$real"; then
+		echo "$real"
+	fi
+	echo "$1"
+}
+
+# Enable debugging of the toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
+# configuratoiopn parameter.
+EXPORT_BR2_DEBUG_WRAPPER="2"
+
+# Override toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
+# configuratoiopn parameter.
+function xoverride_toolchain_wrapper() {
+	local force="$1" toolchain_wrapper="$BUILDROOT_HOST_DIR/bin/toolchain-wrapper"
+	if xis_file_exists "$toolchain_wrapper"; then
+		if ! xis_file_exists "$toolchain_wrapper.org"; then
+			xdebug "Backup and setting up toolchain-wrapper: $toolchain_wrapper"
+			xexec cp -f "$toolchain_wrapper" "$toolchain_wrapper.pre"
+			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+			xexec mv "$toolchain_wrapper.pre" "$toolchain_wrapper.org"
+		elif xis_true "$force"; then
+			xdebug "Forced setting up toolchain-wrapper: $toolchain_wrapper"
+			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+		fi
+	fi
+}
+
+xoverride_toolchain_wrapper false
 
 if xis_eq "$TARGET_ARCH" "host"; then
 	BUILDROOT_GOBIN="go"
@@ -619,8 +663,9 @@ if xis_eq "$TARGET_ARCH" "host"; then
 
 	EXPORT_GOARCH=""
 
-	EXPORT_CGO_CFLAGS=""
-	EXPORT_CGO_CXXFLAGS=""
+	EXPORT_CGO_CFLAGS=()
+	EXPORT_CGO_CXXFLAGS=()
+	EXPORT_CGO_LDFLAGS=()
 	EXPORT_CC=""
 	EXPORT_CXX=""
 fi
@@ -648,6 +693,8 @@ GOLANG_EXPORTS=(
 	"EXPORT_CGO_LDFLAGS"
 	"EXPORT_CC"
 	"EXPORT_CXX"
+
+	"EXPORT_BR2_DEBUG_WRAPPER"
 )
 
 xunreferenced \
@@ -666,11 +713,12 @@ xunreferenced \
 	"$EXPORT_GOFLAGS" \
 	"$EXPORT_GOFLAGS" \
 	"$EXPORT_CGO_ENABLED" \
-	"$EXPORT_CGO_CFLAGS" \
-	"$EXPORT_CGO_CXXFLAGS" \
-	"$EXPORT_CGO_LDFLAGS" \
+	"${EXPORT_CGO_CFLAGS[*]}" \
+	"${EXPORT_CGO_CXXFLAGS[*]}" \
+	"${EXPORT_CGO_LDFLAGS[*]}" \
 	"$EXPORT_CC" \
-	"$EXPORT_CXX"
+	"$EXPORT_CXX" \
+	"$EXPORT_BR2_DEBUG_WRAPPER"
 
 function xcontains() {
 	local value="$1"
@@ -705,10 +753,15 @@ function xexport_apply() {
 	P_EXPORTED_STATE=true
 	#xdebug "Exports: $*"
 	for variable in "$@"; do
-		local name="$variable"
-		local value="${!name}"
+		local name="$variable" value array result=()
+		if xis_array "$variable"; then
+			eval "array=\"\${${name}[@]}\""
+			value="${array[*]}"
+		else
+			value="${!name}"
+		fi
 		if xis_unset "$value" && xis_ne "$TARGET_ARCH" "host"; then
-			if ! xcontains "$variable" "EXPORT_CGO_LDFLAGS"; then
+			if ! xbegins_with "$variable" "EXPORT_CGO_"; then
 				xwarn "An empty exported variable $variable"
 			fi
 		fi
@@ -921,8 +974,8 @@ function xfunset() {
 
 P_CONFIG_HASH_INITIAL=(
 	"$PWD"
-	"$(find -L "./.vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-	"$(find -L "./.vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
 )
 
 P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
@@ -1230,7 +1283,7 @@ function xresolve_target_config() {
 		if xis_ne "$P_TARGET_PLATFORM" "$target_mach"; then
 			xerror "Unexpected target $(xhyperlink "http://$TARGET_IPADDR") architecture $(xdecorate "$target_mach"), expected $(xdecorate "$P_TARGET_PLATFORM")"
 			xerror "Probably invalid values in $(xdecorate TARGET_ARCH) and $(xdecorate BUILDROOT_DIR) variables"
-			xfatal "Check contents of the $(xhyperlink "file://./.vscode/config-user.ini") or $(xhyperlink "file://./.vscode/config.ini")"
+			xfatal "Check contents of the $(xhyperlink "file://.vscode/config-user.ini") or $(xhyperlink "file://.vscode/config.ini")"
 		fi
 		function resolve_binary() {
 			local enable_option="$1" binary_name="$2" target_path="$3"
@@ -1248,7 +1301,7 @@ function xresolve_target_config() {
 				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
-						local source="./.vscode/scripts/bin/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
+						local source=".vscode/scripts/bin/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
 						if xis_file_exists "$source"; then
 							xecho "Installing $(xdecorate "$binary_name-$P_TARGET_PLATFORM") to target path $(xdecorate "$target")..."
 							xscp "$source" ":$target"
@@ -1276,16 +1329,18 @@ function xresolve_target_config() {
 		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
 			supress="$supress\t\"$item\"\n"
 		done
-		xexec cp "$PWD/.vscode/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
+		xexec cp ".vscode/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
 		pattern=$(xsed_pattern \
 			"__TARGET_IPPORT__" "$TARGET_IPPORT" \
 			"__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" \
 			"__TARGET_BINARY_ARGS__" "${exec_args:1}" \
 			"__TARGET_SUPRESS_MSSGS__" "${supress:1}")
 		xsed_replace "$pattern" "$P_SCRIPTS_DIR/{dlv-loop.sh,dlv-exec.sh}"
+		xoverride_toolchain_wrapper true
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
 # Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
+HOST_BUILDROOT="$BUILDROOT_DIR"
 TARGET_IPADDR=$TARGET_IPADDR
 TARGET_IPPORT=$TARGET_IPPORT
 TARGET_HOSTNAME="$TARGET_HOSTNAME"
@@ -1883,7 +1938,7 @@ function xcheck_project() {
 		fi
 		diff_filter_command=(
 			"python3" "-X" "pycache_prefix=\"$PYTHONPYCACHEPREFIX\""
-			"./.vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
+			".vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
 		)
 		xclean_gocache
 	fi
@@ -2200,11 +2255,11 @@ function xprepare_runtime_scripts() {
 	COPY_FILES+=(
 		"?$P_SCRIPTS_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"?$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
-		"?$PWD/.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
+		"?.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 	if xis_true "$USE_OVERLAY_DIR"; then
 		local file_list files=() prefix target
-		local paths=("$PWD/.vscode/overlay/common" "$PWD/.vscode/overlay/$P_TARGET_PLATFORM")
+		local paths=(".vscode/overlay/common" ".vscode/overlay/$P_TARGET_PLATFORM")
 		for path in "${paths[@]}"; do
 			if ! xis_dir_exists "$path"; then
 				continue
