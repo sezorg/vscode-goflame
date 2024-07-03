@@ -152,15 +152,18 @@ function _resolve_variable() {
 	local value_name="$3"
 	local error_message="$4"
 	local value_path="$HOME/.config/sshcache"
-	if [[ "$actual_value" == "x" ]]; then
+	if [[ "$actual_value" == "" ]]; then
 		local last_config="/var/tmp/goflame/config-vscode.ini"
 		if [[ "$value_name" == "last_ip_addr" ]] &&
 			[[ -f "$last_config" ]]; then
 			# shellcheck disable=SC1090
 			source "$last_config"
 			actual_value="$TARGET_IPADDR"
+		else
+			actual_value="x"
 		fi
-	elif [[ "$actual_value" == "" ]]; then
+	fi
+	if [[ "$actual_value" == "x" ]]; then
 		if [[ -f "$value_path/$value_name" ]]; then
 			actual_value=$(cat "$value_path/$value_name")
 		fi
