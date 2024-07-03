@@ -2,4 +2,4 @@
 
 . "./.CameraConfiguration"
 
-curl -v -F 'facedb.app=@"Files/facedb.db"' "http://$IP/upload/facedb"
+curl -v -F 'demo.facedb=@"Files/demo.facedb"' "http://$IP/upload/facedb"
