@@ -4,11 +4,6 @@ set -euo pipefail
 
 # --------------------------------------------------------------------------------------------------
 
-export https_proxy=http://proxy.elvees.com:3128
-export http_proxy=http://proxy.elvees.com:3128
-export ftp_proxy=http://proxy.elvees.com:3128
-export no_proxy=127.0.0.1,localhost,elvees.com
-
 export BR2_PRIMARY_SITE=http://callisto.elvees.com/mirror/buildroot
 export PYTHONUSERBASE=$HOME/.python
 export PATH=$PYTHONUSERBASE/bin:$PATH
@@ -90,10 +85,13 @@ function help() {
 	log "Flags:"
 	log "    image           Build complete image & software update packages"
 	log "    tools           Build toolchains and libraries"
+	log "    sdk             Build buildroot SDK"
 	log "    -c | --clean    Start build from scratch"
 	log "    -d | --dry-run  Dry dun. Download only, not build"
+	log "    -D | --docker   Docker build"
 	log "    -h | --help     Print this help screen & exit"
-	log "    -h | --help     Print this help screen & exit"
+	log "         --no-wget  Do not cache wget files"
+	log "         --no-proxy Disable proxies"
 	log "Devices:"
 	log "    ecam02          ECAM02 compatible devices & boards"
 	log "    ecam03          ECAM03 compatible devices & boards"
@@ -109,8 +107,12 @@ p_build_ecam02=false
 p_build_ecam03=false
 p_build_image=false
 p_build_tools=false
+p_build_sdk=false
 p_clean_build=false
 p_dry_run_build=false
+p_docker_build=false
+p_no_wget=false
+p_no_proxy=false
 while [[ "$#" != "0" ]]; do
 	case "$1" in
 	ecam02)
@@ -129,12 +131,28 @@ while [[ "$#" != "0" ]]; do
 		p_build_tools=true
 		shift 1
 		;;
+	sdk)
+		p_build_sdk=true
+		shift 1
+		;;
 	-c | --clean)
 		p_clean_build=true
 		shift 1
 		;;
 	-d | --dry-run)
 		p_dry_run_build=true
+		shift 1
+		;;
+	-D | --docker)
+		p_docker_build=true
+		shift 1
+		;;
+	--no-wget)
+		p_no_wget=true
+		shift 1
+		;;
+	--no-proxy)
+		p_no_proxy=true
 		shift 1
 		;;
 	-h | --help)
@@ -165,17 +183,35 @@ if is_eq "${p_build_devices[*]}" ""; then
 fi
 
 p_build_types=()
-p_build_all_types=("buildroot" "toolchain")
+p_build_all_types=("image" "tools" "sdk")
 if is_true "$p_build_image"; then
-	p_build_types+=("buildroot")
+	p_build_types+=("image")
 fi
 if is_true "$p_build_tools"; then
-	p_build_types+=("toolchain")
+	p_build_types+=("tools")
+fi
+if is_true "$p_build_sdk"; then
+	p_build_types+=("sdk")
 fi
 if is_eq "${p_build_types[*]}" ""; then
-	error "No build types specified (image/tools/...etc)."
+	error "No build types specified (image/tools/sdk/...etc)."
 	help
 fi
+
+if is_false "$p_no_proxy"; then
+	export https_proxy=http://proxy.elvees.com:3128
+	export http_proxy=http://proxy.elvees.com:3128
+	export ftp_proxy=http://proxy.elvees.com:3128
+	export no_proxy=127.0.0.1,localhost,elvees.com
+fi
+
+function execute_make() {
+	if is_true "$p_docker_build"; then
+		./docker-build.sh make "$@"
+	else
+		make "$@"
+	fi
+}
 
 p_current_pwd="$PWD"
 p_environment="$(mktemp /tmp/buildroot-env.XXXXXXXXX)"
@@ -186,33 +222,38 @@ for p_build_device in "${p_build_devices[@]}"; do
 		cd "$p_current_pwd"
 
 		p_gerrit_source=""
-		p_toolchain_make_targets=()
+		p_tools_targets=()
+		p_sdk_targets=()
 		case "$p_build_device" in
 		ecam02)
-			p_gerrit_source="mcom02/ecam02"
-			p_toolchain_make_targets=(host-go libxml2 onvifd)
+			p_gerrit_source="ecam02/buildroot"
+			p_tools_targets=(host-go libxml2 onvifd)
+			p_sdk_targets=(sdk)
 			;;
 		ecam03)
 			p_gerrit_source="ecam03/buildroot"
-			p_toolchain_make_targets=(host-go delve libxml2 onvifd)
+			p_tools_targets=(host-go delve libxml2 libarchive onvifd)
+			p_sdk_targets=(sdk)
 			;;
 		*)
 			fatal "Unknown or unsupported build device '$p_build_device'."
 			;;
 		esac
 
-		p_build_make_targets=("${p_build_targets[@]}")
-		if is_eq "${p_build_make_targets[*]}" ""; then
-			if is_eq "$p_build_type" "toolchain"; then
-				p_build_make_targets=("${p_toolchain_make_targets[@]}")
+		p_build_targets=("${p_build_targets[@]}")
+		if is_eq "${p_build_targets[*]}" ""; then
+			if is_eq "$p_build_type" "tools"; then
+				p_build_targets=("${p_tools_targets[@]}")
+			elif is_eq "$p_build_type" "sdk"; then
+				p_build_targets=("${p_sdk_targets[@]}")
 			else
-				p_build_make_targets=("all")
+				p_build_targets=("all")
 			fi
 		fi
 
 		p_build_directory="$p_build_type/${p_build_device}"
 
-		p_message="Building $p_build_type for $p_build_device, make [${p_build_make_targets[*]}]"
+		p_message="Building $p_build_type for $p_build_device, make [${p_build_targets[*]}]"
 		if is_true "$p_clean_build"; then
 			p_message="$p_message, clean build"
 		fi
@@ -249,27 +290,36 @@ for p_build_device in "${p_build_devices[@]}"; do
 		echo "#"
 		echo "# creating $p_fragment_name"
 		echo "#"
-		cat <<EOF >"$p_fragment_name"
-BR2_PACKAGE_DELVE=y
-BR2_PACKAGE_PPROF=y
-BR2_PACKAGE_MOSH=y
-BR2_PACKAGE_DSP_THERMO_TESTS=n
-BR2_PACKAGE_ONVIFD_SYSPARTITIONS=5
-#BR2_PACKAGE_PYTHON_IPCAM_TOOLS=n
-BR2_PACKAGE_NGINX_HTTP_DAV_MODULE=y
-BR2_PACKAGE_NGINX_UPLOAD=y
-BR2_JLEVEL=$(nproc)
-BR2_CCACHE=y
-BR2_PACKAGE_IGD2_FOR_LINUX=y
-BR2_PACKAGE_SSDP_RESPONDER=y
-BR2_PACKAGE_NANO=y
-EOF
+		if [[ -f "$p_current_pwd/local.fragment" ]]; then
+			cp "$p_current_pwd/local.fragment" "$p_fragment_name"
+		fi
+		#		cat <<EOF >"$p_fragment_name"
+		#BR2_PACKAGE_DELVE=y
+		#R2_PACKAGE_PPROF=y
+		#BR2_PACKAGE_MOSH=y
+		#BR2_PACKAGE_DSP_THERMO_TESTS=n
+		#BR2_PACKAGE_ONVIFD_SYSPARTITIONS=5
+		##BR2_PACKAGE_PYTHON_IPCAM_TOOLS=n
+		#BR2_PACKAGE_NGINX_HTTP_DAV_MODULE=y
+		#BR2_PACKAGE_NGINX_UPLOAD=y
+		#BR2_JLEVEL=$(nproc)
+		#BR2_CCACHE=y
+		#BR2_PACKAGE_IGD2_FOR_LINUX=y
+		#BR2_PACKAGE_SSDP_RESPONDER=y
+		#BR2_PACKAGE_NANO=y
+		## Experimental buildroot features:
+		## BR2_PER_PACKAGE_DIRECTORIES=y
+		#BR2_PACKAGE_GPTFDISK=y
+		#BR2_PACKAGE_GPTFDISK_SGDISK=y
+		#BR2_PACKAGE_BASH_COMPLETION=y
+		#BR2_PACKAGE_RSYNC=y
+		#EOF
 
-		# Копируем zoverlay в buildroot
+		# Копируем overlay в buildroot
 		echo "#"
 		echo "# merging overlay into buildroot"
 		echo "#"
-		p_overlay_dir="zoverlay"
+		p_overlay_dir=".overlay"
 		p_overlay_paths=(
 			"common/buildroot"
 			"(DEVICE)/buildroot"
@@ -335,14 +385,15 @@ EOF
 		append_source "LINUX" "linux"
 		append_source "TENSORFLOW_LITE" "tensorflow-lite"
 		append_source "IPCAMWEB_FRONTEND" "ipcamweb-frontend"
+		append_source "UBOOT_TOOLS" "uboot-tools"
 
 		set >"$p_environment"
 
 		# Применение конфигурации
 		if [[ "$p_clean_build" != "" ]]; then
-			make distclean
+			execute_make distclean
 		fi
-		make "${p_build_device}_defconfig" FRAGMENTS=dev:dbg
+		execute_make "${p_build_device}_defconfig" FRAGMENTS=dev:dbg
 
 		# Т.к. sources.redhat.com недоступен, отключаем его.
 		HOSTALIASES_FILE="/var/tmp/hosts_aliases"
@@ -350,22 +401,45 @@ EOF
 		export HOSTALIASES="$HOSTALIASES_FILE"
 
 		# Дополнительный путь к wget_cache
-		if [[ -d "$HOME/.local/bin" ]]; then
-			export PATH=$HOME/.local/bin:$PATH
+		if is_false "$p_no_proxy"; then
+			if [[ -d "$HOME/.local/bin/wget" ]]; then
+				export PATH=$HOME/.local/bin:$PATH
+			fi
 		fi
 
-		#exit 0
-
 		# Сборка Buildroot
-		BR2_JLEVEL="$(nproc)" && export BR2_JLEVEL
-		BR2_CCACHE=y && export BR2_CCACHE
-		for target in "${p_build_make_targets[@]}"; do
+		BR2_JLEVEL="$(nproc)"
+		export BR2_JLEVEL
+		BR2_CCACHE=y
+		export BR2_CCACHE
+		NPROC="-j$(nproc)"
+		for target in "${p_build_targets[@]}"; do
 			if is_true "$p_dry_run_build"; then
-				log "DRY RUN: make -j$(nproc) $target"
+				log "DRY RUN: make $NPROC $target"
 			else
-				make "-j$(nproc)" "$target"
+				set +e
+				retries=1
+				while ((retries > 0)); do
+					echo "--- make $NPROC $target # retries $retries"
+					execute_make "$NPROC" "$target"
+					status="$?"
+					if is_eq "$status" "0"; then
+						break
+					fi
+					error "Failed to build $target, status \"$status\""
+					retries=$((retries - 1))
+				done
+				if ((retries == 0)); then
+					fatal "Failed to build $target, status \"$status\""
+				fi
+				set -e
 			fi
 		done
+
+		# to install matplotlib & numpy:
+		pip3 install matplotlib
+		pip3 install numpy
+		execute_make graph-build
 
 		set +e
 		eval "$(cat "$p_environment")" >/dev/null 2>&1
