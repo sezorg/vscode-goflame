@@ -497,7 +497,7 @@ class WarningsSupressor:
             if line == self.previous_line:
                 continue
             prefixed = line.startswith('level=')
-            if prefixed and Config.excludeNolintWarns and line.index('msg="[runner/nolint]') >= 0:
+            if prefixed and Config.excludeNolintWarns and line.find('msg="[runner/nolint]') >= 0:
                 continue
             if self.output_next or prefixed:
                 self.output(line, prefixed, 1)
