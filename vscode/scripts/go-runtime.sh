@@ -42,6 +42,10 @@ function xis_array() {
 	[[ "$(declare -p "$1")" =~ "declare -a" ]]
 }
 
+function xis_function() {
+	[[ -n "$(LC_ALL=C type -t "$1")" ]] && [[ "$(LC_ALL=C type -t "$1")" = "function" ]]
+}
+
 function xis_succeeded() {
 	xis_eq "$?" "0"
 }
@@ -866,13 +870,11 @@ function xexec() {
 	fi
 	plain_text=$(xargs <<<"$command" 2>/dev/null)
 	executable="${plain_text%% *}"
-	if xis_set "$USE_SHELL_TIMOUT" &&
-		xis_ne "$executable" "timeout" &&
-		xis_ne "$executable" "picocom"; then
+	if xis_set "$USE_SHELL_TIMOUT" && xis_ne "$executable" "timeout" &&
+		xis_ne "$executable" "picocom" && ! xis_function "$executable"; then
 		command="timeout $USE_SHELL_TIMOUT $command"
-		plain_text="timeout $USE_SHELL_TIMOUT $plain_text"
 	fi
-	xdebug "Exec: $plain_text"
+	xdebug "Exec: $command"
 	xfset "+e"
 	{
 		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "$command" 2>/dev/fd/3)
