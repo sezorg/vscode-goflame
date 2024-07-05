@@ -1,5 +1,0 @@
-#!/bin/sh
-
-. "./.CameraConfiguration"
-
-curl -v -F 'somemotiondetector.app=@"Files/somemotiondetector.tar.gz"' "http://$IP/upload/application"
