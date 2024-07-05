@@ -30,10 +30,10 @@ usage() {
 	filename=$(basename "$0")
 	log "Usage: $filename [-r] [-c] [-d] [-f <format-mmc.sh>] [<sd-card>] [<swu-file>]"
 	log "where:"
-	log "    -r                  do not create recovery partition"
 	log "    -m                  create MBR partition table (defaults to GPT)"
 	log "    -c                  clean any cached data, force download"
 	log "    -d                  enable debug messages"
+	log "    -r                  write recovery partition"
 	log "    -f <format-mmc.sh>  name of the script should be executed to flash MMC"
 	log "    sd-card             optional sd card device /dev/<sd-card>"
 	log "    swu-file            local or remote swu file"
@@ -47,7 +47,7 @@ usage() {
 arg_mmc_name=""
 arg_swu_file=""
 arg_format_mmc_path=""
-arg_create_recovery="true"
+arg_write_recovery=""
 arg_create_mbr=""
 arg_purge_cache=""
 arg_debug_mode=""
@@ -63,7 +63,7 @@ while [[ "$#" != "0" ]]; do
 		fi
 		;;
 	-r)
-		arg_create_recovery=""
+		arg_write_recovery="true"
 		shift
 		;;
 	-m)
@@ -253,7 +253,7 @@ filter_output() {
 
 log "Flashing $(basename "$arg_swu_file") image to '$target_mmc_device'..."
 format_mmc_args_list=()
-if [[ "$arg_create_recovery" != "" ]]; then
+if [[ "$arg_write_recovery" != "" ]]; then
 	format_mmc_args_list+=("-r")
 fi
 format_mmc_args_list+=(
