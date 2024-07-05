@@ -117,6 +117,17 @@ function xbegins_with() {
 	esac
 }
 
+function xcontains_substring() {
+	case "$1" in
+	*"$2"*)
+		true
+		;;
+	*)
+		false
+		;;
+	esac
+}
+
 function xtime() {
 	date +%s.%N
 }
@@ -323,6 +334,7 @@ USE_ASYNC_LINTERS=true
 USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 USE_OVERLAY_DIR=true
+USE_SHELL_TIMOUT=10
 INSTALL_SSH_KEYS=false
 
 # Cimpiler messages to be ignored
@@ -621,36 +633,9 @@ EXPORT_CGO_LDFLAGS=()
 EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
 EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
 
-function xresolve_buildroot_real_compilers() {
-	local real="$$1.br_real"
-	if xis_file_exists "$real"; then
-		echo "$real"
-	fi
-	echo "$1"
-}
-
 # Enable debugging of the toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
 # configuratoiopn parameter.
 EXPORT_BR2_DEBUG_WRAPPER="2"
-
-# Override toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
-# configuratoiopn parameter.
-function xoverride_toolchain_wrapper() {
-	local force="$1" toolchain_wrapper="$BUILDROOT_HOST_DIR/bin/toolchain-wrapper"
-	if xis_file_exists "$toolchain_wrapper"; then
-		if ! xis_file_exists "$toolchain_wrapper.org"; then
-			xdebug "Backup and setting up toolchain-wrapper: $toolchain_wrapper"
-			xexec cp -f "$toolchain_wrapper" "$toolchain_wrapper.pre"
-			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
-			xexec mv "$toolchain_wrapper.pre" "$toolchain_wrapper.org"
-		elif xis_true "$force"; then
-			xdebug "Forced setting up toolchain-wrapper: $toolchain_wrapper"
-			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
-		fi
-	fi
-}
-
-xoverride_toolchain_wrapper false
 
 if xis_eq "$TARGET_ARCH" "host"; then
 	BUILDROOT_GOBIN="go"
@@ -870,17 +855,24 @@ function xis_canfail() {
 
 # Execute command which can not fail
 function xexec() {
-	local canfail=
+	local canfail="" command plain_text executable
 	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
 	fi
-	local command="$*" text
+	command="$*"
 	if xis_unset "$command"; then
 		return 0
 	fi
-	text=$(xargs <<<"$command" 2>/dev/null)
-	xdebug "Exec: $text"
+	plain_text=$(xargs <<<"$command" 2>/dev/null)
+	executable="${plain_text%% *}"
+	if xis_set "$USE_SHELL_TIMOUT" &&
+		xis_ne "$executable" "timeout" &&
+		xis_ne "$executable" "picocom"; then
+		command="timeout $USE_SHELL_TIMOUT $command"
+		plain_text="timeout $USE_SHELL_TIMOUT $plain_text"
+	fi
+	xdebug "Exec: $plain_text"
 	xfset "+e"
 	{
 		EXEC_STDOUT=$(chmod u+w /dev/fd/3 && eval "$command" 2>/dev/fd/3)
@@ -890,14 +882,14 @@ function xexec() {
 EOF
 	xfunset
 	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
-		local executable="${text%% *}" prefix message directory
+		local prefix message directory
 		prefix="$executable"
-		text="${text:${#executable}}"
+		plain_text="${plain_text:${#executable}}"
 		directory="$BUILDROOT_HOST_DIR/"
 		if xbegins_with "$executable" "$directory"; then
 			prefix="\$BUILDROOT_HOST/${prefix:${#directory}}"
 		fi
-		xerror "Failed to execute: $(xexecutable_plain "$prefix")$GRAY$text"
+		xerror "Failed to execute: $(xexecutable_plain "$prefix")$GRAY$plain_text"
 		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 		message=$(xsuggest_to_install_message "$executable")
 		if xis_set "$message"; then
@@ -971,6 +963,33 @@ function xfunset() {
 	eval "$oldopts"
 	unset "P_OPTIONS_STACK[-1]"
 }
+
+function xresolve_buildroot_real_compilers() {
+	local real="$$1.br_real"
+	if xis_file_exists "$real"; then
+		echo "$real"
+	fi
+	echo "$1"
+}
+
+# Override toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
+# configuratoiopn parameter.
+function xoverride_toolchain_wrapper() {
+	local force="$1" toolchain_wrapper="$BUILDROOT_HOST_DIR/bin/toolchain-wrapper"
+	if xis_file_exists "$toolchain_wrapper"; then
+		if ! xis_file_exists "$toolchain_wrapper.org"; then
+			xdebug "Backup and setting up toolchain-wrapper: $toolchain_wrapper"
+			xexec cp -f "$toolchain_wrapper" "$toolchain_wrapper.pre"
+			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+			xexec mv "$toolchain_wrapper.pre" "$toolchain_wrapper.org"
+		elif xis_true "$force"; then
+			xdebug "Forced setting up toolchain-wrapper: $toolchain_wrapper"
+			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+		fi
+	fi
+}
+
+xoverride_toolchain_wrapper false
 
 P_CONFIG_HASH_INITIAL=(
 	"$PWD"
@@ -1064,7 +1083,7 @@ function xtty_fatal() {
 }
 
 function xtty_peek_ip() {
-	local output="$1" prompt=true ifconfig=false error="" have_eth=false
+	local output="$1" retries="$2" prompt=true ifconfig=false error="" have_eth=false
 	local step="1" max_steps="5" lines=() line=""
 	P_TTY_SHELL_OUT=""
 	while xis_unset "$error"; do
@@ -1129,7 +1148,12 @@ function xtty_peek_ip() {
 		*"Password:"*)
 			xtty_debug "got password prompt"
 			if ! xtty_exchange "$TTY_PASS" "#"; then
-				error="login failed: missing '#' promt after password"
+				if xcontains_substring "$P_TTY_SHELL_OUT" "login: bad"; then
+					eval "$retries='1'"
+					error="login failed: authorization failed (bad solt)"
+				else
+					error="login failed: missing '#' promt after password"
+				fi
 			fi
 			xtty_debug "got command after login"
 			ifconfig=true
@@ -1163,7 +1187,7 @@ function xtty_resolve_ip() {
 	fi
 	while xis_ne "$retries" "0"; do
 		eval "$output=''"
-		xtty_peek_ip "$output"
+		xtty_peek_ip "$output" "retries"
 		if xis_succeeded; then
 			return 0
 		fi
