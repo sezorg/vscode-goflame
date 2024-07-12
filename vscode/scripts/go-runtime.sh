@@ -1252,7 +1252,9 @@ function xresolve_target_config() {
 				# Not implemented because of missing Jira login/password credentials.
 				xfatal "Failed to resolve asset addrress for $(xdecorate "$TARGET_IPADDR"): Not implemented."
 			fi
+			local target_type="host"
 			if xis_mac_addr "$TARGET_IPADDR"; then
+				target_type="MAC"
 				mac_addr="$(xto_lowercase "$TARGET_IPADDR")"
 				function resolve_ip_from_mac_addr() {
 					xexec "$P_CANFAIL" ip neighbor "|" grep -i "$mac_addr" "|" \
@@ -1280,7 +1282,7 @@ function xresolve_target_config() {
 			else
 				local hostnames=("$TARGET_IPADDR.$TARGET_DOMAIN" "$TARGET_IPADDR")
 				for hostname in "${hostnames[@]}"; do
-					xexec "$P_CANFAIL" getent hosts "$hostname" "|" awk "'{ print \$1 ; exit }'"
+					xexec "$P_CANFAIL" dig +short "$hostname" "|" awk "'{ print \$1 ; exit }'"
 					if xis_eq "$EXEC_STATUS" "0" && xis_ipv4_addr "$EXEC_STDOUT"; then
 						TARGET_IPADDR="$EXEC_STDOUT"
 						TARGET_HOSTNAME="$hostname"
@@ -1290,7 +1292,7 @@ function xresolve_target_config() {
 				done
 			fi
 			if xis_false "$found"; then
-				xfatal "Unable resolve IP for target MAC '$TARGET_IPADDR'."
+				xfatal "Unable resolve IP for target $target_type '$TARGET_IPADDR'."
 			fi
 		fi
 		xssh "uname -m"
