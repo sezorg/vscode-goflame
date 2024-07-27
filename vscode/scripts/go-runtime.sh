@@ -630,6 +630,11 @@ EXPORT_CGO_CYYFLAGS=(
 	#"-g2"
 	#"--verbose"
 )
+
+EXPORT_CGO_CYYFLAGS+=(
+	"-I" "$BUILDROOT_DIR/output/target/usr/include/libxml2"
+)
+
 EXPORT_CGO_CFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
 EXPORT_CGO_CXXFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
 EXPORT_CGO_LDFLAGS=()
