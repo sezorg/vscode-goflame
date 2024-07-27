@@ -19,5 +19,5 @@ LLENCHECK_ENABLE=true
 PRECOMMIT_ENABLE=true
 CLEAN_GOCACHE=true
 
-xcheck_project
+xcheck_project true
 xexit
