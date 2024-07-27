@@ -4,11 +4,11 @@ set -euo pipefail
 
 # --------------------------------------------------------------------------------------------------
 
+#export GOPROXY=http://athens.elvees.com,https://proxy.golang.org,direct
+
 export BR2_PRIMARY_SITE=http://callisto.elvees.com/mirror/buildroot
 export PYTHONUSERBASE=$HOME/.python
 export PATH=$PYTHONUSERBASE/bin:$PATH
-
-export GOPROXY=http://athens.elvees.com,https://proxy.golang.org,direct
 
 # --------------------------------------------------------------------------------------------------
 
@@ -43,12 +43,26 @@ function format_time() {
 	fi
 }
 
+RED=$(printf "\e[31m")
+GREEN=$(printf "\e[32m")
+YELLOW=$(printf "\e[33m")
+BLUE=$(printf "\e[34m")
+GRAY=$(printf "\e[90m")
+UNDERLINE=$(printf "\e[4m")
+LINK="$BLUE$UNDERLINE"
+NC=$(printf "\e[0m")
+NCC=$(printf "\e[0m")
+
+if [[ "$RED$GREEN$YELLOW$BLUE$GRAY$UNDERLINE$LINK$NC$NCC" == "" ]]; then
+	:
+fi
+
 function log() {
-	echo >&2 "$*"
+	echo >&2 "$BLUE$*$NC"
 }
 
 function error() {
-	log "   *** ERROR: $*"
+	log "$RED   *** ERROR: $*$NC"
 }
 
 function fatal() {
@@ -89,6 +103,7 @@ function help() {
 	log "    -c | --clean    Start build from scratch"
 	log "    -d | --dry-run  Dry dun. Download only, not build"
 	log "    -D | --docker   Docker build"
+	log "    -e | --exp      Enable experimental features"
 	log "    -h | --help     Print this help screen & exit"
 	log "         --no-wget  Do not cache wget files"
 	log "         --no-proxy Disable proxies"
@@ -111,6 +126,7 @@ p_build_sdk=false
 p_clean_build=false
 p_dry_run_build=false
 p_docker_build=false
+p_exp_build=false
 p_no_wget=false
 p_no_proxy=false
 while [[ "$#" != "0" ]]; do
@@ -145,6 +161,10 @@ while [[ "$#" != "0" ]]; do
 		;;
 	-D | --docker)
 		p_docker_build=true
+		shift 1
+		;;
+	-e | --exp)
+		p_exp_build=true
 		shift 1
 		;;
 	--no-wget)
@@ -228,12 +248,12 @@ for p_build_device in "${p_build_devices[@]}"; do
 		ecam02)
 			p_gerrit_source="ecam02/buildroot"
 			p_tools_targets=(host-go libxml2 onvifd)
-			p_sdk_targets=(sdk)
+			p_sdk_targets=(sdk libxml2)
 			;;
 		ecam03)
 			p_gerrit_source="ecam03/buildroot"
 			p_tools_targets=(host-go delve libxml2 libarchive onvifd)
-			p_sdk_targets=(sdk)
+			p_sdk_targets=(sdk libxml2)
 			;;
 		*)
 			fatal "Unknown or unsupported build device '$p_build_device'."
@@ -254,8 +274,14 @@ for p_build_device in "${p_build_devices[@]}"; do
 		p_build_directory="$p_build_type/${p_build_device}"
 
 		p_message="Building $p_build_type for $p_build_device, make [${p_build_targets[*]}]"
-		if is_true "$p_clean_build"; then
-			p_message="$p_message, clean build"
+		if is_true "$p_clean_build" || is_true "$p_exp_build"; then
+			if is_true "$p_clean_build"; then
+				p_message="$p_message, clean"
+			fi
+			if is_true "$p_exp_build"; then
+				p_message="$p_message, experimental"
+			fi
+			p_message="$p_message build"
 		fi
 		if is_true "$p_dry_run_build"; then
 			p_message="$p_message, dry-run"
@@ -266,9 +292,9 @@ for p_build_device in "${p_build_devices[@]}"; do
 			rm -rf "${p_build_directory:?}"
 		fi
 
-		echo "#"
-		echo "# cloning ssh://$USER@gerrit.elvees.com:29418/$p_gerrit_source"
-		echo "#"
+		log "#"
+		log "# cloning ssh://$USER@gerrit.elvees.com:29418/$p_gerrit_source"
+		log "#"
 		if [[ ! -d "$p_build_directory" ]]; then
 			mkdir -p "$p_build_directory"
 			git clone "ssh://$USER@gerrit.elvees.com:29418/$p_gerrit_source" "$p_build_directory"
@@ -285,40 +311,30 @@ for p_build_device in "${p_build_devices[@]}"; do
 		git submodule foreach --recursive git reset --hard
 		git submodule update --init --recursive
 
-		# Создание dbg.fragment
-		p_fragment_name="./external-ipcam/$p_build_device-fragments/dbg.fragment"
-		echo "#"
-		echo "# creating $p_fragment_name"
-		echo "#"
+		# Создание make_buildroot.fragment
+		p_target_fragment_name="make_buildroot"
+		p_target_fragment_file="./external-ipcam/$p_build_device-fragments/$p_target_fragment_name.fragment"
+		log "#"
+		log "# creating $p_target_fragment_file"
+		log "#"
+		touch "$p_target_fragment_file"
 		if [[ -f "$p_current_pwd/local.fragment" ]]; then
-			cp "$p_current_pwd/local.fragment" "$p_fragment_name"
+			cp "$p_current_pwd/local.fragment" "$p_target_fragment_file"
 		fi
-		#		cat <<EOF >"$p_fragment_name"
-		#BR2_PACKAGE_DELVE=y
-		#R2_PACKAGE_PPROF=y
-		#BR2_PACKAGE_MOSH=y
-		#BR2_PACKAGE_DSP_THERMO_TESTS=n
-		#BR2_PACKAGE_ONVIFD_SYSPARTITIONS=5
-		##BR2_PACKAGE_PYTHON_IPCAM_TOOLS=n
-		#BR2_PACKAGE_NGINX_HTTP_DAV_MODULE=y
-		#BR2_PACKAGE_NGINX_UPLOAD=y
-		#BR2_JLEVEL=$(nproc)
-		#BR2_CCACHE=y
-		#BR2_PACKAGE_IGD2_FOR_LINUX=y
-		#BR2_PACKAGE_SSDP_RESPONDER=y
-		#BR2_PACKAGE_NANO=y
-		## Experimental buildroot features:
-		## BR2_PER_PACKAGE_DIRECTORIES=y
-		#BR2_PACKAGE_GPTFDISK=y
-		#BR2_PACKAGE_GPTFDISK_SGDISK=y
-		#BR2_PACKAGE_BASH_COMPLETION=y
-		#BR2_PACKAGE_RSYNC=y
-		#EOF
+
+		if is_true "$p_exp_build"; then
+			log "--- Enabling experimental buildroot features"
+			if [[ -f "$p_current_pwd/experimental.fragment" ]]; then
+				cat "$p_current_pwd/experimental.fragment" >>"$p_target_fragment_file"
+			else
+				error "experimental.fragment not found"
+			fi
+		fi
 
 		# Копируем overlay в buildroot
-		echo "#"
-		echo "# merging overlay into buildroot"
-		echo "#"
+		log "#"
+		log "# merging overlay into buildroot"
+		log "#"
 		p_overlay_dir=".overlay"
 		p_overlay_paths=(
 			"common/buildroot"
@@ -333,7 +349,7 @@ for p_build_device in "${p_build_devices[@]}"; do
 					p_overlay_path=${p_overlay_path//"(DEVICE)"/$p_overlay_device}
 					p_overlay_path=${p_overlay_path//"(TYPE)"/$p_overlay_type}
 					if [[ -d "$p_current_pwd/$p_overlay_path" ]]; then
-						echo "Creating overlay path: $p_overlay_path"
+						log "Creating overlay path: $p_overlay_path"
 						mkdir -p "$p_current_pwd/$p_overlay_path"
 					fi
 				done
@@ -354,10 +370,10 @@ for p_build_device in "${p_build_devices[@]}"; do
 					while IFS= read -r -d '' line; do
 						p_cleanup_path="${line#"$p_overlay_path"}"
 						p_cleanup_path="$PWD/${p_cleanup_path%".cleanup"}"
-						echo "--- cleaning ${p_cleanup_path:?}/"*
+						log "--- cleaning ${p_cleanup_path:?}/"*
 						rm -rfv "${p_cleanup_path:?}/"*
 					done
-				echo "--- copying $p_overlay_path -> $PWD/"
+				log "--- copying $p_overlay_path -> $PWD/"
 				cp -arfv "$p_overlay_path/." "$PWD/."
 			fi
 		done
@@ -371,14 +387,14 @@ for p_build_device in "${p_build_devices[@]}"; do
 			local name="$1" target="$2"
 			local directory="$p_current_pwd/$p_overlay_dir/sources/$p_build_device/$target/git"
 			if [[ -d "$directory" ]]; then
-				echo "--- Fetching Git $directory"
+				log "--- Fetching Git $directory"
 				git -C "$directory" fetch
-				echo "--- Pulling Git $directory"
+				log "--- Pulling Git $directory"
 				branch="$(git -C "$directory" rev-parse --abbrev-ref HEAD)"
 				branch=$(basename -- "$branch")
 				git -C "$directory" pull origin "$branch"
 				local param="${name}_OVERRIDE_SRCDIR = $directory"
-				echo "--- adding $param"
+				log "--- adding $param"
 				echo "$param" >>"./buildroot/local.mk"
 			fi
 		}
@@ -389,15 +405,25 @@ for p_build_device in "${p_build_devices[@]}"; do
 
 		set >"$p_environment"
 
+		log "#"
+		log "# cleaning  GO packages from previous build"
+		log "#"
+		p_share_go_path="$PWD/buildroot/output/host/share/go-path"
+		if test -d "$p_share_go_path"; then
+			chmod 700 -R "$p_share_go_path"
+			rm -rf "$p_share_go_path/pkg/mod/*"
+		fi
+
 		# Применение конфигурации
-		if [[ "$p_clean_build" != "" ]]; then
+		export CMAKE_COLOR_DIAGNOSTICS=ON
+		if is_true "$p_clean_build"; then
 			execute_make distclean
 		fi
-		execute_make "${p_build_device}_defconfig" FRAGMENTS=dev:dbg
+		execute_make "${p_build_device}_defconfig" "FRAGMENTS=dev:$p_target_fragment_name"
 
 		# Т.к. sources.redhat.com недоступен, отключаем его.
 		HOSTALIASES_FILE="/var/tmp/hosts_aliases"
-		echo "127.0.0.1	sources.redhat.com" >"$HOSTALIASES_FILE"
+		echo "127.0.0.1 sources.redhat.com" >"$HOSTALIASES_FILE"
 		export HOSTALIASES="$HOSTALIASES_FILE"
 
 		# Дополнительный путь к wget_cache
@@ -420,7 +446,7 @@ for p_build_device in "${p_build_devices[@]}"; do
 				set +e
 				retries=1
 				while ((retries > 0)); do
-					echo "--- make $NPROC $target # retries $retries"
+					log "--- make $NPROC $target # retries $retries"
 					execute_make "$NPROC" "$target"
 					status="$?"
 					if is_eq "$status" "0"; then

@@ -1,0 +1,2 @@
+# Experimental buildroot features:
+# BR2_PER_PACKAGE_DIRECTORIES=y
