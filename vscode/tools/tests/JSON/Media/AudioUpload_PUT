@@ -1,0 +1,6 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl -u "$USER:$PASS" -v --upload-file Files/audioupload.mp3 "http://$IP/upload/aplay"
+#curl -u "$USER:$PASS" -v -F 'audioupload.mp3=@"Files/audioupload.mp3"' "http://$IP/upload/aplay"
