@@ -1,0 +1,9 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+output_file="/var/tmp/facedb-thumbnail.jpg"
+rm -f "$output_file"
+curl -u "$USER:$PASS" -w -S -v --digest http://$IP/download/facedb/Jacob_Batalon/thumbnail.jpg --output "$output_file"
+xdg-open "$output_file"
+
