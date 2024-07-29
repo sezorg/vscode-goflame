@@ -1,0 +1,7 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl -v -F 'somemotiondetector.app=@"Files/somemotiondetector.tar.gz"' \
+	--cookie "Username=admin; PasswordDigest=44Ei94TGwDf5gtiBq+UZfM+4rR4=; Nonce=ZTNlOTQ0YTQ1ZjViMDU4OWM1NWM=; Created=2024-07-27T11:32:52.586Z" \
+	"http://$IP/upload/application"
