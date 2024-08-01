@@ -87,11 +87,10 @@ function xhas_prefix() {
 	[[ "$input_string" == "$prefix"* ]]
 }
 
-function xjoin_strings() {
-	local separator="$1" length="${#1}" joined
+function xjoin_strings {
+	local IFS="$1"
 	shift
-	joined=$(printf "$separator%s" "$@")
-	echo "${joined:$length}"
+	echo "$*"
 }
 
 function xjoin_elements() {
@@ -217,6 +216,44 @@ function xunreferenced() {
 	return 0
 }
 
+# Benchmarking SSH connection: What is the fastest cipher algorithm for RPi?
+# https://blog.twogate.com/entry/2020/07/30/benchmarking-ssh-connection-what-is-the-fastest-cipher
+#
+# Following chipers/MACs/KEXes are obtained from ECAM03DM-r1.0.
+# See "tools/ssh-bench.sh" script for more details.
+
+SCP_CIPHERS=(
+	"chacha20-poly1305@openssh.com"
+	"aes128-gcm@openssh.com"
+	"aes192-ctr,aes128-ctr"
+	"aes256-gcm@openssh.com,aes256-ctr"
+)
+
+SCP_MACS=(
+	"hmac-sha2-512-etm@openssh.com"
+	"hmac-sha2-256"
+	"umac-128@openssh.com"
+	"umac-128-etm@openssh.com"
+	"hmac-sha1-etm@openssh.com"
+	"hmac-sha2-512"
+	"umac-64@openssh.com"
+	"hmac-sha1"
+	"umac-64-etm@openssh.com"
+	"hmac-sha2-256-etm@openssh.com"
+)
+
+SCP_KEXES=(
+	"ecdh-sha2-nistp256"
+	"diffie-hellman-group14-sha256"
+	"curve25519-sha256@libssh.org"
+	"curve25519-sha256"
+	"ecdh-sha2-nistp521"
+	"diffie-hellman-group16-sha512"
+	"ecdh-sha2-nistp384"
+	"diffie-hellman-group18-sha512"
+	"diffie-hellman-group-exchange-sha256"
+)
+
 SCP_FLAGS=(
 	-T
 	-o StrictHostKeyChecking=no
@@ -227,8 +264,9 @@ SCP_FLAGS=(
 	-o ServerAliveCountMax=2
 	-o Compression=no
 	#-o CompressionLevel=9
-	-o Ciphers="aes128-ctr,aes192-ctr,aes256-ctr"
-	-o MACs="hmac-sha1"
+	-o Ciphers="$(xjoin_strings "," "${SCP_CIPHERS[@]:0:3}")"
+	-o MACs="$(xjoin_strings "," "${SCP_MACS[@]:0:3}")"
+	-o KexAlgorithms="$(xjoin_strings "," "${SCP_KEXES[@]:0:3}")"
 	-o ControlMaster=auto
 	-o ControlPersist=600
 	-o ControlPath=/var/tmp/ssh-%r@%h-%p
