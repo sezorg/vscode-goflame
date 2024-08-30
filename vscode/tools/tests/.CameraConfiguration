@@ -42,12 +42,21 @@ function help() {
 	log "   ${blue}./GetImagingSettings$nc ${gray}VideoSourceToken=\"src\"$nc"
 }
 
+function is_true() {
+	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
+}
+
+function is_false() {
+	[[ ! "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
+}
+
 IP=""
 ARGS=()
 DEF_TIMEOUT="2"
 TIMEOUT=""
 USER="admin"
 PASS="admin"
+NO_AUTH=false
 while [[ "$#" != 0 ]]; do
 	debug "arg: $1"
 	case "$1" in
@@ -210,7 +219,7 @@ function set_timeout() {
 
 function json_test() {
 	parse_json_args
-	local service method output retcode status decoded start_time elapsed
+	local service method output retcode status decoded start_time elapsed args
 	service="$(dirname "$1")"
 	method="$(basename -- "$1")"
 	log "$blue$IP$nc: $gray$service.$method()$nc"
@@ -220,8 +229,13 @@ function json_test() {
 	if [[ "$TIMEOUT" == "" ]]; then
 		TIMEOUT="$DEF_TIMEOUT"
 	fi
-	output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" \
-		-a "$IP" -u "$USER" -p "$PASS" -s "$service" -c "$method" -l "$JSON" 2>&1)
+	args=(-a "$IP")
+	if is_false "$NO_AUTH"; then
+		args+=(-u "$USER" -p "$PASS")
+	fi
+	args+=(-s "$service" -c "$method")
+	#log "Calling: python3 $BASE/ipcam_request.py ${args[@]} -l $JSON"
+	output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
 	retcode="$?"
 	elapsed=$(format_time "$start_time" "$(date +%s.%N)")
 	if [[ "$retcode" == "124" ]]; then
