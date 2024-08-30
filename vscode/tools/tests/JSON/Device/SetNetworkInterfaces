@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+  cat <<DELIMITER
+{
+  "InterfaceToken": "eth0",
+  "NetworkInterface": {
+    "Enabled": true,
+    "Link": {
+      "AutoNegotiation": true,
+      "Speed": 100,
+      "Duplex": "Full"
+    },
+    "IPv4": {
+      "Enabled": true,
+      "Manual": null,
+      "DHCP": true
+    },
+    "IPv6": {
+      "Enabled": true,
+      "AcceptRouterAdvert": false,
+      "Manual": [],
+      "DHCP": "Auto"
+    }
+  }
+}
+DELIMITER
+)
+json_test device/SetNetworkInterfaces
