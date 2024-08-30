@@ -5,8 +5,9 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Id": "Jacob/Batalon"
+	"Offset": 2,
+	"MaxCount": 5
 }
 DELIMITER
 )
-json_test analytics/GetFace
+json_test analytics/GetAllFaces

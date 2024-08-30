@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "Jacob/Batalon",
+	"ImageType": "identification_image"
+}
+DELIMITER
+)
+json_test analytics/StartUploadFaceImages

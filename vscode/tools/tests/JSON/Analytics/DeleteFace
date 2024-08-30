@@ -5,8 +5,8 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Id": "Jacob/Batalon"
+	"Id": ["Jacob/Batalon", "Thomas_Stanley"]
 }
 DELIMITER
 )
-json_test analytics/GetFace
+json_test analytics/DeleteFace

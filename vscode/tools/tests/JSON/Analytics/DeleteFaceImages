@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "Jacob/Batalon",
+	"Images": [
+		"http://$IP/download/facedb/Jacob_Batalon/thumbnail.jpg",
+		"http://$IP/download/facedb/Jacob_Batalon/1.jpg"
+	]
+}
+DELIMITER
+)
+json_test analytics/DeleteFaceImages

@@ -1,0 +1,13 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "Jacob/Batalon",
+	"FirstName": "SomeFirstName - $RANDOM"
+}
+DELIMITER
+)
+json_test analytics/ModifyFace

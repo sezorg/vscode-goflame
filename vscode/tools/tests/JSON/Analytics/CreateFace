@@ -5,8 +5,9 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Id": "Jacob/Batalon"
+	"FirstName": "Ivan",
+	"LastName": "$RANDOM"
 }
 DELIMITER
 )
-json_test analytics/GetFace
+json_test analytics/CreateFace
