@@ -27,12 +27,12 @@
 
 import argparse
 import functools
+import json
 import os
 import re
+import shutil
 import subprocess
 import sys
-import inspect
-import json
 from contextlib import ExitStack
 
 
@@ -45,7 +45,7 @@ class Config:
         self.rebase_for_all = False
         self.unprotect_git = True
         self.expire_unreachable = False
-        self.patch_number = -1
+        self.patch_number = ''
         self.default_master_branch = 'master'
 
 
@@ -154,8 +154,8 @@ def parse_arguments():
         '-u', '--patch-number',
         help='The patch number to be checked out after all',
         required=False,
-        type=int,
-        default=-1,
+        type=str,
+        default='',
     )
     parser.add_argument(
         '-p', '--patchsets',
@@ -198,7 +198,6 @@ def parse_arguments():
         required=False,
         help='User id or command')
     arguments, unknown_args = parser.parse_known_args()
-    debug(f'{unknown_args}')
     arguments.exitCode = 0
     arguments.warnCount = 0
     config.debug_level = arguments.debug
@@ -209,14 +208,17 @@ def parse_arguments():
     config.expire_unreachable = arguments.expire_unreachable
     config.subject_enabled = arguments.subject
     for argument in unknown_args:
-        if argument.isnumeric():
-            if config.patch_number != -1:
+        debug(f'Parsing argument {decorate(argument)}')
+        digits = re.findall(r'\d+', argument)
+        debug(f'digits={digits}')
+        if digits and len(digits) != 0:
+            if config.patch_number != '':
                 warning(f'Patch number {config.patch_number} already set')
-                continue
-            config.patch_number = int(argument)
+            else:
+                config.patch_number = digits[0]
             continue
         if arguments.command != '' and not arguments.command is None:
-            warning(f'Command {arguments.command} already set')
+            warning(f'Command {decorate(arguments.command)} already set')
             continue
         arguments.command = argument
     debug(f'arguments={arguments}, config={config}')
@@ -289,6 +291,7 @@ class State:
         self.change_id = self.number = self.subject = self.email = \
             self.username = self.url = self.wip = self.priv = self.patch_num = \
             self.curr_num = self.revision = self.ref = self.mode = ''
+        self.selected = False
         self.parents = []
         self.child_count = 0
         self.branch_name = ''
@@ -323,6 +326,7 @@ class GerritTags:
         self.branch_index = 0
         self.current_revision = ''
         self.current_branch = ''
+        self.current_patch_number = ''
         self.subject_limit = 65
         self.gerrit_host = ''
         self.gerrit_port = []
@@ -331,7 +335,8 @@ class GerritTags:
         self.state_by_rev = {}
         self.containing_master = []
         self.repeat_refresh = False
-        self.patch_number = str(config.patch_number) if config.patch_number >= 0 else ''
+        self.patch_number = config.patch_number
+        self.selected_state = None
         debug(f'Gerrit filter: {self.filter}')
 
     def resolve_current(self):
@@ -343,7 +348,14 @@ class GerritTags:
         if not status.succed():
             fatal('Failed to obtain current branch name')
         self.current_branch = status.stdout.strip()
-        debug(f'Curent branch {decorate(self.current_branch)} at {self.current_revision}')
+        if self.current_branch.startswith(self.branch_prefix):
+            branch = self.current_branch[len(self.branch_prefix):]
+            digits = re.findall(r'\d+', branch)
+            if digits and len(digits) != 0:
+                self.current_patch_number = digits[0]
+            if '.' in self.current_branch:
+                self.all_users = True
+            debug(f'Curent branch {decorate(self.current_branch)} at {self.current_revision}')
 
     def remove_branches(self):
         status = Shell(['git', 'branch', '--format', '%(refname:short)'])
@@ -351,6 +363,7 @@ class GerritTags:
             fatal('Unable get list of actual Git branches')
         branches = status.stdout.split('\n')
         self.branch_index = 0
+        branches_delete = []
         for branch_name in branches:
             if branch_name.startswith(self.branch_prefix):
                 if branch_name == self.current_branch:
@@ -358,12 +371,14 @@ class GerritTags:
                     status = Shell(['git', 'checkout', self.current_revision])
                     if not status.succed():
                         fatal(f'Failed to checkout to {self.current_revision}')
-                debug(f'Deleting local branch {decorate(branch_name)}')
                 if config.unprotect_git:
-                    status = Shell(['git', 'branch', '-D', branch_name])
-                    if not status.succed():
-                        fatal(f'Can not delete branch {decorate(branch_name)}')
+                    branches_delete.append(branch_name)
                 self.branch_index += 1
+        if len(branches_delete) != 0:
+            debug(f'Deleting local branches: {branches_delete}')
+            status = Shell(['git', 'branch', '-D']+branches_delete)
+            if not status.succed():
+                fatal(f'Can not delete branches: {branches_delete}')
 
     def cleanup_pending(self):
         if not config.expire_unreachable:
@@ -421,9 +436,14 @@ class GerritTags:
         status = Shell(args + self.filter)
         if not status.succed():
             fatal(f'Failed to fetch from {self.repository_url}')
-        # file:///var/tmp/gerrit-project.txt
-        with open('/var/tmp/gerrit-project.txt', 'w', encoding='utf-8') as project_text:
-            project_text.write(status.stdout)
+        # file:///var/tmp/gerrit-project/all.txt
+        debug_dir = '/var/tmp/gerrit-project'
+        if config.debug_level > 0:
+            if os.path.isdir(debug_dir):
+                shutil.rmtree(debug_dir)
+            os.makedirs(debug_dir)
+            with open(f'{debug_dir}/all.txt', 'w', encoding='utf-8') as project_text:
+                project_text.write(status.stdout)
         lines = status.stdout.split('\n')
         line_index = 0
         line_count = len(lines)
@@ -433,6 +453,9 @@ class GerritTags:
             if line == '':
                 continue
             project = json.loads(line)
+            if config.debug_level > 0:
+                with open(f'{debug_dir}/project-{line_index}.txt', 'w', encoding='utf-8') as out:
+                    json.dump(project, out)
             state = State()
             if not {'id', 'number', 'subject', 'url', 'owner', 'currentPatchSet'} <= project.keys():
                 continue
@@ -446,11 +469,14 @@ class GerritTags:
                 state.priv = project['private']
             owner = project['owner']
             if not {'email', 'username'} <= owner.keys():
+                warning(f'Invalid owner: {owner} in state {decorate(state.number)}')
                 continue
             state.email = owner['email']
             state.username = owner['username']
             current_patch_set = project['currentPatchSet']
             if not {'number', 'revision', 'ref', 'parents'} <= current_patch_set.keys():
+                warning('Invalid current_patch_set: ' +
+                        f'{current_patch_set} in state {decorate(state.number)}')
                 continue
             state.patch_num = str(current_patch_set['number'])
             state.curr_num = str(current_patch_set['number'])
@@ -460,105 +486,9 @@ class GerritTags:
             state.mode = 'currentPatchSetAdd'
             self.state_list.append(state)
             self.state_by_rev[state.revision] = state
-            debug(f'Revision {state.revision} patches ' +
+            debug(f'State {state.number} revision {state.revision} patches ' +
                   f'{state.curr_num}/{state.patch_num} registered .')
         self.state_list.sort(key=functools.cmp_to_key(GerritTags.compare_branches))
-        self.select_current_branch()
-        return
-
-    def do_noting(self):
-        # self.print_header()
-        lines = []
-        state = State()
-        mode = ''
-        line_index = 0
-        line_count = len(lines)
-        while line_index < line_count:
-            line = lines[line_index]
-            line_index += 1
-            if line.startswith('change '):
-                state = State()
-                state.change_id = line[7:].strip()
-                mode = 'change'
-                # debug(f'{mode} || change_id = {state.change_id} mode = {mode}')
-            if mode == 'change':
-                if line.startswith('  number: '):
-                    state.number = line[10:].strip()
-                    # debug(f'{mode} || number = {state.number}')
-                if line.startswith('  subject: '):
-                    state.subject = line[11:].strip()
-                    # debug(f'{mode} || subject = {state.subject}')
-                if line.startswith('    email: '):
-                    state.email = line[11:].strip()
-                    # debug(f'{mode} || email = {state.email}')
-                if line.startswith('    username: '):
-                    state.username = line[14:].strip()
-                    # debug(f'{mode} || username = {state.username}')
-                if line.startswith('  url: '):
-                    state.url = line[7:].strip()
-                    # debug(f'{mode} || url = {state.url}')
-                if line.startswith('  wip: '):
-                    state.wip = line[7:].strip()
-                    # debug(f'{mode} || wip = {state.wip}')
-                if line.startswith('  isPrivate: '):
-                    state.priv = line[13:].strip()
-                    # debug(f'{mode} || priv = {state.priv}')
-                if line.startswith('  currentPatchSet:'):
-                    mode = 'currentPatchSet'
-                    # debug(f'{mode} || mode = {mode}')
-            if mode in ('currentPatchSet', 'patchSets'):
-                if line.startswith('    number: '):
-                    state.patch_num = line[12:].strip()
-                    debug(f'{mode} || patch_num = {state.patch_num}')
-                    if mode == 'currentPatchSet':
-                        state.curr_num = state.patch_num
-                        # debug(f'{mode} || curr_num = {state.curr_num}')
-                if line.startswith('    revision: '):
-                    state.revision = line[14:].strip()
-                    # debug(f'{mode} || revision = {state.revision}')
-                if line.startswith('    ref: '):
-                    state.ref = line[9:].strip()
-                    mode = mode + 'Add'
-                    # debug(f'{mode} || ref = {state.ref} mode = {mode}')
-            if mode == 'currentPatchSet':
-                if line.startswith('    parents:'):
-                    succeeded = False
-                    if line_index < line_count:
-                        line = lines[line_index]
-                        line_index += 1
-                        if line.startswith(' [') and line.endswith(']'):
-                            state.parents = [line[2:-1]]
-                            debug(f'{mode} || ref = {state.ref} parents = {state.parents}')
-                            succeeded = True
-                    if not succeeded:
-                        warning(f'Faild to parse parents on ref {state.revision}.')
-            if mode == 'listPatchSets':
-                debug(f'{mode} || line = {line}')
-                if line.startswith('  patchSets:'):
-                    state.patch_num = ''
-                    state.revision = ''
-                    state.ref = ''
-                    mode = 'patchSets'
-                    debug(f'{mode} patchests node started')
-            if mode in ('currentPatchSetAdd', 'patchSetsAdd'):
-                if state.change_id != '' and state.number != '' and \
-                        state.subject != '' and state.email != '' and \
-                        state.email != '' and state.url != '' and \
-                        state.patch_num != '' and state.curr_num != '' and \
-                        state.revision != '' and state.ref != '':
-                    if mode == 'currentPatchSetAdd' or state.patch_num != state.curr_num:
-                        state.mode = mode
-                        self.state_list.append(state)
-                        self.state_by_rev[state.revision] = state
-                        debug(f'Revision {state.revision} patches ' +
-                              f'{state.curr_num}/{state.patch_num} registered .')
-                        state = State()
-                mode = ''
-                if self.patchsets:
-                    mode = 'listPatchSets'
-                debug(f'{mode} || patchsets = {self.patchsets}')
-        self.state_list.sort(key=functools.cmp_to_key(GerritTags.compare_branches))
-        self.select_current_branch()
         return
 
     @staticmethod
@@ -575,16 +505,6 @@ class GerritTags:
         if string1 > string2:
             return 1
         return 0
-
-    def select_current_branch(self):
-        if self.patch_number == '':
-            return
-        for state in self.state_list:
-            if self.patch_number == state.number:
-                self.current_revision = state.revision
-                self.current_branch = state.branch_name
-                break
-        return
 
     def find_state_by_rev(self, revision):
         if revision in self.state_by_rev:
@@ -624,13 +544,42 @@ class GerritTags:
             branch_name = branch_name.strip()
             if branch_name.startswith(self.branch_prefix):
                 self.containing_master.append(branch_name)
-        debug(f'Branchprefix {decorate(self.branch_prefix)}')
+        debug(f'Branch prefix: {decorate(self.branch_prefix)}')
         debug(f'List of {decorate(self.master_branch)} branches: {self.containing_master}')
         # print table of the branches created
+        debug(f'Searching for patch_number={decorate(self.patch_number)}; ' +
+              f'current_patch_number={decorate(self.current_patch_number)}; ' +
+              f'current_branch={decorate(self.current_branch)}; ' +
+              f'current_revision={decorate(self.current_revision)}')
+        self.select_branch('patch_number')
+        self.select_branch('current_patch_number')
+        self.select_branch('current_branch')
+        self.select_branch('current_revision')
         self.print_header(username_len)
         for state in self.state_list:
             self.print_branch(state, username_len)
         self.print_header(username_len)
+        if self.selected_state is None and self.patch_number != '':
+            warning(f'Failed to select patch number {decorate(self.patch_number)}.')
+
+    def select_branch(self, mode):
+        if self.selected_state is not None:
+            return
+        debug(f'Select branch by {mode}...')
+        for state in self.state_list:
+            if (mode == 'patch_number' and self.patch_number == state.number) or \
+                    (mode == 'current_patch_number' and self.current_patch_number == state.number) or \
+                    (mode == 'current_branch' and self.current_branch == state.branch_name) or \
+                    (mode == 'current_revision' and self.current_revision == state.revision):
+                debug(f'Selected {decorate(state.branch_name)} by {decorate(mode)}; ' +
+                      f'number={decorate(state.number)}; ' +
+                      f'current_patch_number={decorate(self.current_patch_number)}; ' +
+                      f'branch_name={decorate(state.branch_name)}; ' +
+                      f'revision={decorate(state.revision)}')
+                state.selected = True
+                self.selected_state = state
+                return
+        return
 
     def create_branch(self, mode, state) -> None:
         if self.email not in ('', state.email):
@@ -758,46 +707,22 @@ class GerritTags:
             print(f'{text}')
 
     def checkout_branch(self):
-        if self.patch_number != "":
-            if self.checkout_to(self.patch_number, '', ''):
+        targets = []
+        if self.selected_state is not None:
+            targets.append(self.selected_state.branch_name)
+        if self.current_branch != '' and not self.current_branch in targets:
+            targets.append(self.current_branch)
+        if self.current_revision != '' and not self.current_revision in targets:
+            targets.append(self.current_revision)
+        if self.master_branch != '' and not self.master_branch in targets:
+            targets.append(self.master_branch)
+        debug(f'Checking out targets: {targets}')
+        for target in targets:
+            status = Shell(['git', 'checkout', target])
+            if status.succed():
                 return
-            warning(f'Failed to check out to patch numver {self.patch_number}')
-        debug(f'Checking out branch {decorate(self.current_branch)} '
-              f'revision {self.current_revision}')
-        if not self.checkout_to('', self.current_branch, self.current_revision):
-            known_branch = self.current_branch == 'HEAD' or \
-                self.current_branch == self.master_branch
-            chekout_target = self.current_branch
-            if not known_branch:
-                chekout_target = self.current_revision
-                warning(f'Unable to find local branch {decorate(self.current_branch)}'
-                        f' with rev {self.current_revision}')
-            status = Shell(['git', 'checkout', chekout_target])
-            if not status.succed():
-                fatal(f'Failed to checkout to branch {decorate(self.current_branch)}'
-                      f' revision {self.current_revision}')
-
-    def checkout_to(self, patch_number, branch_name, revision):
-        if self.checkout_lookup(patch_number, '', revision):
-            debug(f'Checked out to: patch {patch_number} revision {decorate(revision)}')
-            return True
-        if self.checkout_lookup(patch_number, branch_name, ''):
-            debug(f'Checked out to: patch {patch_number} branch {decorate(branch_name)}')
-            return True
-        return False
-
-    def checkout_lookup(self, patch_number, branch_name, revision):
-        for state in self.state_list:
-            if patch_number == state.number or \
-                    branch_name == state.branch_name or \
-                    revision == state.revision:
-                debug(f'Checking out back to branch {decorate(state.branch_name)} '
-                      f'revision {state.revision}')
-                status = Shell(['git', 'checkout', state.branch_name])
-                if not status.succed():
-                    fatal(f'Failed to checkout to {decorate(state.branch_name)} branch')
-                return True
-        return False
+            warning(f'Failed to checkout to target {decorate(target)}')
+        fatal(f'Failed to checkout to targets {targets}')
 
     def print_header(self, username_len):
         if self.patchsets or self.all_users:
@@ -862,8 +787,7 @@ class GerritTags:
             info += Colors.red + f' [{len(subject)}>{self.subject_limit}]'
             subject = Colors.red + subject[:self.subject_limit-3] + '...'
         text = f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} |{info}{Colors.nc}'
-        if self.current_branch == state.branch_name or \
-                self.current_revision == state.revision:
+        if state.selected:
             text = inverse(text)
         print(text)
 

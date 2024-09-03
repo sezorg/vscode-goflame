@@ -94,11 +94,11 @@ function gp() {
 }
 
 function gt() {
-	"getags.py" "$@"
+	"getags2.py" "$@"
 }
 
-function gt2() {
-	"getags2.py" "$@"
+function gt0() {
+	"getags.py" "$@"
 }
 
 function _error() {
