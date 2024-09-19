@@ -4,7 +4,7 @@
 
 	// List of extensions which should be recommended for users of this workspace.
 	"recommendations": [
-		"golang.go-nightly",
+		"golang.go",
 		"imgg.go-critic-imgg",
 		"rioj7.command-variable",
 	]
