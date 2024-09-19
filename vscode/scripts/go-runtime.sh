@@ -181,6 +181,7 @@ function xelapsed() {
 P_TIME_STARTED="$(date +%s.%N)"
 P_TIME_PREV_OUT="$P_TIME_STARTED"
 P_TIME_PREV_LOG="$P_TIME_STARTED"
+
 trap xat_exit_trap EXIT
 
 function xat_exit_trap() {
@@ -902,7 +903,7 @@ function xis_canfail() {
 
 # Execute command which can not fail
 function xexec() {
-	local canfail="" command plain_text executable
+	local canfail="" command plain_text executable base
 	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
@@ -913,9 +914,13 @@ function xexec() {
 	fi
 	plain_text=$(xargs <<<"$command" 2>/dev/null)
 	executable="${plain_text%% *}"
-	if xis_set "$USE_SHELL_TIMOUT" && xis_ne "$executable" "timeout" &&
-		xis_ne "$executable" "picocom" && ! xis_function "$executable"; then
-		command="timeout $USE_SHELL_TIMOUT $command"
+	if xis_set "$USE_SHELL_TIMOUT" && ! xis_function "$executable"; then
+		base="$(basename -- "$executable")"
+		if xis_ne "$base" "timeout" && xis_ne "$base" "go" && xis_ne "$base" "picocom"; then
+			command="timeout $USE_SHELL_TIMOUT $command"
+		else
+			command="timeout 30 $command"
+		fi
 	fi
 	xdebug "Exec: $command"
 	xfset "+e"
@@ -1160,7 +1165,7 @@ function xtty_peek_ip() {
 				fi
 			done
 			if xis_false "$have_eth"; then
-				error="device have Ethernet"
+				error="device have no Ethernet?"
 			else
 				error="device have no IP address"
 			fi
@@ -1208,8 +1213,8 @@ function xtty_peek_ip() {
 			error="no response from device"
 			;;
 		*)
-			xtty_debug "got invalid/unknown TTY response"
-			error="invalid/unknown response from device"
+			xtty_debug "got invalid/unknown TTY response: $P_TTY_SHELL_OUT"
+			error="invalid/unknown response from device: $P_TTY_SHELL_OUT"
 			;;
 		esac
 		step=$((step + 1))
