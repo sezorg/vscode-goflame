@@ -3,6 +3,11 @@
 
 BASE=$(realpath "$(dirname "$PWD/${BASH_SOURCE[0]}")")
 
+export http_proxy=
+export ftp_proxy=$http_proxy
+export https_proxy=$http_proxy
+export no_proxy=
+
 red=$(printf "\e[31m")
 green=$(printf "\e[32m")
 blue=$(printf "\e[34m")
