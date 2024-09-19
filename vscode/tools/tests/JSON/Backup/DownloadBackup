@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+output_file="/var/tmp/facedb-thumbnail.jpg"
+rm -f "$output_file"
+curl --digest -u "$USER:$PASS" -w -S -v --digest http://$IP/onvif/backup --output "$output_file"
+if [[ -f "$output_file" ]]; then
+    echo "-----------------------"
+    cat "$output_file"
+fi
+
