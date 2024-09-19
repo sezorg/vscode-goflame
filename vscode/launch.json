@@ -60,6 +60,7 @@
             "args": [
                 "-settings",
                 "/root/onvifd.settings"
+                //"-log" "date,time,short,utc,us,color,ex"
             ],
             "internalConsoleOptions": "openOnSessionStart",
 			"preLaunchTask": "launch-deploy-debug",
@@ -78,6 +79,8 @@
             ],
             "preLaunchTask": "launch-deploy-execute",
             "postDebugTask": "launch-deploy-terminate",
+            "showLog": true,
+            "trace": "verbose",
         },
         {
             "name": "GO Run StaticCheck",
