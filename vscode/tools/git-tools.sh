@@ -20,6 +20,7 @@ SSH_FLAGS=(
 )
 
 function gh() {
+	echo "gl:   git shortlog ..."
 	echo "gri:  git rebase --interactive HEAD~\$1"
 	echo "grc:  git rebase --continue"
 	echo "grm:  git rebase --update-refs master"
@@ -56,6 +57,10 @@ function master_branch_lookup() {
 	return 1
 }
 
+function gl() {
+    git shortlog --summary --numbered --all --no-merges --email
+}
+
 function gri() {
 	git config rebase.abbreviateCommands true
 	git rebase --interactive "HEAD~$1"
@@ -63,9 +68,13 @@ function gri() {
 
 function grc() {
 	git rebase --continue
+	if [[ -f ./Makefile ]]; then
+	echo " "
+	make
+	fi
 }
 
-function grm() {
+function gru() {
 	git rebase --update-refs "$(master_branch_lookup)"
 }
 
@@ -386,6 +395,18 @@ function ss() {
 	_set_konsole_title "SSH on $user@$ip_address" "SSH on $user@$ip_address"
 	sshpass -p "$pass" ssh \
 		"${SSH_FLAGS[@]}" "$user@$ip_address" 2> >(grep -E -v '^Warning: Permanently added' >&2)
+	_set_konsole_title
+}
+
+function dl() {
+	local user="root" pass="root" ip_address
+	ip_address=$(_resolve_variable "$*" "" "last_ip_addr" "Target IP address parameter expected")
+	if _is_empty_argument "$*"; then
+		echo "Connecting to $ip_address"
+	fi
+	_set_konsole_title "SSH on $user@$ip_address" "SSH on $user@$ip_address"
+	sshpass -p "$pass" ssh \
+		"${SSH_FLAGS[@]}" "$user@$ip_address" "dl" 2>&1 | grep -E -v '^Warning: Permanently added'
 	_set_konsole_title
 }
 
