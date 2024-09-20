@@ -81,6 +81,23 @@ function xto_lowercase() {
 	echo "$lowercase_string"
 }
 
+function xto_uppercase() {
+	input_string=$1
+	uppercase_string=${input_string^^}
+	echo "$uppercase_string"
+}
+
+function xvar() {
+	local base="$1" suffix="$2" composite
+	composite="${base}_$(xto_uppercase "$suffix")"
+	if [[ -v "$composite" ]]; then
+		echo "${!composite}"
+		return 0
+	fi
+	echo "${!base}"
+	return 1
+}
+
 function xhas_prefix() {
 	input_string="$1"
 	prefix="$2"
@@ -377,7 +394,7 @@ USE_ASYNC_LINTERS=true
 USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 USE_OVERLAY_DIR=true
-USE_SHELL_TIMOUT=10
+USE_SHELL_TIMEOUT=10
 INSTALL_SSH_KEYS=false
 
 # Cimpiler messages to be ignored
@@ -903,7 +920,7 @@ function xis_canfail() {
 
 # Execute command which can not fail
 function xexec() {
-	local canfail="" command plain_text executable base
+	local canfail="" command plain_text executable base timeout=""
 	if xis_canfail "${1:-}"; then
 		canfail="${1:-}"
 		shift
@@ -914,12 +931,26 @@ function xexec() {
 	fi
 	plain_text=$(xargs <<<"$command" 2>/dev/null)
 	executable="${plain_text%% *}"
-	if xis_set "$USE_SHELL_TIMOUT" && ! xis_function "$executable"; then
+	if xis_set "$USE_SHELL_TIMEOUT" && ! xis_function "$executable"; then
 		base="$(basename -- "$executable")"
-		if xis_ne "$base" "timeout" && xis_ne "$base" "go" && xis_ne "$base" "picocom"; then
-			command="timeout $USE_SHELL_TIMOUT $command"
-		else
-			command="timeout 30 $command"
+		case "$base" in
+		"cat" | "cp" | "dig" | "echo" | "find" | "ip" | "ln" | "mkdir" | \
+			"mv" | "nmap" | "picocom" | "pigz" | "ping" | "rm" | "sed" | \
+			"ssh-keygen" | "stty" | "tail" | "timeout") ;;
+		"go" | "golangci-lint" | "python3" | "rsync" | "sshpass")
+			timeout="$USE_SHELL_TIMEOUT"
+			;;
+		*)
+			if ! timeout="$(xvar USE_SHELL_TIMEOUT "$base")"; then
+				xdebug "WARNING: Unknown timeout for executable: $base"
+				xwarn "WARNING: Unknown timeout for executable: $base"
+			fi
+			;;
+		esac
+		if xis_ne "$timeout" ""; then
+			#
+			command="timeout --kill-after=$timeout $timeout $command"
+			:
 		fi
 	fi
 	xdebug "Exec: $command"
@@ -974,6 +1005,7 @@ function xexec_status() {
 	"127") message="command not found" ;;
 	"128") message="invalid argument" ;;
 	"130") message="terminated by Ctrl-C" ;;
+	"137") message="process killed by timeout" ;;
 	esac
 	if xis_set "$message"; then
 		echo "$BLUE$EXEC_STATUS$NC: $message"
