@@ -276,7 +276,7 @@ class GitConfig:
             error('Unable to retrieve repository URL')
             fatal('Looks like current directory is not a valid Git repository')
         self.master_branch = ''
-        for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03']:
+        for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03', 'mcom03']:
             status = Shell(['git', 'rev-parse', '--verify',
                            branch_name], silent=True)
             if status.succed():
@@ -590,9 +590,9 @@ class GerritTags:
             entry_name = state.number + self.branch_separator + 'R' + state.patch_num
             if mode == 'currentPatchSetAdd':
                 entry_name = state.number + self.branch_separator + 'CUR'
-        if state.priv == 'true':
+        if state.priv:
             entry_name += self.branch_separator + 'PRIV'
-        elif state.wip == 'true':
+        elif state.wip:
             entry_name += self.branch_separator + 'WIP'
         # if state.child_count == 0:
         #    entry_name += self.branch_separator + 'TOP'
