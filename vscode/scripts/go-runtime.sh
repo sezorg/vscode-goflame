@@ -395,6 +395,7 @@ USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 USE_OVERLAY_DIR=true
 USE_SHELL_TIMEOUT=10
+USE_GOLANG_TIMEOUT=120
 INSTALL_SSH_KEYS=false
 
 # Cimpiler messages to be ignored
@@ -937,8 +938,11 @@ function xexec() {
 		"cat" | "cp" | "dig" | "echo" | "find" | "ip" | "ln" | "mkdir" | \
 			"mv" | "nmap" | "picocom" | "pigz" | "ping" | "rm" | "sed" | \
 			"ssh-keygen" | "stty" | "tail" | "timeout") ;;
-		"go" | "golangci-lint" | "python3" | "rsync" | "sshpass")
+		"python3" | "rsync" | "sshpass")
 			timeout="$USE_SHELL_TIMEOUT"
+			;;
+		"go" | "golangci-lint")
+			timeout="$USE_GOLANG_TIMEOUT"
 			;;
 		*)
 			if ! timeout="$(xvar USE_SHELL_TIMEOUT "$base")"; then
