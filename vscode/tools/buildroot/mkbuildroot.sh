@@ -4,8 +4,6 @@ set -euo pipefail
 
 # --------------------------------------------------------------------------------------------------
 
-#export GOPROXY=http://athens.elvees.com,https://proxy.golang.org,direct
-
 export BR2_PRIMARY_SITE=http://callisto.elvees.com/mirror/buildroot
 export PYTHONUSERBASE=$HOME/.python
 export PATH=$PYTHONUSERBASE/bin:$PATH
@@ -223,7 +221,14 @@ if is_false "$p_no_proxy"; then
 	export http_proxy=http://proxy.elvees.com:3128
 	export ftp_proxy=http://proxy.elvees.com:3128
 	export no_proxy=127.0.0.1,localhost,elvees.com
+	export GOPROXY=http://athens.elvees.com,https://proxy.golang.org,direct
 fi
+
+log "export https_proxy=$https_proxy"
+log "export http_proxy=$http_proxy"
+log "export ftp_proxy=$ftp_proxy"
+log "export no_proxy=$no_proxy"
+log "export GOPROXY=$GOPROXY"
 
 function execute_make() {
 	if is_true "$p_docker_build"; then
