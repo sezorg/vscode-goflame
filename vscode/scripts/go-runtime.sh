@@ -1316,11 +1316,11 @@ function xresolve_target_config() {
 	if xis_set "$P_RESOLVE_REASON"; then
 		xdebug "Creating target config for '$TARGET_IPADDR' in $P_VSCODE_CONFIG_PATH, reason: $P_RESOLVE_REASON"
 		xclean_directories "$P_CACHEDB_DIR" "$P_UPLOAD_DIR" "$P_SCRIPTS_DIR"
-		if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
-			TTY_PORT="$TARGET_IPADDR"
-		fi
-		if xis_eq "$TARGET_IPADDR" "tty"; then
+		if xis_eq "$TARGET_IPADDR" "tty" || xhas_prefix "$TARGET_IPADDR" "/dev/"; then
 			local target_ip=""
+			if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
+				TTY_PORT="$TARGET_IPADDR"
+			fi
 			if ! xtty_resolve_ip "target_ip"; then
 				if xis_set "$target_ip"; then
 					xfatal "Unable to get IP from TTY $(xdecorate "$TTY_PORT"): $target_ip"
