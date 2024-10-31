@@ -1,0 +1,27 @@
+[
+    {
+        "key": "ctrl+b",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Goflame: Build workspace"
+    },
+    {
+        "key": "ctrl+shift+b",
+        "command": "workbench.action.tasks.runTask",
+        "args": "Goflame: Check&build workspace"
+    },
+    {
+        "key": "f2",
+        "command": "workbench.action.debug.stop",
+        "when": "inDebugMode && !focusedSessionIsAttach"
+    },
+    {
+        "key": "f5",
+        "command": "workbench.action.debug.start",
+        "when": "debuggersAvailable && debugState == 'inactive'"
+    },
+    {
+        "key": "f5",
+        "command": "workbench.action.debug.continue",
+        "when": "debugState == 'stopped'"
+    }
+]

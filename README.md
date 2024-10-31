@@ -4,4 +4,4 @@
 
 # Документация
 
-[Удалённая отладка Go через VSCode](doc/index.html)
+[HTML](doc/index.html) [PDF](doc/index.pdf)

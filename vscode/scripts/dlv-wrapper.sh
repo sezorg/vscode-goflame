@@ -14,4 +14,4 @@ source "$SCRIPT_DIR/go-runtime.sh"
 xdebug "Dlv Args: $*"
 xflash_pending_commands
 xexec "$LOCAL_DLVBIN" "$@"
-xexit
+xexec_exit

@@ -8,17 +8,15 @@
 set -euo pipefail
 
 P_TEMP_DIR="/var/tmp/goflame"
-P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/config-vscode.ini"
+P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/vscode-target.conf"
 
-function xbegins_with() {
+function xstring_begins_with() {
 	case "$1" in
 	"$2"*)
-		true
-		;;
-	*)
-		false
+		return 0
 		;;
 	esac
+	return 1
 }
 
 function xis_file_exists() {
@@ -27,7 +25,7 @@ function xis_file_exists() {
 
 args=()
 for arg in "$@"; do
-	if ! xbegins_with "$arg" "-I/usr/include"; then
+	if ! xstring_begins_with "$arg" "-I/usr/include"; then
 		args+=("$arg")
 	fi
 done
@@ -37,7 +35,7 @@ if xis_file_exists "$P_VSCODE_CONFIG_PATH"; then
 	# shellcheck disable=SC1090
 	source "$P_VSCODE_CONFIG_PATH"
 	tool_path="$0"
-	if xbegins_with "$tool_path" "$HOST_BUILDROOT/"; then
+	if xstring_begins_with "$tool_path" "$HOST_BUILDROOT/"; then
 		tool_path="\$BUILDROOT_DIR${tool_path:${#HOST_BUILDROOT}}"
 	fi
 	time_stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"

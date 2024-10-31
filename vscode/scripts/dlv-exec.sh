@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
-# Execute binary on the targets wich does not support Delve debugging.
+# Execute binary on the targets which does not support Delve debugging.
 
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
+DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
+DLOOP_RESTART_FILE="__DLOOP_RESTART_FILE__"
 
 if [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
@@ -48,7 +48,7 @@ unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
 EXEC_BINARY_PATH="__TARGET_BINARY_PATH__"
 EXEC_BINARY_ARGS=(__TARGET_BINARY_ARGS__)
-EXEC_SUPRESS_MSSGS=(__TARGET_SUPRESS_MSSGS__)
+EXEC_SUPPRESS_MSSGS=(__TARGET_SUPPRESS_MSSGS__)
 
 PATTERN="TARGET_BINARY_PATH"
 if [[ "$EXEC_BINARY_PATH" == "__${PATTERN}__" ]]; then
@@ -93,8 +93,8 @@ function self_test() {
 	fi
 }
 
-SUPRESS_PATTERN="$(printf "\n%s" "${EXEC_SUPRESS_MSSGS[@]}")"
-SUPRESS_PATTERN="${SUPRESS_PATTERN:1}"
+SUPPRESS_PATTERN="$(printf "\n%s" "${EXEC_SUPPRESS_MSSGS[@]}")"
+SUPPRESS_PATTERN="${SUPPRESS_PATTERN:1}"
 
 s1=$(digest "$0")
 first_time_run="1"
@@ -109,8 +109,10 @@ while true; do
 	self_test
 	if [[ ! -f "$DLOOP_ENABLE_FILE" ]]; then
 		additional_sleep="1"
-		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"
-		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
+		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined" \
+			"state.$NC"
+		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW before continue. Waiting for" \
+			"completion...$NC"
 		while [[ ! -f "$DLOOP_ENABLE_FILE" ]]; do
 			self_test
 			usleep 500000
@@ -133,7 +135,8 @@ while true; do
 	if [[ ! -f "$EXEC_BINARY_PATH" ]]; then
 		additional_sleep="1"
 		log "${YELLOW}Unable to run application: target binary file $EXEC_BINARY_PATH not found.$NC"
-		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
+		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW before continue. Waiting for" \
+			"completion...$NC"
 		while [[ ! -f "$EXEC_BINARY_PATH" ]]; do
 			self_test
 			usleep 500000
@@ -161,7 +164,7 @@ while true; do
 
 	cleanup
 	log "Starting $EXEC_BINARY_PATH [${EXEC_BINARY_ARGS[*]}]"
-	sh -c "\"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
+	sh -c "\"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1 | grep -v \"$SUPPRESS_PATTERN\"" &
 
 	EXE_PROCESS_PID="$!"
 

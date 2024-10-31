@@ -1,9 +1,1 @@
-
-[[Users]]
-  Password = "admin"
-  UserLevel = "Administrator"
-  Username = "admin"
-
-[XMLName]
-  Local = ""
-  Space = ""
+../../../../init/users.toml

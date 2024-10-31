@@ -1,3 +1,5 @@
+// Copyright 2024 RnD Center "ELVEES", JSC
+
 package main
 
 import (

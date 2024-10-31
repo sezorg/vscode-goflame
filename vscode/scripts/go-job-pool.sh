@@ -1,11 +1,13 @@
 #!/bin/bash
+# Copyright 2024 RnD Center "ELVEES", JSC
 
 # Job pooling for bash shell scripts
 # This script provides a job pooling functionality where you can keep up to n
 # processes/functions running in parallel so that you don't saturate a system
 # with concurrent processes.
 #
-# Got inspiration from http://stackoverflow.com/questions/6441509/how-to-write-a-process-pool-bash-shell
+# Got inspiration from
+# http://stackoverflow.com/questions/6441509/how-to-write-a-process-pool-bash-shell
 #
 # Copyright (c) 2012 Vince Tse
 # with changes by Geoff Clements (c) 2014
@@ -171,7 +173,7 @@ function job_pool_init() {
 	local pool_size=$1
 	local echo_command=$2
 
-	# set the global attibutes
+	# set the global attributes
 	job_pool_pool_size=${pool_size:=1}
 	job_pool_echo_command=${echo_command:=0}
 

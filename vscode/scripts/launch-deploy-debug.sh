@@ -43,7 +43,7 @@ if xis_true "$DEPLOY_DELVE"; then
 	)
 fi
 
-# Advised target stripts that the initial upload deploy is complete.
+# Advised target scripts that the initial upload deploy is complete.
 EXECUTE_COMMANDS+=(
 )
 

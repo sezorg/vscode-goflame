@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# Copyright 2024 RnD Center "ELVEES", JSC
 
 #
 # According to the current `git diff', perform a line length constraint analysis to filter the
@@ -129,14 +130,14 @@ def parse_arguments():
     )
     parser.add_argument(
         '-p', '--parse-input',
-        help='Parse STDIN and suppress messages whis does not belongs to current `git diff`',
+        help='Parse STDIN and suppress messages which does not belongs to current `git diff`',
         required=False,
         action='store_true',
         default=False,
     )
     parser.add_argument(
         '-e', '--exclude-list',
-        help='Supress messages outside current patch set',
+        help='Suppress messages outside current patch set',
         required=False,
         type=str,
         default="",
@@ -204,18 +205,18 @@ class Shell:
         self.stdout = stdout.decode()
         self.stderr = stderr.decode()
         self.status = proc.returncode
-        if not silent and not self.succed():
+        if not silent and not self.succeed():
             error(f'Failed to execute: {self.params}')
             error(f'{self.stderr.strip()}')
 
-    def succed(self):
+    def succeed(self):
         return self.status == 0
 
     def debug(self):
         # debug(f'Shell params: {self.params}')
         # debug(f'Shell stdout: {self.stdout}')
         # debug(f'Shell stderr: {self.stderr}')
-        # debug(f'Shell status: {self.status}, succed {self.succed()}')
+        # debug(f'Shell status: {self.status}, succeed {self.succeed()}')
         return
 
 
@@ -231,7 +232,7 @@ class GitDiff:
     def __init__(self):
         self.change_list = []
         result = Shell(['git', 'status'])
-        if not result.succed():
+        if not result.succeed():
             fatal('Unable to run \'git status\' on project')
         if 'interactive rebase in progress' in result.stdout:
             expr = r'interactive rebase in progress; onto ([\w]+)'
@@ -246,13 +247,13 @@ class GitDiff:
         return
 
     def run_on_commit(self, commit_in, commit_in_post, commit_out, commit_out_post):
-        argumens = ['git', 'diff']
+        arguments = ['git', 'diff']
         if commit_in != "":
-            argumens.append(commit_in + commit_in_post)
+            arguments.append(commit_in + commit_in_post)
         if commit_out != "":
-            argumens.append(commit_out + commit_out_post)
-        result = Shell(argumens)
-        if not result.succed():
+            arguments.append(commit_out + commit_out_post)
+        result = Shell(arguments)
+        if not result.succeed():
             fatal('Unable to run \'git diff\' on project')
         text = io.StringIO(result.stdout)
         patch_set = unidiff.PatchSet(text)
@@ -269,7 +270,7 @@ class GitDiff:
 class GitFiles:
     def __init__(self):
         config = Shell(['git', 'ls-tree', '-r', 'master', '--name-only'])
-        if not config.succed():
+        if not config.succeed():
             fatal('Unable to run \'git diff\' on project')
         self.files = config.stdout.split('\n')
 
@@ -340,7 +341,7 @@ class BuiltinLintersRunner:
         if length > Config.lineLengthLimit and self.line_text[length-1] != '`':
             if self.file_path in ['go.mod', 'go.sum']:
                 return
-            if self.is_supressed(type_id):
+            if self.is_suppressed(type_id):
                 return
             self.output_message(type_id, 'Maximum line length exceeded '
                                 f'({length} > {Config.lineLengthLimit})')
@@ -348,7 +349,7 @@ class BuiltinLintersRunner:
 
     def process_wrapcheck(self):
         type_id = 'wrapcheck'
-        check_list = ['fmt.Error', 'errors.Wrap', 'errors.New', 'errors.Error']
+        check_list = ['fmt.'+'Error', 'errors.'+'Wrap', 'errors.'+'New', 'errors.'+'Error']
         offset = - 1
         for check in check_list:
             offset = self.line_text.find(check)
@@ -356,7 +357,7 @@ class BuiltinLintersRunner:
                 break
         if offset < 0:
             return False
-        if self.is_supressed(type_id):
+        if self.is_suppressed(type_id):
             return
         length = len(self.line_text)
         while offset < length and self.line_text[offset] != '"':
@@ -370,7 +371,7 @@ class BuiltinLintersRunner:
                 self.process_wrapcheck_word(type_id, word)
         else:
             self.output_message(
-                type_id, 'Unable to filed error string. Consider to use one-line expression')
+                type_id, 'Unable to figure out error string. Consider to use one-line expression')
         return
 
     def process_wrapcheck_word(self, type_id, word):
@@ -394,23 +395,23 @@ class BuiltinLintersRunner:
 
     def process_declcheck(self):
         type_id = 'declcheck'
-        if self.line_text.replace(" ", "").find(':nil') >= 0 and not self.is_supressed(type_id):
+        if self.line_text.replace(" ", "").find(':'+'nil') >= 0 and not self.is_suppressed(type_id):
             self.output_message(type_id, 'Nil field initialization can be omitted')
             return
         offset = self.line_text.find(':=')
         if offset < 0:
             return False
-        if self.line_text.endswith('""') and not self.is_supressed(type_id):
+        if self.line_text.endswith('""') and not self.is_suppressed(type_id):
             self.output_message(type_id, 'Consider initializing an empty string with var keyword')
             return
         if ((self.line_text.find('[]') >= 0 and self.line_text.endswith('{}')) or
-                self.line_text.endswith('(nil)')) and not self.is_supressed(type_id):
+                self.line_text.endswith('(nil)')) and not self.is_suppressed(type_id):
             self.output_message(type_id, 'Explicit variable declaration should use var keyword')
         return
 
     def process_deprecheck(self):
         type_id = 'deprecheck'
-        check_list = ['errors.Wrap']
+        check_list = ['errors.'+'Wrap']
         offset = - 1
         check = ''
         for check in check_list:
@@ -419,7 +420,7 @@ class BuiltinLintersRunner:
                 break
         if offset < 0:
             return False
-        if self.is_supressed(type_id):
+        if self.is_suppressed(type_id):
             return
         self.output_message(type_id, f'Use of method is deprecated: \'{check}\'')
         return
@@ -437,27 +438,27 @@ class BuiltinLintersRunner:
                 return
             if self.line_text.startswith(')'):
                 self.output_message(type_id, f'Sep end {self.in_imports}')
-                if self.in_imports > 2 and not self.is_supressed(type_id):
+                if self.in_imports > 2 and not self.is_suppressed(type_id):
                     self.output_message(type_id, 'Multiple separator lines in imports block')
                 self.in_imports = 0
                 return
         return
 
-    def is_supressed(self, supress):
+    def is_suppressed(self, suppress):
         prefix = 'nolint:'
         offset = self.line_text.rfind(prefix)
         if offset < 0:
             return False
         for option in self.line_text[offset+len(prefix):].split(','):
             option = option.strip()
-            if option == supress:
+            if option == suppress:
                 return True
             if option == '':
                 return False
         return False
 
     def output_message(self, type_id, message):
-        if self.is_supressed(type_id):
+        if self.is_suppressed(type_id):
             return
         prefix = f'{self.file_path}:{self.line_index}: '
         print(f'{prefix}{message} ({type_id})')
@@ -474,7 +475,7 @@ class BuiltinLintersRunner:
             return None
 
 
-class WarningsSupressor:
+class WarningsSuppressor:
     def __init__(self, git_diff):
         self.git_diff = git_diff
         self.previous_line = ''
@@ -484,10 +485,10 @@ class WarningsSupressor:
     def run(self):
         have_exclude_list = Config.excludeList != ""
         identifiers = Config.excludeList.split(',')
-        # debug(f'supression list={identifiers}')
-        supress_list = {}
+        # debug(f'suppression list={identifiers}')
+        suppress_list = {}
         for identifier in identifiers:
-            supress_list[identifier] = True
+            suppress_list[identifier] = True
         patched_lines = GitPatchLines(self.git_diff).get()
         input_lines = sys.stdin.readlines()
         self.previous_line = ''
@@ -511,7 +512,7 @@ class WarningsSupressor:
             if self.in_dictionary(words, patched_lines):
                 self.output(line, prefixed, 2)
             elif (Config.printAll or (
-                    have_exclude_list and not self.in_dictionary(words, supress_list))):
+                    have_exclude_list and not self.in_dictionary(words, suppress_list))):
                 if not Config.excludeNonPrefixed:
                     self.output(line + ' [not-in-diff]', prefixed, 3)
                 elif re.match(r'([^:]*):([0-9]+):', words[0]):
@@ -565,8 +566,8 @@ def main():
     parse_arguments()
     git_diff = GitDiff()
     if Config.parseInput or select.select([sys.stdin, ], [], [], 0.0)[0]:
-        debug('Starting WarningsSupressor...')
-        WarningsSupressor(git_diff).run()
+        debug('Starting WarningsSuppressor...')
+        WarningsSuppressor(git_diff).run()
     else:
         debug('Starting BuiltinLintersRunner...')
         BuiltinLintersRunner(git_diff).run()

@@ -1,7 +1,12 @@
+// Copyright 2024 RnD Center "ELVEES", JSC
+
 // Allow <USER> to manage nginx.service;
 // fall back to implicit authorization otherwise.
 // Use the following command to install:
-//     sudo sed -e "s/<USER>/$USER/g" -e 'w /etc/polkit-1/rules.d/99-manage-nginx.rules' ./99-manage-nginx.rules
+//     sudo sed -e "s/<USER>/$USER/g" -e \
+//         'w /etc/polkit-1/rules.d/99-manage-nginx.rules' \
+//         ./99-manage-nginx.rules
+
 polkit.addRule(function(action, subject) {
     if (action.id == "org.freedesktop.systemd1.manage-units" &&
         action.lookup("unit") == "nginx.service" &&

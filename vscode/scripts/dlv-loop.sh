@@ -1,11 +1,17 @@
 #!/usr/bin/env bash
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
-# Run Delve in inifinite DAP loop with local console capture
+# Run Delve in infinite DAP loop with local console capture
 # To terminate use `ds' command
 
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
+DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
+DLOOP_STATUS_FILE="__DLOOP_STATUS_FILE__"
+
+PATTERN="TARGET_PORT"
+if [[ "__TARGET_PORT__" == "__${PATTERN}__" ]]; then
+	log "${RED}IP port number is not set. Do not run this script directly.$NC"
+	exit "1"
+fi
 
 if [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
@@ -40,7 +46,8 @@ BLUE=$(printf "\e[34m")
 GRAY=$(printf "\e[90m")
 NC=$(printf "\e[0m")
 
-IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' | grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
+IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' |
+	grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
 
 function log() {
 	echo "$BLUE|| $*$NC"
@@ -48,12 +55,6 @@ function log() {
 
 function unused() { :; }
 unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
-
-PATTERN="TARGET_IPPORT"
-if [[ "__TARGET_IPPORT__" == "__${PATTERN}__" ]]; then
-	log "${RED}IP port number is not set. Do not run this script directly.$NC"
-	exit "1"
-fi
 
 function cleanup() {
 	if [[ -f "$DLOOP_STATUS_FILE" ]]; then
@@ -95,22 +96,22 @@ function self_test() {
 	fi
 }
 
-SUPRESS_LIST=()
+SUPPRESS_LIST=()
 # -- Application startup messages
-SUPRESS_LIST+=("warning layer=rpc Listening for remote connections")
-#SUPRESS_LIST+=("concrete subprogram without address range at")
-#SUPRESS_LIST+=("inlined call without address range at")
-SUPRESS_LIST+=(" without address range at ")
-SUPRESS_LIST+=("debug layer=debugger")
-SUPRESS_LIST+=("info layer=debugger created breakpoint:")
-SUPRESS_LIST+=("info layer=debugger cleared breakpoint:")
-# -- Interactive debuger related messages
-SUPRESS_LIST+=("Failed to execute cursor closing: ERROR: cursor")
+SUPPRESS_LIST+=("warning layer=rpc Listening for remote connections")
+#SUPPRESS_LIST+=("concrete subprogram without address range at")
+#SUPPRESS_LIST+=("inlined call without address range at")
+SUPPRESS_LIST+=(" without address range at ")
+SUPPRESS_LIST+=("debug layer=debugger")
+SUPPRESS_LIST+=("info layer=debugger created breakpoint:")
+SUPPRESS_LIST+=("info layer=debugger cleared breakpoint:")
+# -- Interactive debugger related messages
+SUPPRESS_LIST+=("Failed to execute cursor closing: ERROR: cursor")
 # --- Annoying application messages
-SUPRESS_LIST+=(__TARGET_SUPRESS_MSSGS__)
+SUPPRESS_LIST+=(__TARGET_SUPPRESS_MSSGS__)
 
-SUPRESS_PATTERN="$(printf "\n%s" "${SUPRESS_LIST[@]}")"
-SUPRESS_PATTERN="${SUPRESS_PATTERN:1}"
+SUPPRESS_PATTERN="$(printf "\n%s" "${SUPPRESS_LIST[@]}")"
+SUPPRESS_PATTERN="${SUPPRESS_PATTERN:1}"
 
 s1=$(digest "$0")
 first_time_run="1"
@@ -125,8 +126,10 @@ while :; do
 	self_test
 	if [[ ! -f "$DLOOP_ENABLE_FILE" ]]; then
 		additional_sleep=1
-		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined state.$NC"
-		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for completion...$NC"
+		log "${YELLOW}The device to be debugged has been rebooted and is now in a non-determined" \
+			"state.$NC"
+		log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW before continue. Waiting for" \
+			"completion...$NC"
 		while [[ ! -f "$DLOOP_ENABLE_FILE" ]]; do
 			self_test
 			sleep 1
@@ -139,7 +142,8 @@ while :; do
 		additional_sleep=1
 		if [[ "$first_time_run" != "" ]]; then
 			log "${YELLOW}Unable to locate Delve/DLV binary.$YELLOW"
-			log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW befor continue. Waiting for deploy...$NC"
+			log "${YELLOW}Please run $BLUE\"Go: Build Workspace\"$YELLOW before continue." \
+				"Waiting for deploy...$NC"
 		else
 			log "Waiting for the Build&Deploy process to complete..."
 		fi
@@ -164,7 +168,8 @@ while :; do
 
 	self_test
 	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://$IP"
-	sh -c "$dlv_binary dap --listen=:__TARGET_IPPORT__ --api-version=2 --log 2>&1 | grep -v \"$SUPRESS_PATTERN\"" &
+	dap_args="--listen=:__TARGET_PORT__ --api-version=2 --check-go-version=false --log 2>&1"
+	sh -c "$dlv_binary dap $dap_args | grep -v \"$SUPPRESS_PATTERN\"" &
 	dlv_pid="$!"
 
 	echo "$dlv_pid" >"$DLOOP_STATUS_FILE"

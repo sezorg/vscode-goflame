@@ -6,57 +6,79 @@
         {
             "label": "launch-deploy-debug",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-debug.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": true
+            "hide": true,
+            "command": ".vscode/scripts/launch-deploy-debug.sh"
         },
         {
             "label": "launch-deploy-execute",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-execute.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": true
+            "hide": true,
+            "command": ".vscode/scripts/launch-deploy-execute.sh"
         },
         {
             "label": "launch-deploy-execute",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-deploy-execute.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": true
+            "hide": true,
+            "command": ".vscode/scripts/launch-deploy-execute.sh"
         },
         {
             "label": "launch-deploy-terminate",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/go-execute-stop.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": true
+            "hide": true,
+            "command": ".vscode/scripts/launch-deploy-terminate.sh"
         },
         {
             "label": "launch-go-staticcheck",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-go-staticcheck.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": false
+            "hide": true,
+            "command": ".vscode/scripts/launch-go-staticcheck.sh"
         },
         {
             "label": "launch-x86-prepare",
             "type": "process",
-            "command": "${workspaceFolder}/.vscode/scripts/launch-x86-prepare.sh",
+            "group": "build",
             "echoCommand": false,
-            "hide": false
+            "hide": true,
+            "command": ".vscode/scripts/launch-x86-prepare.sh"
         },
         {
+            "label": "Goflame: Build workspace",
+            "detail": "Go: Build Workspace: ${workspaceFolder}",
             "type": "go",
-            "label": "go: build workspace",
+            "group": "build",
+            "hide": true,
             "command": "build",
             "args": [
                 "./..."
             ],
             "problemMatcher": [
                 "$go"
-            ],
+            ]
+        },
+        {
+            "label": "Goflame: Check&build workspace",
+            "detail": "Go: Check&build Workspace: ${workspaceFolder}",
+            "type": "go",
             "group": "build",
-            "detail": "Go: Build Workspace: ${workspaceFolder}"
+            "hide": true,
+            "command": "build",
+            "args": [
+                "--goflame-check",
+                "./..."
+            ],
+            "problemMatcher": [
+                "$go"
+            ]
         }
     ]
 }

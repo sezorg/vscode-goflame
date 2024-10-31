@@ -4,11 +4,66 @@
 # GO compiler wrapper environment
 #
 # Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
+#
+# Lookup for unnecessary complex variable references: \$\{\w+\}([^\w]|$)
 
 set -euo pipefail
-#set -x
+#set -x # enable execution trace
 
-# Lokuup for unnecessary complex variable references: \$\{\w+\}([^\w]|$)
+CE=$'\u1B[' # Color escape
+RED="${CE}31m"
+GREEN="${CE}32m"
+ORANGE="${CE}33m"
+BLUE="${CE}34m"
+PURPLE="${CE}35m"
+CIAN="${CE}36m"
+LTGRAY="${CE}37m"
+GRAY="${CE}90m"
+UNDERLINE="${CE}4m"
+LINK="$BLUE$UNDERLINE"
+NC="${CE}0m"
+NCC="${CE}0m"
+EP="" # echo prefix
+PI="\`"
+PO="'"
+
+P_COLOR_FILTER="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
+P_ELAPSED_PREFIX=""
+P_ELAPSED_COLOR=""
+
+P_EMIT_XLAT_BASE=()
+P_EMIT_XLAT_FULL=()
+P_EMIT_XLAT="full" # full|base|none
+P_EMIT_PREFIX=""
+P_IGNORE_PATTERN=""
+P_DEBUG_TTY=false
+P_DEBUG_GOENV=false
+P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
+P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
+P_TIME_STARTED="$(date +%s.%N)"
+P_TIME_CON_OUT=""
+P_TIME_LOG_OUT=""
+
+P_TEMP_DIR="/var/tmp/goflame"
+P_CACHEDB_DIR="$P_TEMP_DIR/cachedb"
+P_SCRIPTS_DIR="$P_TEMP_DIR/scripts"
+P_UPLOAD_DIR="$P_TEMP_DIR/upload"
+
+mkdir -p "$P_TEMP_DIR" "$P_CACHEDB_DIR" "$P_UPLOAD_DIR"
+
+WRAPPER_LOGFILE="$P_TEMP_DIR/go-wrapper.log"
+XECHO_ENABLED=false
+XDEBUG_ENABLED=false
+
+BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
+BUILDROOT_HOST_DIR="UNKNOWN-BUILDROOT_HOST"
+BUILDROOT_TARGET_DIR="UNKNOWN-BUILDROOT_TARGET"
+EXPORT_GOROOT="UNKNOWN-GOROOT"
+EXPORT_GOTOOLDIR="UNKNOWN-GOTOOLDIR"
+EXPORT_GOPATH="UNKNOWN-GOPATH"
+EXPORT_GOMODCACHE="UNKNOWN-GOMODCACHE"
+EXPORT_GOCACHE="UNKNOWN-GOCACHE"
+EXPORT_GOENV="UNKNOWN-GOENV"
 
 function xis_true() {
 	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
@@ -36,6 +91,18 @@ function xis_eq() {
 
 function xis_ne() {
 	[[ "$1" != "$2" ]]
+}
+
+function xis_lt() {
+	[[ "$1" -lt "$2" ]]
+}
+
+function xis_ge() {
+	[[ "$1" -ge "$2" ]]
+}
+
+function xis_gt() {
+	[[ "$1" -gt "$2" ]]
 }
 
 function xis_array() {
@@ -75,21 +142,13 @@ function xis_mac_addr() {
 	[[ "$*" =~ $pattern ]]
 }
 
-function xto_lowercase() {
-	input_string=$1
-	lowercase_string=${input_string,,}
-	echo "$lowercase_string"
-}
-
-function xto_uppercase() {
-	input_string=$1
-	uppercase_string=${input_string^^}
-	echo "$uppercase_string"
+function xsed_escape() {
+	printf '%s' "$*" | sed -e 's/[\/&-\"]/\\&/g'
 }
 
 function xvar() {
 	local base="$1" suffix="$2" composite
-	composite="${base}_$(xto_uppercase "$suffix")"
+	composite="${base}_$(xstring_to_uppercase "$suffix")"
 	if [[ -v "$composite" ]]; then
 		echo "${!composite}"
 		return 0
@@ -98,22 +157,59 @@ function xvar() {
 	return 1
 }
 
-function xhas_prefix() {
-	input_string="$1"
-	prefix="$2"
-	[[ "$input_string" == "$prefix"* ]]
+function xstring_to_lowercase() {
+	local input_string="$1"
+	echo "${input_string,,}"
 }
 
-function xjoin_strings {
+function xstring_to_uppercase() {
+	local input_string="$1"
+	echo "${input_string^^}"
+}
+
+function xstring_begins_with() {
+	case "$1" in
+	"$2"*)
+		return 0
+		;;
+	esac
+	return 1
+}
+
+function xstring_contains() {
+	case "$1" in
+	*"$2"*)
+		return 0
+		;;
+	esac
+	return 1
+}
+
+function xarray_contains() {
+	local value="$1" element
+	shift
+	for element; do
+		xis_eq "$element" "$value" &&
+			return 0
+	done
+	return 1
+}
+
+function xarray_sort_unique() {
+	local output="$1"
+	shift
+	readarray -t "$output" < <(printf "%s\n" "$@" | sort -u)
+}
+
+function xarray_join {
 	local IFS="$1"
 	shift
 	echo "$*"
 }
 
 function xjoin_elements() {
-	local basename="$1"
+	local basename="$1" result=""
 	shift
-	local result=""
 	if xis_ne "$#" "0"; then
 		for element in "$@"; do
 			if xis_true "$basename"; then
@@ -126,30 +222,19 @@ function xjoin_elements() {
 	echo "$result"
 }
 
-function xbegins_with() {
-	case "$1" in
-	"$2"*)
-		true
-		;;
-	*)
-		false
-		;;
-	esac
+function xsplit() {
+	local input="$3"
+	if xis_eq "$1" $'\n'; then
+		input="${input//$'\r\n'/$'\n'}"
+		input="${input//$'\n\r'/$'\n'}"
+	fi
+	readarray -d "$1" -t "$2" < <(printf '%s' "$input")
 }
 
-function xcontains_substring() {
-	case "$1" in
-	*"$2"*)
-		true
-		;;
-	*)
-		false
-		;;
-	esac
-}
-
-function xtime() {
-	date +%s.%N
+function xreverse() {
+	local output="$1"
+	shift
+	readarray -t "$output" < <(printf '%s' "${BASH_ARGV[@]}")
 }
 
 function xformat_time() {
@@ -175,29 +260,277 @@ function xformat_time() {
 	fi
 }
 
-RED=$(printf "\e[31m")
-GREEN=$(printf "\e[32m")
-YELLOW=$(printf "\e[33m")
-BLUE=$(printf "\e[34m")
-GRAY=$(printf "\e[90m")
-UNDERLINE=$(printf "\e[4m")
-LINK="$BLUE$UNDERLINE"
-NC=$(printf "\e[0m")
-NCC=$(printf "\e[0m")
+function xcolorize_strings() {
+	local input="$*" open_color="$RED" open_alt="$ORANGE" close_color="$NC" color modified=false
+	local index=0 count="${#input}" output="" skip_next="" close_next="" string mode=""
+	while xis_lt "$index" "$count"; do
+		curr="${input:$index:1}"
+		case "$curr" in
+		"m")
+			if [[ "$output" =~ ^.*("$CE"[0-9]+)$ ]]; then
+				close_color="${BASH_REMATCH[1]}m"
+			fi
+			;;
+		"\\")
+			if [[ "$mode" == "\"" ]]; then
+				output+="$curr"
+				index=$((index + 1))
+				if xis_ge "$index" "$count"; then
+					break
+				fi
+				curr="${input:$index:1}"
+			fi
+			;;
+		"\`")
+			if xis_unset "$mode"; then
+				skip_next="'"
+			fi
+			;;
+		"\"" | "'")
+			if xis_set "$mode" && xis_ne "$mode" "$curr"; then
+				output+="$curr"
+				index=$((index + 1))
+				continue
+			fi
 
-P_COLOR_FILTER="s/\x1B\[([0-9]{1,3}(;[0-9]{1,3})*)?[mGK]//g"
-P_ELAPSED_PREFIX=""
-P_ELAPSED_COLOR=""
+			if xis_set "$skip_next"; then
+				mode=""
+				skip_next=""
+			elif xis_set "$close_next"; then
+				string="${output:$close_next}"
+				color="$open_color"
+				if xis_eq "$color" "$close_color"; then
+					color="$open_alt"
+				fi
+				output="${output:0:$close_next}$color${string//$NC/$color}"
+				curr+="$close_color"
+				close_next=""
+				modified=true
+				mode=""
+			elif [[ "$output" =~ ^.*"$CE"[0-9]+m$ ]]; then
+				mode="$curr"
+				skip_next="$curr"
+			else
+				mode="$curr"
+				close_next="${#output}"
+			fi
+			;;
+		esac
+		output+="$curr"
+		index=$((index + 1))
+	done
+	if xis_false "$modified"; then
+		echo "$input"
+	elif xis_ne "$close_color" "$NC"; then
+		echo "$output$NC"
+	else
+		echo "$output"
+	fi
+}
+
+function xemit_xlat() {
+	local output="$1" result=() pattern="s/__IN__\\([^a-zA-Z0-9 \-_$]*.*\\)/\__OUT__\\1/"
+	shift
+	P_EMIT_XLAT_TAB=()
+	while [[ $# -gt 0 ]]; do
+		local name="$1" value="$2"
+		if xis_set "$value"; then
+			local value="${pattern//__IN__/$(xsed_escape "$value")}"
+			P_EMIT_XLAT_TAB+=("-e" "${value//__OUT__/$BLUE\$$name$NC}")
+			result+=("-e" "${value//__OUT__/$(xsed_escape "$name")}")
+		fi
+		shift
+		shift
+	done
+	readarray -t "$output" < <(printf "%s\n" "${result[@]}")
+}
+
+function xemit() {
+	local echo_enabled="$1"
+	shift
+	local time_stamp actual_time elapsed_time input="$P_EMIT_PREFIX$*"
+	input="${input//$'\r'/\\r}"
+	input="${input//$'\n'/\\n}"
+	if xstring_contains "$input" "$HOME"; then
+		if xis_eq "${#P_EMIT_XLAT_FULL[@]}" "0"; then
+			local pre="$BLUE\$" out="$NC"
+			xemit_xlat P_EMIT_XLAT_BASE \
+				"${pre}BUILDROOT_HOST$out" "$BUILDROOT_HOST_DIR" \
+				"${pre}BUILDROOT_TARGET$out" "$BUILDROOT_TARGET_DIR" \
+				"${pre}BUILDROOT$out" "$BUILDROOT_DIR" \
+				"${pre}PWD$out" "$PWD" \
+				"${pre}HOME$out" "$HOME"
+			xemit_xlat P_EMIT_XLAT_FULL \
+				"${pre}GOTOOLDIR$out" "$EXPORT_GOTOOLDIR" \
+				"${pre}GOMODCACHE$out" "$EXPORT_GOMODCACHE" \
+				"${pre}GOCACHE$out" "$EXPORT_GOCACHE" \
+				"${pre}GOPATH$out" "$EXPORT_GOPATH" \
+				"${pre}GOENV$out" "$EXPORT_GOENV" \
+				"${pre}GOROOT$out" "$EXPORT_GOROOT"
+			P_EMIT_XLAT_FULL+=("${P_EMIT_XLAT_BASE[@]}")
+		fi
+		case "$P_EMIT_XLAT" in
+		"full")
+			input="$(sed "${P_EMIT_XLAT_FULL[@]}" <<<"$input")"
+			;;
+		"base")
+			input="$(sed "${P_EMIT_XLAT_BASE[@]}" <<<"$input")"
+			;;
+		esac
+	fi
+	input="$(xcolorize_strings "$input")"
+	input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $input"
+	if xis_set "$input" && xis_set "$P_IGNORE_PATTERN"; then
+		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
+		if xis_unset "$input"; then
+			return 0
+		fi
+	fi
+	time_stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
+	time_stamp="${time_stamp:0:-6}"
+	actual_time="$(date +%s.%N)"
+	if xis_unset "$P_TIME_LOG_OUT"; then
+		P_TIME_LOG_OUT="$actual_time"
+		echo >&2 "" >>"$WRAPPER_LOGFILE"
+	fi
+	elapsed_time=" +$(xformat_time "$P_TIME_LOG_OUT" "$actual_time")"
+	P_TIME_LOG_OUT="$actual_time"
+	echo "$time_stamp$elapsed_time$input" | sed -r "$P_COLOR_FILTER" >>"$WRAPPER_LOGFILE"
+	if xis_true "$echo_enabled"; then
+		if xis_unset "$P_TIME_CON_OUT"; then
+			P_TIME_CON_OUT="$actual_time"
+			if ! xstring_contains "$-" "x"; then
+				#printf "\033c" >&2
+				:
+			fi
+		fi
+		elapsed_time=" +$(xformat_time "$P_TIME_CON_OUT" "$actual_time")"
+		P_TIME_CON_OUT="$actual_time"
+		echo >&2 "$EP$GREEN$time_stamp$BLUE$elapsed_time$NC$input$NCC"
+	fi
+}
+
+P_ASYNC_EXIT_STATUS="$P_TEMP_DIR/cachedb/__async_exit_status"
+rm -rf "$P_ASYNC_EXIT_STATUS"
+
+function xasync_exit() {
+	local status="$*" loaded=()
+	if xis_unset "$status"; then
+		if ! xis_file_exists "$P_ASYNC_EXIT_STATUS"; then
+			return
+		fi
+		eval "loaded=($(cat "$P_ASYNC_EXIT_STATUS"))"
+		status="1"
+		P_ELAPSED_PREFIX="ERROR: "
+		P_ELAPSED_COLOR="$RED"
+		if xis_ge "${#loaded[@]}" "1"; then
+			status="${loaded[0]}"
+		fi
+		if xis_ge "${#loaded[@]}" "2"; then
+			P_ELAPSED_PREFIX="${loaded[1]}"
+		fi
+		if xis_ge "${#loaded[@]}" "3"; then
+			P_ELAPSED_COLOR="${loaded[2]}"
+		fi
+	fi
+	echo "\"$status\" \"$P_ELAPSED_PREFIX\" \"$P_ELAPSED_COLOR\"" >"$P_ASYNC_EXIT_STATUS"
+	exit "$status"
+}
+
+function xprint() {
+	xemit "$XECHO_ENABLED" "$*"
+}
+
+function xdebug() {
+	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
+}
+
+function xwarn() {
+	xemit true "${ORANGE}WARNING: ${*//$NC/$NC$ORANGE}"
+}
+
+function xerror() {
+	P_ELAPSED_PREFIX="ERROR: "
+	P_ELAPSED_COLOR="$RED"
+	xemit true "${RED}ERROR: ${*//$NC/$NC$RED}"
+}
+
+function xfatal() {
+	P_ELAPSED_PREFIX="FATAL: "
+	P_ELAPSED_COLOR="$RED"
+	xemit true "${RED}FATAL: ${*//$NC/$NC$RED}"
+	xasync_exit "1"
+}
+
+function xclean() {
+	local input="$*"
+	input="${input//$'\r'/}"
+	input="${input//$'\n'/}"
+	echo "$input"
+}
+
+function xtext() {
+	local color="$1" source lines code_link prefix
+	shift
+	source="$*"
+	if xis_unset "$source"; then
+		return 0
+	fi
+	xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
+	for line in "${lines[@]}"; do
+		line="${line//$'\r'/}"
+		if xis_set "$line"; then
+			code_link="${line%% *}"
+			# shellcheck disable=SC2001
+			prefix=$(sed 's/:.*//' <<<"$code_link")
+			if xis_file_exists "./$prefix"; then
+				xprint "$LINK$code_link$NC$color${line:${#code_link}}"
+			else
+				xprint "$color$line$NC"
+			fi
+		fi
+	done
+}
+
+function xdecorate() {
+	echo "$GRAY$PI$*$PO$NC"
+}
+
+function xstring() {
+	echo "\"${*//$'"'/\\\"}\""
+}
+
+function xcolor() {
+	echo "$(xxd -p -u <<<"$*")$NC"
+}
+
+function xelement() {
+	echo "$GRAY$*$NC"
+}
+
+function xexecutable() {
+	echo "$BLUE$PI$*$PO$NC"
+}
+
+function xexecutable_plain() {
+	echo "$BLUE$*$NC"
+}
+
+function xhyperlink() {
+	echo "$LINK$*$NC"
+}
+
+function xproject_name() {
+	printf "%s" "$(xdecorate "$(basename -- "$PWD")")"
+}
 
 function xelapsed() {
 	local end_time
 	end_time="$(date +%s.%N)"
-	xecho "$P_ELAPSED_COLOR${P_ELAPSED_PREFIX}Total runtime: $(xformat_time "$P_TIME_STARTED" "$end_time") (details: $(xhyperlink "file:///var/tmp/goflame/go-wrapper.log")$P_ELAPSED_COLOR)"
+	xprint "$P_ELAPSED_COLOR${P_ELAPSED_PREFIX}Total runtime:" \
+		"$(xformat_time "$P_TIME_STARTED" "$end_time")" \
+		"(details: $(xhyperlink "file:///var/tmp/goflame/go-wrapper.log")$P_ELAPSED_COLOR)"
 }
-
-P_TIME_STARTED="$(date +%s.%N)"
-P_TIME_PREV_OUT="$P_TIME_STARTED"
-P_TIME_PREV_LOG="$P_TIME_STARTED"
 
 trap xat_exit_trap EXIT
 
@@ -212,9 +545,9 @@ function xat_error() {
 	local message="$2"
 	local code="${3:-1}"
 	if [[ -n "$message" ]]; then
-		xecho "Error on or near line $parent_lineno: $message; exiting with status $code"
+		xprint "Error on or near line $parent_lineno: $message; exiting with status $code"
 	else
-		xecho "Error on or near line $parent_lineno; exiting with status $code"
+		xprint "Error on or near line $parent_lineno; exiting with status $code"
 	fi
 	exit "$code"
 }
@@ -237,7 +570,7 @@ function xunreferenced() {
 # Benchmarking SSH connection: What is the fastest cipher algorithm for RPi?
 # https://blog.twogate.com/entry/2020/07/30/benchmarking-ssh-connection-what-is-the-fastest-cipher
 #
-# Following chipers/MACs/KEXes are obtained from ECAM03DM-r1.0.
+# Following ciphers/MACs/KEXes are obtained from ECAM03DM-r1.0.
 # See "tools/ssh-bench.sh" script for more details.
 
 SCP_CIPHERS=(
@@ -282,9 +615,9 @@ SCP_FLAGS=(
 	-o ServerAliveCountMax=2
 	-o Compression=no
 	#-o CompressionLevel=9
-	-o Ciphers="$(xjoin_strings "," "${SCP_CIPHERS[@]:0:3}")"
-	-o MACs="$(xjoin_strings "," "${SCP_MACS[@]:0:3}")"
-	-o KexAlgorithms="$(xjoin_strings "," "${SCP_KEXES[@]:0:3}")"
+	-o Ciphers="$(xarray_join "," "${SCP_CIPHERS[@]:0:3}")"
+	-o MACs="$(xarray_join "," "${SCP_MACS[@]:0:3}")"
+	-o KexAlgorithms="$(xarray_join "," "${SCP_KEXES[@]:0:3}")"
 	-o ControlMaster=auto
 	-o ControlPersist=600
 	-o ControlPath=/var/tmp/ssh-%r@%h-%p
@@ -297,36 +630,17 @@ SSH_FLAGS=(
 	-x
 )
 
-P_TEMP_DIR="/var/tmp/goflame"
-P_CACHEDB_DIR="$P_TEMP_DIR/cachedb"
-P_SCRIPTS_DIR="$P_TEMP_DIR/scripts"
-P_UPLOAD_DIR="$P_TEMP_DIR/upload"
-
-mkdir -p "$P_TEMP_DIR" "$P_CACHEDB_DIR" "$P_UPLOAD_DIR"
-
-XECHO_ENABLED=
-XDEBUG_ENABLED=
-DT="$(date '+%d/%m/%Y %H:%M:%S') "
-CE=$'\u1B' # Color escape
-EP=""
-PI="\`"
-PO="'"
-xunreferenced "$DT" "$CE" "$EP"
-
-if ! xis_defined TARGET_ARCH; then
-	TARGET_ARCH=""
-fi
 TARGET_GOCXX=""
 TARGET_DOMAIN="UNKNOWN-TARGET_DOMAIN"
-TARGET_IPADDR="UNKNOWN-TARGET_IPADDR"
-TARGET_IPPORT="UNKNOWN-TARGET_IPPORT"
+TARGET_ADDR="UNKNOWN-TARGET_ADDR"
+TARGET_PORT="UNKNOWN-TARGET_PORT"
 TARGET_USER="UNKNOWN-TARGET_USER"
 TARGET_PASS="UNKNOWN-TARGET_PASS"
 TARGET_BUILD_LAUNCHER=""
 TARGET_BIN_SOURCE=""
 TARGET_BIN_DESTIN=""
 TARGET_EXEC_ARGS=()
-TARGET_SUPRESS_MSSGS=()
+TARGET_SUPPRESS_MSSGS=()
 
 TARGET_BUILD_GOFLAGS=()
 TARGET_BUILD_LDFLAGS=()
@@ -357,7 +671,7 @@ GOLANGCI_LINT_ARGUMENTS=(
 )
 GOLANGCI_LINT_FILTER=true
 GOLANGCI_LINT_FAIL=false
-GOLANGCI_LINT_SUPRESSED=()
+GOLANGCI_LINT_SUPPRESSED=()
 GOLANGCI_LINT_DEPRECATED=(
 	"deadcode"
 	"exhaustivestruct"
@@ -373,7 +687,7 @@ GOLANGCI_LINT_DEPRECATED=(
 STATICCHECK_ENABLE=false
 STATICCHECK_CHECKS="all"
 STATICCHECK_FILTER=true
-STATICCHECK_SUPRESS=""
+STATICCHECK_SUPPRESS=""
 STATICCHECK_FAIL=true
 GO_VET_ENABLE=false
 GO_VET_FLAGS=("-composites=true")
@@ -395,10 +709,11 @@ USE_NO_COLORS=false
 USE_SERVICE_MASKS=false
 USE_OVERLAY_DIR=true
 USE_SHELL_TIMEOUT=10
-USE_GOLANG_TIMEOUT=120
+USE_GOLANG_TIMEOUT=300
+INSTALL_KEYBINDINGS=true
 INSTALL_SSH_KEYS=false
 
-# Cimpiler messages to be ignored
+# Compiler messages to be ignored
 MESSAGES_IGNORE=()
 MESSAGES_IGNORE+=("# github.com/lestrrat-go/libxml2/clib")
 MESSAGES_IGNORE+=("WARNING: unsafe header/library path used in cross-compilation:")
@@ -439,28 +754,49 @@ LOCAL_STATICCHECK="$LOCAL_GOPATH/bin/staticcheck"
 LOCAL_GOLANGCI_LINT="$LOCAL_GOPATH/bin/golangci-lint"
 
 P_CONFIG_INI_LOADED=false
-if xis_file_exists "$SCRIPT_DIR/../config.ini"; then
-	# shellcheck disable=SC1091
-	source "$SCRIPT_DIR/../config.ini"
-	P_CONFIG_INI_LOADED=true
-fi
-if xis_file_exists "$SCRIPT_DIR/../config-user.ini"; then
-	# shellcheck disable=SC1091
-	source "$SCRIPT_DIR/../config-user.ini"
-	P_CONFIG_INI_LOADED=true
+P_CONFIG_FILES=("default.conf" "config.conf" "config.user")
+for config_file in "${P_CONFIG_FILES[@]}"; do
+	if xis_file_exists "$SCRIPT_DIR/../$config_file"; then
+		# shellcheck disable=SC1090
+		source "$SCRIPT_DIR/../$config_file"
+		P_CONFIG_INI_LOADED=true
+	fi
+done
+
+function xconfig_files() {
+	local count="${#P_CONFIG_FILES[@]}" text=""
+	local index="$count"
+	while xis_gt "$index" "0"; do
+		index=$((index - 1))
+		if xis_set "$text"; then
+			if xis_eq "$index" "0"; then
+				text+=" or "
+			else
+				text+=", "
+			fi
+		fi
+		text+="$(xhyperlink "file://.vscode/${P_CONFIG_FILES[$index]}")"
+	done
+	echo "$text"
+}
+
+if xis_false "$P_CONFIG_INI_LOADED"; then
+	xerror "Unable to load configuration from $(xconfig_files)."
+	xfatal "See documentation for more details."
 fi
 
 P_IGNORE_PATTERN="$(printf "\n%s" "${MESSAGES_IGNORE[@]}")"
 P_IGNORE_PATTERN="${P_IGNORE_PATTERN:1}"
-P_FIRST_ECHO=true
-P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
-P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 
 if xis_true "$USE_NO_COLORS"; then
+	CE=""
 	RED=""
 	GREEN=""
-	YELLOW=""
+	ORANGE=""
 	BLUE=""
+	PURPLE=""
+	CIAN=""
+	LTGRAY=""
 	GRAY=""
 	UNDERLINE=""
 	LINK=""
@@ -468,381 +804,300 @@ if xis_true "$USE_NO_COLORS"; then
 	NCC=""
 fi
 
-function xemit() {
-	local echo_flag="$1"
-	shift
-	local time_stamp actual_time elapsed_time message_log message_out input="$*"
-	input="${input//$'\r'/\\r}"
-	input="${input//$'\n'/\\n}"
-	input="${input//" $BUILDROOT_DIR/"/" \$BUILDROOT_DIR/"}"
-	input="${input//" $PWD/"/" ./"}"
-	input="${input//" $HOME/"/" \$HOME/"}"
-	input=" $GRAY""[$P_MESSAGE_SOURCE]$NC $input"
-	if xis_set "$input"; then
-		input=$(grep -v "$P_IGNORE_PATTERN" <<<"$input")
-		if xis_unset "$input"; then
-			return 0
-		fi
-	fi
-	time_stamp="$(date '+%d/%m/%Y %H:%M:%S.%N')"
-	time_stamp="${time_stamp:0:-6}"
-	actual_time="$(date +%s.%N)"
-	elapsed_time=" +$(xformat_time "$P_TIME_PREV_LOG" "$actual_time")"
-	P_TIME_PREV_LOG="$actual_time"
-	message_log="$GREEN$time_stamp$BLUE$elapsed_time$NC$input"
-	if xis_set "$echo_flag"; then
-		elapsed_time=" +$(xformat_time "$P_TIME_PREV_OUT" "$actual_time")"
-		P_TIME_PREV_OUT="$actual_time"
-		message_out="$GREEN$time_stamp$BLUE$elapsed_time$NC$input"
-	fi
-	if xis_unset "$P_FIRST_ECHO"; then
-		if xis_set "$echo_flag"; then
-			echo >&2 "$EP$message_out$NCC"
-		fi
-		echo "$message_log" | sed -r "$P_COLOR_FILTER" >>"$WRAPPER_LOGFILE"
-	else
-		P_FIRST_ECHO=
-		if xis_set "$XECHO_ENABLED" || xis_set "$XDEBUG_ENABLED"; then
-			echo >&2
-		fi
-		if xis_set "$echo_flag"; then
-			echo >&2 "$EP$message_out$NCC"
-		fi
-		echo >>"$WRAPPER_LOGFILE"
-		echo "$message_log" | sed -r "$P_COLOR_FILTER" >>"$WRAPPER_LOGFILE"
-	fi
-}
-
-function xterminate() {
-	exit "$1"
-}
-
-function xecho() {
-	# Echo message
-	xemit "$XECHO_ENABLED" "$*"
-}
-
-function xdebug() {
-	# Debug message
-	xemit "$XDEBUG_ENABLED" "DEBUG: $*"
-}
-
-function xwarn() {
-	xemit "1" "${YELLOW}WARNING: ${*//$NC/$NC$YELLOW}"
-}
-
-function xerror() {
-	P_ELAPSED_PREFIX="ERROR: "
-	P_ELAPSED_COLOR="$RED"
-	xemit "1" "${RED}ERROR: ${*//$NC/$NC$RED}"
-}
-
-function xfatal() {
-	P_ELAPSED_PREFIX="FATAL: "
-	P_ELAPSED_COLOR="$RED"
-	xemit "1" "${RED}FATAL: ${*//$NC/$NC$RED}"
-	xterminate "1"
-}
-
-function xclean() {
-	local input="$*"
-	input="${input//$'\r'/}"
-	input="${input//$'\n'/}"
-	echo "$input"
-}
-
-function xtext() {
-	local color="$1" source lines code_link prefix
-	shift
-	source="$*"
-	if xis_unset "$source"; then
-		return 0
-	fi
-	xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
-	for line in "${lines[@]}"; do
-		line="${line//$'\r'/}"
-		if xis_set "$line"; then
-			code_link="${line%% *}"
-			# shellcheck disable=SC2001
-			prefix=$(sed 's/:.*//' <<<"$code_link")
-			if xis_file_exists "./$prefix"; then
-				xecho "$LINK$code_link$NC$color${line:${#code_link}}"
-			else
-				xecho "$color$line$NC"
-			fi
-		fi
-	done
-}
-
-function xdecorate() {
-	echo "$GRAY$PI$*$PO$NC"
-}
-
-function xelement() {
-	echo "$GRAY$*$NC"
-}
-
-function xexecutable() {
-	echo "$BLUE$PI$*$PO$NC"
-}
-
-function xexecutable_plain() {
-	echo "$BLUE$*$NC"
-}
-
-function xhyperlink() {
-	echo "$LINK$*$NC"
-}
-
-if xis_false "$P_CONFIG_INI_LOADED"; then
-	xerror "Unable to load configuration from $(xhyperlink "file://.vscode/config-user.ini") or $(xhyperlink "file://.vscode/config.ini")."
-	xfatal "See documentation for more details."
-fi
-
-BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
-BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
-
-TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
-DELVE_DAP_START="dlv dap --listen=:2345 --api-version=2 --log"
-BUILDROOT_GOBIN="$BUILDROOT_HOST_DIR/bin/go"
-WRAPPER_LOGFILE="$P_TEMP_DIR/go-wrapper.log"
-DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
-DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
-DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
-
-xunreferenced \
-	"$BUILDROOT_HOST_DIR" \
-	"$BUILDROOT_TARGET_DIR" \
-	"$TARGET_BIN_SOURCE" \
-	"$TARGET_BIN_DESTIN" \
-	"$TARGET_BIN_NAME" \
-	"${TARGET_EXEC_ARGS[@]}" \
-	"$DELVE_DAP_START" \
-	"$WRAPPER_LOGFILE" \
-	"$BUILDROOT_GOBIN" \
-	"$LOCAL_GOBIN" \
-	"$LOCAL_DLVBIN" \
-	"${GOLANG_EXPORTS[@]}" \
-	"$DLOOP_ENABLE_FILE" \
-	"$DLOOP_STATUS_FILE" \
-	"$DLOOP_RESTART_FILE"
-
-if xis_unset "$TARGET_ARCH"; then
+if ! xis_defined TARGET_ARCH || xis_unset "$TARGET_ARCH"; then
+	TARGET_ARCH=""
 	if xis_file_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
-		TARGET_ARCH="arm"
+		TARGET_ARCH="armv7l"
 	elif xis_file_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
-		TARGET_ARCH="arm64"
+		TARGET_ARCH="aarch64"
 	elif ! xis_dir_exists "$BUILDROOT_DIR"; then
-		xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not exist: $BUILDROOT_DIR."
+		P_EMIT_XLAT="none" xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not" \
+			"exist: $(xstring "$BUILDROOT_DIR")."
 	else
-		xfatal "Can not determine target architecture from $(xdecorate "BUILDROOT_DIR"): $BUILDROOT_DIR."
+		P_EMIT_XLAT="none" xfatal "Can not determine target architecture from" \
+			"$(xdecorate "BUILDROOT_DIR"): $(xstring "$BUILDROOT_DIR")."
 	fi
 fi
 
+P_TARGET_HYPERLINK="UNKNOWN-TARGET"
 P_TARGET_GOCXX=""
-P_TARGET_PLATFORM=""
+P_TARGET_GOARCH=""
 case "$TARGET_ARCH" in
-"arm")
+"armv7l")
 	P_TARGET_GOCXX="arm-buildroot-linux-gnueabihf"
-	P_TARGET_PLATFORM="armv7l"
+	P_TARGET_GOARCH="arm"
 	;;
-"arm64")
+"aarch64")
 	P_TARGET_GOCXX="aarch64-buildroot-linux-gnu"
-	P_TARGET_PLATFORM="aarch64"
+	P_TARGET_GOARCH="arm64"
 	;;
 "host")
 	P_TARGET_GOCXX="gcc"
-	P_TARGET_PLATFORM="x86_64"
+	P_TARGET_GOARCH="x86_64"
 	;;
-*) xfatal "Can not determine compiler for TARGET_ARCH=\"$TARGET_ARCH\"" ;;
+*) xfatal "Can not determine compiler for TARGET_ARCH=$(xstring "$TARGET_ARCH")" ;;
 esac
 
 if xis_unset "$TARGET_GOCXX"; then
 	TARGET_GOCXX="$P_TARGET_GOCXX"
 fi
 
-EXPORT_DLVBIN="$SCRIPT_DIR/dlv-wrapper.sh"
-EXPORT_GOBIN="$SCRIPT_DIR/go-wrapper.sh"
+TARGET_BIN_NAME=$(basename -- "$TARGET_BIN_DESTIN")
+DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
+DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
+DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
-EXPORT_GOROOT="$BUILDROOT_HOST_DIR/lib/go"
-EXPORT_GOPATH="$BUILDROOT_HOST_DIR/usr/share/go-path"
-EXPORT_GOMODCACHE="$BUILDROOT_HOST_DIR/usr/share/go-path/pkg/mod"
-EXPORT_GOTOOLDIR="$BUILDROOT_HOST_DIR/lib/go/pkg/tool/linux_$TARGET_ARCH"
-EXPORT_GOCACHE="$BUILDROOT_HOST_DIR/usr/share/go-cache"
+BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
+BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
+BUILDROOT_GOBIN="go"
 
-EXPORT_GOPROXY="direct"
-EXPORT_GO111MODULE="on"
-EXPORT_GOWORK="off"
-EXPORT_GOVCS="*:all"
-EXPORT_GOARCH="$TARGET_ARCH"
-EXPORT_GOFLAGS="-mod=mod" # "-mod=vendor"
+EXPORT_AR=""
+EXPORT_CC=""
+EXPORT_CGO_CFLAGS=""
+EXPORT_CGO_CPPFLAGS=""
+EXPORT_CGO_CXXFLAGS=""
+EXPORT_CGO_ENABLED=""
+EXPORT_CGO_FFLAGS=""
+EXPORT_CGO_LDFLAGS=""
+EXPORT_CXX=""
+EXPORT_GCCGO=""
+EXPORT_GO111MODULE=""
+EXPORT_GOARCH=""
+EXPORT_GOCACHE=""
+EXPORT_GODEBUG=""
+EXPORT_GOENV=""
+EXPORT_GOEXE=""
+EXPORT_GOEXPERIMENT=""
+EXPORT_GOFLAGS=""
+EXPORT_GOGCCFLAGS=""
+EXPORT_GOHOSTARCH=""
+EXPORT_GOHOSTOS=""
+EXPORT_GOINSECURE=""
+EXPORT_GOMOD=""
+EXPORT_GOMODCACHE=""
+EXPORT_GONOPROXY=""
+EXPORT_GONOSUMDB=""
+EXPORT_GOOS=""
+EXPORT_GOPATH=""
+EXPORT_GOPRIVATE=""
+EXPORT_GOPROXY=""
+EXPORT_GOROOT=""
+EXPORT_GOSUMDB="?unset"
+EXPORT_GOTMPDIR=""
+EXPORT_GOTOOLDIR="?unset"
+EXPORT_GOVCS=""
+EXPORT_GOVERSION="?unset"
+EXPORT_GOWORK=""
+EXPORT_PKG_CONFIG=""
 
-EXPORT_CGO_ENABLED="1"
-EXPORT_CGO_CYYFLAGS=(
-	#"-D_LARGEFILE_SOURCE"
-	#"-D_LARGEFILE64_SOURCE"
-	#"-D_FILE_OFFSET_BITS=64"
-	#"-D_FORTIFY_SOURCE=1"
-	#"-O2"
-	#"-g2"
-	#"--verbose"
+EXPORT_BR2_DEBUG_WRAPPER=""
+
+GOLANG_EXPORTS=(
+	"EXPORT_AR"
+	"EXPORT_CC"
+	"EXPORT_CGO_CFLAGS"
+	"EXPORT_CGO_CPPFLAGS"
+	"EXPORT_CGO_CXXFLAGS"
+	"EXPORT_CGO_ENABLED"
+	"EXPORT_CGO_FFLAGS"
+	"EXPORT_CGO_LDFLAGS"
+	"EXPORT_CXX"
+	"EXPORT_GCCGO"
+	"EXPORT_GO111MODULE"
+	"EXPORT_GOARCH"
+	"EXPORT_GOCACHE"
+	"EXPORT_GODEBUG"
+	"EXPORT_GOENV"
+	"EXPORT_GOEXE"
+	"EXPORT_GOEXPERIMENT"
+	"EXPORT_GOFLAGS"
+	"EXPORT_GOGCCFLAGS"
+	"EXPORT_GOHOSTARCH"
+	"EXPORT_GOHOSTOS"
+	"EXPORT_GOINSECURE"
+	"EXPORT_GOMOD"
+	"EXPORT_GOMODCACHE"
+	"EXPORT_GONOPROXY"
+	"EXPORT_GONOSUMDB"
+	"EXPORT_GOOS"
+	"EXPORT_GOPATH"
+	"EXPORT_GOPRIVATE"
+	"EXPORT_GOPROXY"
+	"EXPORT_GOROOT"
+	"EXPORT_GOSUMDB"
+	"EXPORT_GOTMPDIR"
+	"EXPORT_GOTOOLDIR"
+	"EXPORT_GOVCS"
+	"EXPORT_GOVERSION"
+	"EXPORT_GOWORK"
+	"EXPORT_PKG_CONFIG"
+
+	"EXPORT_BR2_DEBUG_WRAPPER"
 )
-
-EXPORT_CGO_CYYFLAGS+=(
-	"-I" "$BUILDROOT_DIR/output/target/usr/include/libxml2"
-)
-
-EXPORT_CGO_CFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
-EXPORT_CGO_CXXFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
-EXPORT_CGO_LDFLAGS=()
-
-EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
-EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
 
 # Enable debugging of the toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
 # configuratoiopn parameter.
 EXPORT_BR2_DEBUG_WRAPPER="2"
 
-if xis_eq "$TARGET_ARCH" "host"; then
-	BUILDROOT_GOBIN="go"
+EXPORT_GOPROXY="$GOPROXY"
+EXPORT_GODEBUG="$GODEBUG"
+EXPORT_GO111MODULE="on"
+EXPORT_GOWORK="off"
+EXPORT_GOVCS="*:all"
+EXPORT_GOARCH="$P_TARGET_GOARCH"
+EXPORT_GOFLAGS="-mod=mod" # "-mod=vendor"
 
-	EXPORT_GOROOT=""
-	EXPORT_GOPATH=""
-	EXPORT_GOMODCACHE=""
-	EXPORT_GOTOOLDIR=""
-	EXPORT_GOCACHE=""
+if xis_ne "$TARGET_ARCH" "host"; then
+	#EXPORT_GOROOT="$BUILDROOT_HOST_DIR/go" # 1.17
+	EXPORT_GOROOT="$BUILDROOT_HOST_DIR/lib/go" # 1.19
 
-	EXPORT_GOARCH=""
+	BUILDROOT_GOBIN="$EXPORT_GOROOT/bin/go"
+	EXPORT_GOPATH="$HOME/go/goflame/go-path"
+	EXPORT_GOMODCACHE="$EXPORT_GOPATH/pkg/mod"
+	EXPORT_GOCACHE="$EXPORT_GOPATH/cache"
+	EXPORT_GOENV="$EXPORT_GOPATH/env"
 
-	EXPORT_CGO_CFLAGS=()
-	EXPORT_CGO_CXXFLAGS=()
+	EXPORT_CGO_ENABLED="1"
+	EXPORT_CGO_CYYFLAGS=(
+		#"-D_LARGEFILE_SOURCE"
+		#"-D_LARGEFILE64_SOURCE"
+		#"-D_FILE_OFFSET_BITS=64"
+		#"-D_FORTIFY_SOURCE=1"
+		#"-O2"
+		#"-g2"
+		#"--verbose"
+	)
+	EXPORT_CGO_CYYFLAGS+=("-g" "-O2" "-I" "$BUILDROOT_DIR/output/target/usr/include/libxml2")
+	EXPORT_CGO_CFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
+	EXPORT_CGO_CXXFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
 	EXPORT_CGO_LDFLAGS=()
-	EXPORT_CC=""
-	EXPORT_CXX=""
+	EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
+	EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
 fi
 
-GOLANG_EXPORTS=(
-	"EXPORT_DLVBIN"
-	"EXPORT_GOBIN"
+if xis_true false; then
+	xunreferenced \
+		"$CE" \
+		"$RED" \
+		"$GREEN" \
+		"$ORANGE" \
+		"$BLUE" \
+		"$PURPLE" \
+		"$CIAN" \
+		"$LTGRAY" \
+		"$GRAY" \
+		"$UNDERLINE" \
+		"$LINK" \
+		"$NC" \
+		"$NCC" \
+		\
+		"$BUILDROOT_HOST_DIR" \
+		"$BUILDROOT_TARGET_DIR" \
+		"$TARGET_BIN_SOURCE" \
+		"$TARGET_BIN_DESTIN" \
+		"$TARGET_BIN_NAME" \
+		"${TARGET_EXEC_ARGS[@]}" \
+		"$WRAPPER_LOGFILE" \
+		"$BUILDROOT_GOBIN" \
+		"$LOCAL_GOBIN" \
+		"$LOCAL_DLVBIN" \
+		"${GOLANG_EXPORTS[@]}"
 
-	"EXPORT_GOROOT"
-	"EXPORT_GOPATH"
-	"EXPORT_GOMODCACHE"
-	"EXPORT_GOTOOLDIR"
-	"EXPORT_GOCACHE"
-
-	"EXPORT_GOPROXY"
-	"EXPORT_GO111MODULE"
-	"EXPORT_GOWORK"
-	"EXPORT_GOVCS"
-	"EXPORT_GOARCH"
-	"EXPORT_GOFLAGS"
-
-	"EXPORT_CGO_ENABLED"
-	"EXPORT_CGO_CFLAGS"
-	"EXPORT_CGO_CXXFLAGS"
-	"EXPORT_CGO_LDFLAGS"
-	"EXPORT_CC"
-	"EXPORT_CXX"
-
-	"EXPORT_BR2_DEBUG_WRAPPER"
-)
-
-xunreferenced \
-	"$EXPORT_DLVBIN" \
-	"$EXPORT_GOBIN" \
-	"$EXPORT_GOROOT" \
-	"$EXPORT_GOPATH" \
-	"$EXPORT_GOMODCACHE" \
-	"$EXPORT_GOTOOLDIR" \
-	"$EXPORT_GOCACHE" \
-	"$EXPORT_GOPROXY" \
-	"$EXPORT_GO111MODULE" \
-	"$EXPORT_GOWORK" \
-	"$EXPORT_GOVCS" \
-	"$EXPORT_GOARCH" \
-	"$EXPORT_GOFLAGS" \
-	"$EXPORT_GOFLAGS" \
-	"$EXPORT_CGO_ENABLED" \
-	"${EXPORT_CGO_CFLAGS[*]}" \
-	"${EXPORT_CGO_CXXFLAGS[*]}" \
-	"${EXPORT_CGO_LDFLAGS[*]}" \
-	"$EXPORT_CC" \
-	"$EXPORT_CXX" \
-	"$EXPORT_BR2_DEBUG_WRAPPER"
-
-function xcontains() {
-	local value="$1"
-	shift
-	for element; do xis_eq "$element" "$value" && return 0; done
-	return 1
-}
-
-function xsort_unique() {
-	local output="$1"
-	shift
-	readarray -t "$output" < <(printf "%s\n" "$@" | sort -u)
-	#eval "xecho \"xsort_unique:\$(printf \"\\\"%s\\\" \" \"\${$output[@]}\")\""
-}
-
-function xsplit() {
-	local input="$3"
-	if xis_eq "$1" $'\n'; then
-		input="${input//$'\r\n'/$'\n'}"
-		input="${input//$'\n\r'/$'\n'}"
-	fi
-	readarray -d "$1" -t "$2" < <(printf '%s' "$input")
-	#eval "xecho \"xsplit:\$(printf \"\\\"%s\\\" \" \"\${$2[@]}\")\""
-}
+	xunreferenced \
+		"$EXPORT_AR" \
+		"$EXPORT_CC" \
+		"${EXPORT_CGO_CFLAGS[@]}" \
+		"$EXPORT_CGO_CPPFLAGS" \
+		"${EXPORT_CGO_CXXFLAGS[@]}" \
+		"$EXPORT_CGO_ENABLED" \
+		"$EXPORT_CGO_FFLAGS" \
+		"${EXPORT_CGO_LDFLAGS[@]}" \
+		"$EXPORT_CXX" \
+		"$EXPORT_GCCGO" \
+		"$EXPORT_GO111MODULE" \
+		"$EXPORT_GOARCH" \
+		"$EXPORT_GOCACHE" \
+		"$EXPORT_GODEBUG" \
+		"$EXPORT_GOENV" \
+		"$EXPORT_GOEXE" \
+		"$EXPORT_GOEXPERIMENT" \
+		"$EXPORT_GOFLAGS" \
+		"$EXPORT_GOGCCFLAGS" \
+		"$EXPORT_GOHOSTARCH" \
+		"$EXPORT_GOHOSTOS" \
+		"$EXPORT_GOINSECURE" \
+		"$EXPORT_GOMOD" \
+		"$EXPORT_GOMODCACHE" \
+		"$EXPORT_GONOPROXY" \
+		"$EXPORT_GONOSUMDB" \
+		"$EXPORT_GOOS" \
+		"$EXPORT_GOPATH" \
+		"$EXPORT_GOPRIVATE" \
+		"$EXPORT_GOPROXY" \
+		"$EXPORT_GOROOT" \
+		"$EXPORT_GOSUMDB" \
+		"$EXPORT_GOTMPDIR" \
+		"$EXPORT_GOTOOLDIR" \
+		"$EXPORT_GOVCS" \
+		"$EXPORT_GOVERSION" \
+		"$EXPORT_GOWORK" \
+		"$EXPORT_PKG_CONFIG" \
+		"$EXPORT_BR2_DEBUG_WRAPPER"
+fi
 
 P_EXPORTED_STATE=false
 
 function xexport_apply() {
-	if xis_true "$P_EXPORTED_STATE"; then
+	if xis_eq "$TARGET_ARCH" "host" || xis_true "$P_EXPORTED_STATE"; then
 		return 0
 	fi
-	P_EXPORTED_STATE=true
-	#xdebug "Exports: $*"
-	for variable in "$@"; do
-		local name="$variable" value array result=()
-		if xis_array "$variable"; then
-			eval "array=\"\${${name}[@]}\""
-			value="${array[*]}"
+	local name actions=() action value=""
+	for name in "$@"; do
+		if xis_array "$name"; then
+			eval "value=\"\${${name}[*]}\""
+			value="$(xstring "$value")"
 		else
-			value="${!name}"
+			value="$(xstring "${!name}")"
 		fi
-		if xis_unset "$value" && xis_ne "$TARGET_ARCH" "host"; then
-			if ! xbegins_with "$variable" "EXPORT_CGO_"; then
-				xwarn "An empty exported variable $variable"
-			fi
+		if xis_eq "$value" "\"?keep\""; then
+			continue
 		fi
-		name=${name:7}
-		set +u
-		local actual="${!name}"
-		set -u
-		export "P_SAVED_$name"="$actual"
-		if xis_unset "$actual"; then
-			export "$name"="$value"
-			#xdebug "Exports: $name=$value"
+		local target_name=${name:7}
+		local saved_name="P_SAVED_$target_name"
+		if ! xis_defined "$saved_name" && xis_defined "$target_name"; then
+			actions+=("export $saved_name=$(xstring "${!target_name}")")
+		fi
+		if xis_eq "$value" "\"?unset\""; then
+			actions+=("unset $target_name")
 		else
-			: #xecho "INFO: Unexported variable: $name=\"$actual\""
+			actions+=("export $target_name=$value")
 		fi
 	done
+	if xis_true "$P_DEBUG_GOENV"; then
+		printf "%s" "$(xarray_join $'\n' "${actions[@]}")" >"$P_TEMP_DIR/go.env"
+		for action in "${actions[@]}"; do
+			xprint "Export: $action"
+		done
+	fi
+	eval "$(xarray_join "; " "${actions[@]}")"
+	P_EXPORTED_STATE=true
 }
 
 function xexport_clean() {
-	if xis_false "$P_EXPORTED_STATE"; then
+	if xis_eq "$TARGET_ARCH" "host" || xis_false "$P_EXPORTED_STATE"; then
 		return 0
 	fi
 	P_EXPORTED_STATE=n
 	xdebug "Cleaning: $*"
-	for variable in "$@"; do
-		local name="${variable:7}"
-		local save_name="P_SAVED_$name"
-		set +u
-		local save_value="${!save_name}"
-		set -u
-		export "$name"="$save_value"
+	local name
+	for name in "$@"; do
+		local target_name="${name:7}"
+		local saved_name="P_SAVED_$target_name"
+		if xis_defined "$saved_name"; then
+			local save_value="${!saved_name}"
+			unset "$saved_name"
+			export "$target_name"="$save_value"
+		fi
 	done
 }
 
@@ -851,7 +1106,7 @@ function xexport_print() {
 	for variable in "$@"; do
 		local name="${variable:7}"
 		local value="${!name}"
-		xdebug "Exports: $name=\"$value\""
+		xdebug "Exports: $name=$(xstring "$value")"
 	done
 	xfunset
 }
@@ -865,15 +1120,15 @@ function xexestat() {
 	if xis_ne "$status" "0"; then
 		local needStatus=true
 		if xis_set "$stdout"; then
-			xecho "$prefix STATUS $(xexec_status "$status"), STDOUT: $stdout"
+			xprint "$prefix STATUS $(xexec_status "$status"), STDOUT: $stdout"
 			needStatus=false
 		fi
 		if xis_set "$stderr"; then
-			xecho "$prefix STATUS $(xexec_status "$status"), STDERR: $stderr"
+			xprint "$prefix STATUS $(xexec_status "$status"), STDERR: $stderr"
 			needStatus=false
 		fi
 		if xis_true "$needStatus"; then
-			xecho "$prefix STATUS: $(xexec_status "$status")"
+			xprint "$prefix STATUS: $(xexec_status "$status")"
 		fi
 	else
 		if xis_set "$stdout"; then
@@ -897,7 +1152,7 @@ function xsuggest_to_install_message() {
 	xsplit $'\n' packages "$lookup"
 	lookup="$executable."
 	for package in "${packages[@]}"; do
-		if xbegins_with "$package" "$lookup"; then
+		if xstring_begins_with "$package" "$lookup"; then
 			suggest="Try to install it with: ${GRAY}dnf install $(xexecutable_plain "$package")"
 			echo "Command $(xexecutable "$executable") not found. $suggest"
 		fi
@@ -935,26 +1190,23 @@ function xexec() {
 	if xis_set "$USE_SHELL_TIMEOUT" && ! xis_function "$executable"; then
 		base="$(basename -- "$executable")"
 		case "$base" in
-		"cat" | "cp" | "dig" | "echo" | "find" | "ip" | "ln" | "mkdir" | \
-			"mv" | "nmap" | "picocom" | "pigz" | "ping" | "rm" | "sed" | \
-			"ssh-keygen" | "stty" | "tail" | "timeout") ;;
+		"cat" | "cp" | "dig" | "echo" | "find" | "gzip" | "ip" | "ln" | "mkdir" | "mv" | "nmap" | \
+			"picocom" | "pigz" | "ping" | "pip3" | "rm" | "sed" | "ssh-keygen" | "stty" | "tail" | \
+			"tar" | "timeout" | "touch") ;;
 		"python3" | "rsync" | "sshpass")
 			timeout="$USE_SHELL_TIMEOUT"
 			;;
-		"go" | "golangci-lint")
+		"go" | "golangci-lint" | "pre-commit" | "staticcheck")
 			timeout="$USE_GOLANG_TIMEOUT"
 			;;
 		*)
 			if ! timeout="$(xvar USE_SHELL_TIMEOUT "$base")"; then
-				xdebug "WARNING: Unknown timeout for executable: $base"
 				xwarn "WARNING: Unknown timeout for executable: $base"
 			fi
 			;;
 		esac
 		if xis_ne "$timeout" ""; then
-			#
 			command="timeout --kill-after=$timeout $timeout $command"
-			:
 		fi
 	fi
 	xdebug "Exec: $command"
@@ -967,14 +1219,10 @@ function xexec() {
 EOF
 	xfunset
 	if xis_ne "$EXEC_STATUS" "0" && xis_unset "$canfail"; then
-		local prefix message directory
+		local prefix message
 		prefix="$executable"
 		plain_text="${plain_text:${#executable}}"
-		directory="$BUILDROOT_HOST_DIR/"
-		if xbegins_with "$executable" "$directory"; then
-			prefix="\$BUILDROOT_HOST/${prefix:${#directory}}"
-		fi
-		xerror "Failed to execute: $(xexecutable_plain "$prefix")$GRAY$plain_text"
+		xerror "Failed to execute: $(xstring "$prefix")$GRAY$plain_text"
 		#xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 		message=$(xsuggest_to_install_message "$executable")
 		if xis_set "$message"; then
@@ -986,7 +1234,7 @@ EOF
 			xtext "$RED" "$EXEC_STDOUT"
 		fi
 		xerror "Terminating with status $(xexec_status "$EXEC_STATUS")"
-		xterminate "$EXEC_STATUS"
+		xasync_exit "$EXEC_STATUS"
 	elif xis_true "false"; then
 		if xis_set "$EXEC_STDOUT"; then
 			xdebug "EXEC_STDOUT: $EXEC_STDOUT"
@@ -1018,7 +1266,7 @@ function xexec_status() {
 	fi
 }
 
-function xexit() {
+function xexec_exit() {
 	xdebug "Finishing wrapper with STDOUT, STDERR & STATUS=$(xexec_status "$EXEC_STATUS")"
 	if xis_set "$EXEC_STDOUT"; then
 		echo "$EXEC_STDOUT"
@@ -1029,7 +1277,7 @@ function xexit() {
 	if xis_unset "$EXEC_STATUS"; then
 		xfatal "Missing EXEC_STATUS to exit"
 	fi
-	xterminate "$EXEC_STATUS"
+	xasync_exit "$EXEC_STATUS"
 }
 
 P_OPTIONS_STACK=()
@@ -1078,7 +1326,7 @@ function xoverride_toolchain_wrapper() {
 xoverride_toolchain_wrapper false
 
 P_CONFIG_HASH_INITIAL=(
-	"$PWD"
+	"$PWD" "$TARGET_ARCH"
 	"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
 	"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
 )
@@ -1108,12 +1356,11 @@ function xcache_get() {
 	cat "$P_CACHEDB_DIR/$1" 2>/dev/null
 }
 
-P_TTY_DEBUG=false
 P_TTY_SHELL_OUT=""
 P_RESOLVE_REASON=""
 
 function xtty_debug() {
-	if xis_true "$P_TTY_DEBUG"; then
+	if xis_true "$P_DEBUG_TTY"; then
 		xdebug "TTY: $*"
 	fi
 }
@@ -1130,15 +1377,15 @@ function xtty_resolve_port() {
 		all_ports="$(find /dev -name "$TTY_MASK" -print)"
 		xsplit $'\n' ports "$all_ports"
 		if xis_eq "${#ports[@]}" "0"; then
-			xfatal "Unable to find USB TTY port (search mask: \"$search_mask\")"
+			xfatal "Unable to find USB TTY port (search mask: $(xstring "$search_mask"))"
 		elif xis_eq "${#ports[@]}" "1"; then
 			TTY_PORT="${ports[0]}"
 		else
-			xfatal "To many USB TTY ports: ${#ports[@]} (search mask: \"$search_mask\")"
+			xfatal "To many USB TTY ports: ${#ports[@]} (search mask: $(xstring "$search_mask"))"
 		fi
 		xtty_debug "resolved port: $TTY_PORT"
 	fi
-	xecho "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($P_RESOLVE_REASON)..."
+	xprint "Resolving device IP from TTY $(xdecorate "$TTY_PORT") ($P_RESOLVE_REASON)..."
 	if xis_true "$TTY_DIRECT"; then
 		xexec stty -F "$TTY_PORT" raw -echo "$TTY_SPEED"
 	fi
@@ -1228,17 +1475,17 @@ function xtty_peek_ip() {
 		*"login:"*)
 			xtty_debug "got login prompt"
 			if ! xtty_exchange "$TTY_USER" "Password:"; then
-				error="login failed: missing promt after password"
+				error="login failed: missing prompt after password"
 			fi
 			;;
 		*"Password:"*)
 			xtty_debug "got password prompt"
 			if ! xtty_exchange "$TTY_PASS" "#"; then
-				if xcontains_substring "$P_TTY_SHELL_OUT" "login: bad"; then
+				if xstring_contains "$P_TTY_SHELL_OUT" "login: bad"; then
 					eval "$retries='1'"
 					error="login failed: authorization failed (bad solt)"
 				else
-					error="login failed: missing '#' promt after password"
+					error="login failed: missing '#' prompt after password"
 				fi
 			fi
 			xtty_debug "got command after login"
@@ -1278,21 +1525,47 @@ function xtty_resolve_ip() {
 			return 0
 		fi
 		sleep 0.1
-		P_TTY_DEBUG=true
+		P_DEBUG_TTY=true
 		retries=$((retries - 1))
 		xtty_debug "Retries left: $retries"
 	done
 	return 1
 }
 
-P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/config-vscode.ini"
+P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/vscode-target.conf"
 
 function xdiscard_target_config() {
 	rm "$P_VSCODE_CONFIG_PATH"
 }
 
+P_PYTHON_EXEC=()
+
+function xpython_prepare() {
+	if xis_eq "${#P_PYTHON_EXEC[@]}" ""0; then
+		export PYTHONPYCACHEPREFIX="$P_TEMP_DIR/pycache"
+		if [[ ! -d "$PYTHONPYCACHEPREFIX" ]]; then
+			xexec mkdir -p "$PYTHONPYCACHEPREFIX"
+		fi
+		P_PYTHON_EXEC=(python3 "-X" "pycache_prefix=$(xstring "$PYTHONPYCACHEPREFIX")")
+	fi
+}
+
+function xpython_exec() {
+	local canfail=""
+	if xis_canfail "${1:-}"; then
+		canfail="${1:-}"
+		shift
+	fi
+	xpython_prepare
+	xexec "$canfail" "${P_PYTHON_EXEC[@]}" "$@"
+}
+
 function xresolve_target_config() {
-	TARGET_HOSTNAME="$TARGET_IPADDR"
+	if xis_eq "$TARGET_ARCH" "host"; then
+		P_TARGET_HYPERLINK="$(xhyperlink "http://$(hostname)") (IP $(xdecorate "127.0.0.1"))"
+		return 0
+	fi
+	TARGET_HOSTNAME="$TARGET_ADDR"
 	TARGET_MACADDR=""
 	TARGET_TTYPORT=""
 	local config_hash force="$1"
@@ -1314,12 +1587,13 @@ function xresolve_target_config() {
 		fi
 	fi
 	if xis_set "$P_RESOLVE_REASON"; then
-		xdebug "Creating target config for '$TARGET_IPADDR' in $P_VSCODE_CONFIG_PATH, reason: $P_RESOLVE_REASON"
+		xdebug "Creating target config for '$TARGET_ADDR' in $(xstring "$P_VSCODE_CONFIG_PATH")," \
+			"reason: $P_RESOLVE_REASON"
 		xclean_directories "$P_CACHEDB_DIR" "$P_UPLOAD_DIR" "$P_SCRIPTS_DIR"
-		if xis_eq "$TARGET_IPADDR" "tty" || xhas_prefix "$TARGET_IPADDR" "/dev/"; then
+		if xis_eq "$TARGET_ADDR" "tty" || xstring_begins_with "$TARGET_ADDR" "/dev/"; then
 			local target_ip=""
-			if xhas_prefix "$TARGET_IPADDR" "/dev/"; then
-				TTY_PORT="$TARGET_IPADDR"
+			if xstring_begins_with "$TARGET_ADDR" "/dev/"; then
+				TTY_PORT="$TARGET_ADDR"
 			fi
 			if ! xtty_resolve_ip "target_ip"; then
 				if xis_set "$target_ip"; then
@@ -1329,22 +1603,23 @@ function xresolve_target_config() {
 				fi
 			fi
 			TARGET_TTYPORT="$TTY_PORT"
-			TARGET_IPADDR="$target_ip"
-		elif ! xis_ipv4_addr "$TARGET_IPADDR"; then
+			TARGET_ADDR="$target_ip"
+		elif ! xis_ipv4_addr "$TARGET_ADDR"; then
 			local found=false mac_addr
-			if xhas_prefix "$TARGET_IPADDR" "ASSET-"; then
+			if xstring_begins_with "$TARGET_ADDR" "ASSET-"; then
 				# Not implemented because of missing Jira login/password credentials.
-				xfatal "Failed to resolve asset addrress for $(xdecorate "$TARGET_IPADDR"): Not implemented."
+				xfatal "Failed to resolve asset address for $(xdecorate "$TARGET_ADDR"):" \
+					"Not implemented."
 			fi
 			local target_type="host"
-			if xis_mac_addr "$TARGET_IPADDR"; then
+			if xis_mac_addr "$TARGET_ADDR"; then
 				target_type="MAC"
-				mac_addr="$(xto_lowercase "$TARGET_IPADDR")"
+				mac_addr="$(xstring_to_lowercase "$TARGET_ADDR")"
 				function resolve_ip_from_mac_addr() {
 					xexec "$P_CANFAIL" ip neighbor "|" grep -i "$mac_addr" "|" \
 						awk "'{ print \$1 ; exit }'"
 					if xis_eq "$EXEC_STATUS" "0" && xis_ipv4_addr "$EXEC_STDOUT"; then
-						TARGET_IPADDR="$EXEC_STDOUT"
+						TARGET_ADDR="$EXEC_STDOUT"
 						TARGET_HOSTNAME="$EXEC_STDOUT"
 						TARGET_MACADDR="$mac_addr"
 						found=true
@@ -1364,11 +1639,11 @@ function xresolve_target_config() {
 					resolve_ip_from_mac_addr
 				fi
 			else
-				local hostnames=("$TARGET_IPADDR.$TARGET_DOMAIN" "$TARGET_IPADDR")
+				local hostnames=("$TARGET_ADDR.$TARGET_DOMAIN" "$TARGET_ADDR")
 				for hostname in "${hostnames[@]}"; do
 					xexec "$P_CANFAIL" dig +short "$hostname" "|" awk "'{ print \$1 ; exit }'"
 					if xis_eq "$EXEC_STATUS" "0" && xis_ipv4_addr "$EXEC_STDOUT"; then
-						TARGET_IPADDR="$EXEC_STDOUT"
+						TARGET_ADDR="$EXEC_STDOUT"
 						TARGET_HOSTNAME="$hostname"
 						found=true
 						break
@@ -1376,26 +1651,30 @@ function xresolve_target_config() {
 				done
 			fi
 			if xis_false "$found"; then
-				xfatal "Unable resolve IP for target $target_type '$TARGET_IPADDR'."
+				xfatal "Unable resolve IP for target $target_type '$TARGET_ADDR'."
 			fi
 		fi
 		xssh "uname -m"
 		local target_mach="$EXEC_STDOUT" target_stderr="$EXEC_STDERR"
 		if xis_ne "$EXEC_STATUS" "0"; then
-			xexec "$P_CANFAIL" timeout 1 ping -c 1 "$TARGET_IPADDR"
+			xexec "$P_CANFAIL" timeout 1 ping -c 1 "$TARGET_ADDR"
 			if xis_set "$target_stderr"; then
 				xerror "$target_stderr"
 			fi
 			if xis_ne "$EXEC_STATUS" "0"; then
-				xfatal "Target IP address $(xdecorate "$TARGET_IPADDR") is not accessible (no ping, status $(xexec_status "$EXEC_STATUS"))"
+				xfatal "Target IP address $(xdecorate "$TARGET_ADDR") is not accessible" \
+					"(no ping, status $(xexec_status "$EXEC_STATUS"))"
 			else
-				xfatal "Failed to resolve machine type for $(xdecorate "$TARGET_IPADDR")"
+				xfatal "Failed to resolve machine type for $(xdecorate "$TARGET_ADDR")"
 			fi
 		fi
-		if xis_ne "$P_TARGET_PLATFORM" "$target_mach"; then
-			xerror "Unexpected target $(xhyperlink "http://$TARGET_IPADDR") architecture $(xdecorate "$target_mach"), expected $(xdecorate "$P_TARGET_PLATFORM")"
-			xerror "Probably invalid values in $(xdecorate TARGET_ARCH) and $(xdecorate BUILDROOT_DIR) variables"
-			xfatal "Check contents of the $(xhyperlink "file://.vscode/config-user.ini") or $(xhyperlink "file://.vscode/config.ini")"
+		if xis_ne "$TARGET_ARCH" "$target_mach"; then
+			xerror "Unexpected target $(xhyperlink "http://$TARGET_ADDR") architecture" \
+				"$(xdecorate "$target_mach"), expected $(xdecorate "$TARGET_ARCH")"
+			xerror "Probably invalid values in $(xdecorate TARGET_ARCH) and" \
+				"$(xdecorate BUILDROOT_DIR) variables"
+			xfatal "Check contents of the $(xhyperlink "file://.vscode/config-user.ini") or" \
+				"$(xhyperlink "file://.vscode/config.ini")"
 		fi
 		function resolve_binary() {
 			local enable_option="$1" binary_name="$2" target_path="$3"
@@ -1413,10 +1692,15 @@ function xresolve_target_config() {
 				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
-						local source=".vscode/scripts/bin/$binary_name-$P_TARGET_PLATFORM" target="$target_path/$binary_name"
+						local source=".vscode/bin/$binary_name-$TARGET_ARCH"
+						local target="$target_path/$binary_name"
 						if xis_file_exists "$source"; then
-							xecho "Installing $(xdecorate "$binary_name-$P_TARGET_PLATFORM") to target path $(xdecorate "$target")..."
+							xprint "Installing $(xdecorate "$binary_name-$TARGET_ARCH") to" \
+								"target path $(xdecorate "$target")..."
 							xscp "$source" ":$target"
+						else
+							xwarn "Failed to install $(xdecorate "$binary_name") to target path" \
+								"$(xdecorate "$target"): $(xdecorate "$source") not found"
 						fi
 					fi
 					xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
@@ -1427,34 +1711,40 @@ function xresolve_target_config() {
 				xdebug "Resolved $binary_name method status: $(xexec_status "$EXEC_STDOUT")"
 			fi
 			if xis_set "${missing[*]}"; then
-				xwarn "Disabling $enable_option: $(xdecorate "$binary_name") is not installed on the $(xjoin_strings " and " "${missing[@]}")."
+				xwarn "Disabling $enable_option: $(xdecorate "$binary_name") is not installed on" \
+					" the $(xarray_join " and " "${missing[@]}")."
 				export "$enable_option"="false"
 			fi
 		}
 		resolve_binary "USE_RSYNC_METHOD" "$USE_RSYNC_BINARY" "/usr/bin"
 		resolve_binary "USE_PIGZ_COMPRESSION" "$USE_PIGZ_BINARY" ""
 		# prepare runtime scripts
-		local exec_args=" \n" supress=" \n" pattern
+		local exec_args=" \n" suppress=" \n" pattern
 		for item in "${TARGET_EXEC_ARGS[@]}"; do
 			exec_args="$exec_args\t\"$item\"\n"
 		done
-		for item in "${TARGET_SUPRESS_MSSGS[@]}"; do
-			supress="$supress\t\"$item\"\n"
+		for item in "${TARGET_SUPPRESS_MSSGS[@]}"; do
+			suppress="$suppress\t\"$item\"\n"
 		done
 		xexec cp ".vscode/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
-		pattern=$(xsed_pattern \
-			"__TARGET_IPPORT__" "$TARGET_IPPORT" \
-			"__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" \
-			"__TARGET_BINARY_ARGS__" "${exec_args:1}" \
-			"__TARGET_SUPRESS_MSSGS__" "${supress:1}")
+		pattern=$(
+			xsed_pattern \
+				"__TARGET_PORT__" "$TARGET_PORT" \
+				"__TARGET_BINARY_PATH__" "$TARGET_BIN_DESTIN" \
+				"__TARGET_BINARY_ARGS__" "${exec_args:1}" \
+				"__TARGET_SUPPRESS_MSSGS__" "${suppress:1}" \
+				"__DLOOP_ENABLE_FILE__" "$DLOOP_ENABLE_FILE" \
+				"__DLOOP_STATUS_FILE__" "$DLOOP_STATUS_FILE" \
+				"__DLOOP_RESTART_FILE__" "$DLOOP_RESTART_FILE"
+		)
 		xsed_replace "$pattern" "$P_SCRIPTS_DIR/{dlv-loop.sh,dlv-exec.sh}"
 		xoverride_toolchain_wrapper true
 		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
 # Machine generated file. Do not modify.
-# Variables TARGET_IPADDR and TARGET_IPPORT shold not be quoted.
+# Variables TARGET_ADDR and TARGET_PORT should not be quoted.
 HOST_BUILDROOT="$BUILDROOT_DIR"
-TARGET_IPADDR=$TARGET_IPADDR
-TARGET_IPPORT=$TARGET_IPPORT
+TARGET_ADDR=$TARGET_ADDR
+TARGET_PORT=$TARGET_PORT
 TARGET_HOSTNAME="$TARGET_HOSTNAME"
 TARGET_MACADDR="$TARGET_MACADDR"
 TARGET_USER="$TARGET_USER"
@@ -1467,13 +1757,14 @@ EOF
 	fi
 	# shellcheck disable=SC1090
 	source "$P_VSCODE_CONFIG_PATH"
-	TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_HOSTNAME")"
+	P_TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_HOSTNAME")"
 	if xis_ne "$TARGET_TTYPORT" ""; then
-		TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_IPADDR") (TTY $(xdecorate "$TARGET_TTYPORT"))"
-	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_IPADDR"; then
-		TARGET_HYPERLINK="$TARGET_HYPERLINK (IP $TARGET_IPADDR)"
+		P_TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_ADDR")"
+		P_TARGET_HYPERLINK="$P_TARGET_HYPERLINK (TTY $(xdecorate "$TARGET_TTYPORT"))"
+	elif xis_ne "$TARGET_HOSTNAME" "$TARGET_ADDR"; then
+		P_TARGET_HYPERLINK="$P_TARGET_HYPERLINK (IP $(xdecorate "$TARGET_ADDR"))"
 	elif xis_ne "$TARGET_MACADDR" ""; then
-		TARGET_HYPERLINK="$TARGET_HYPERLINK (MAC $TARGET_MACADDR)"
+		P_TARGET_HYPERLINK="$P_TARGET_HYPERLINK (MAC $(xdecorate "$TARGET_MACADDR"))"
 	fi
 }
 
@@ -1503,7 +1794,8 @@ function xssh() {
 		canfail="${1:-}"
 		shift
 	fi
-	xexec "$canfail" sshpass -p "$TARGET_PASS" ssh "${SSH_FLAGS[@]}" "$TARGET_USER@$TARGET_IPADDR" "\"$*\""
+	xexec "$canfail" sshpass -p "$TARGET_PASS" ssh "${SSH_FLAGS[@]}" \
+		"$TARGET_USER@$TARGET_ADDR" "\"$*\""
 }
 
 P_SSH_HOST_STDIO=""
@@ -1518,7 +1810,7 @@ function xflash_pending_commands() {
 	local target_args="$target_pref$P_SSH_TARGET_POST"
 	if xis_set "$host_args" || xis_set "$target_args"; then
 		local ssh_prefix="${P_SSH_HOST_STDIO}sshpass -p \"$TARGET_PASS\""
-		local ssh_prefix="$ssh_prefix ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_IPADDR"
+		local ssh_prefix="$ssh_prefix ssh ${SSH_FLAGS[*]} $TARGET_USER@$TARGET_ADDR"
 		if xis_true $USE_RSYNC_METHOD; then
 			if xis_set "$target_pref"; then
 				xexec "$ssh_prefix \"$target_pref\""
@@ -1526,7 +1818,7 @@ function xflash_pending_commands() {
 			xexec $USE_RSYNC_BINARY -azzPL --no-owner --no-group --no-perms \
 				--inplace --partial --numeric-ids --stats --progress \
 				-e "\"sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]}\"" \
-				"\"$P_UPLOAD_DIR/\"" "\"$TARGET_USER@$TARGET_IPADDR:/\""
+				"\"$P_UPLOAD_DIR/\"" "\"$TARGET_USER@$TARGET_ADDR:/\""
 			#xdebug "$EXEC_STDERR"
 			#xdebug "$EXEC_STDOUT"
 			if xis_set "$P_SSH_TARGET_POST"; then
@@ -1546,18 +1838,32 @@ function xflash_pending_commands() {
 	P_SSH_TARGET_POST=""
 }
 
+function xforce_linters() {
+	GOLANGCI_LINT_ENABLE=true
+	STATICCHECK_ENABLE=true
+	GO_VET_ENABLE=true
+	LLENCHECK_ENABLE=true
+	PRECOMMIT_ENABLE=true
+	xlint_reset_results
+}
+
 function xperform_build_and_deploy() {
-	local fbuild=false frebuild=false fdebug=false fexec=false
+	local flag_build=false flag_rebuild=false flag_debug=false flag_exec=false
 
 	while :; do
 		if xis_eq "$1" "[BUILD]"; then
-			fbuild=true
+			flag_build=true
 		elif xis_eq "$1" "[REBUILD]"; then
-			frebuild=true
+			flag_rebuild=true
+			if xis_true "$REBUILD_FORCE_LINTERS"; then
+				xforce_linters
+			fi
+		elif xis_eq "$1" "[CHECK]"; then
+			xforce_linters
 		elif xis_eq "$1" "[DEBUG]"; then
-			fdebug=true
+			flag_debug=true
 		elif xis_eq "$1" "[EXEC]"; then
-			fexec=true
+			flag_exec=true
 		elif xis_eq "$1" "[ECHO]"; then
 			xset XECHO_ENABLED=true
 			clear
@@ -1567,28 +1873,56 @@ function xperform_build_and_deploy() {
 		shift
 	done
 
-	if xis_true "$frebuild" && xis_true "$REBUILD_FORCE_LINTERS"; then
-		GOLANGCI_LINT_FILTER=true
-		STATICCHECK_ENABLE=true
-		GO_VET_ENABLE=true
-		LLENCHECK_ENABLE=true
-		PRECOMMIT_ENABLE=true
+	xresolve_target_config "$flag_rebuild"
+	if xis_true "$flag_rebuild" || xis_set "$P_RESOLVE_REASON"; then
+		flag_rebuild=true
+		xlint_reset_results
+		xistall_ssh_key
 	fi
 
-	xresolve_target_config "$frebuild"
-	xecho "$* to $P_TARGET_PLATFORM target $TARGET_HYPERLINK"
-	xcheck_project false
-	if xis_true "$fbuild" || xis_true "$frebuild"; then
-		xbuild_project
+	xprint "$* to $TARGET_ARCH target $P_TARGET_HYPERLINK"
+
+	local dir_hash="$P_CACHEDB_DIR/__project_timestamps.log"
+	xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
+		-not -path "\"./.git/*\"" -exec date -r {} "\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
+	P_PROJECT_TIMESTAMP=$(xhash_file "$dir_hash")
+	xdebug "Project timestamp: $P_PROJECT_TIMESTAMP"
+
+	xlint_async_prepare
+
+	if xis_true "$P_DEBUG_GOENV"; then
+		USE_ASYNC_LINTERS=false
+	fi
+	if xis_true "$USE_ASYNC_LINTERS"; then
+		SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+		source "$SCRIPT_DIR/go-job-pool.sh"
+		job_pool_init "$(nproc)" 0
 	fi
 
-	if xis_false "$fdebug" && xis_true "$fexec"; then
+	xasync_exec xlint_run_golangci_lint
+	xasync_exec xlint_run_staticckeck
+	xasync_exec xlint_run_go_vet_check
+	xasync_exec xlint_run_llencheck
+	xasync_exec xlint_run_precommit_check
+
+	if xis_true "$flag_rebuild"; then
+		xasync_exec xprocess_camera_features
+		xasync_exec xinstall_keybindings
+	fi
+
+	if xis_true "$flag_build" || xis_true "$flag_rebuild"; then
+		xasync_exec xcompile_project "$flag_rebuild"
+	fi
+
+	if xis_true "$USE_ASYNC_LINTERS"; then
+		job_pool_wait
+		job_pool_shutdown
+	fi
+	xasync_exit
+
+	if xis_false "$flag_debug" && xis_true "$flag_exec"; then
 		P_SSH_TARGET_PREF="rm -f \"$DLOOP_RESTART_FILE\"; $P_SSH_TARGET_PREF"
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
-	fi
-
-	if xis_true "$frebuild"; then
-		xistall_ssh_key
 	fi
 
 	xservices_stop
@@ -1600,17 +1934,12 @@ function xperform_build_and_deploy() {
 	xservices_start
 	xprocesses_start
 
-	if xis_false "$fexec" && xis_false "$fdebug"; then
+	if xis_false "$flag_exec" && xis_false "$flag_debug"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f \"$DLOOP_ENABLE_FILE\"; "
 		xexecute_target_commands_vargs "@echo 1 > $DLOOP_ENABLE_FILE"
 	fi
 
 	xflash_pending_commands
-	if xis_true "$frebuild"; then
-		xcamera_features
-	fi
-
-	xcheck_project_wait
 }
 
 function xkill() {
@@ -1631,7 +1960,7 @@ function xscp() {
 		shift
 	fi
 
-	local dir="$TARGET_USER@$TARGET_IPADDR"
+	local dir="$TARGET_USER@$TARGET_ADDR"
 
 	local one="$1"
 	if [[ "$one" =~ ^\:.* ]]; then
@@ -1664,7 +1993,7 @@ function xfiles_delete() {
 function xfiles_delete_vargs() {
 	if xis_ne "$#" "0"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f $(printf "'%s' " "$@"); "
-		xecho "Removing $# files: $(xjoin_elements true "$@")"
+		xprint "Removing $# files: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1707,17 +2036,18 @@ function xfiles_copy() {
 		if xis_ne "${#files[@]}" "2"; then
 			xfatal "Invalid copy command: \"$pair\""
 		fi
-		local fileA="${files[0]}" fileB="${files[1]}" platform
+		local fileA="${files[0]}" fileB="${files[1]}"
 		if [[ "$fileB" =~ ^\:.* ]]; then
 			uploading=true
 			local prefA="${fileA:0:1}"
 			if xis_eq "$prefA" "?"; then
 				fileA="${fileA:1}"
 			fi
-			platform="$(grep -o '.*#' <<<"$fileA")"
-			if xis_set "$platform"; then
+			local platform=""
+			if [[ "$fileA" =~ ^.*# ]]; then
+				platform="${BASH_REMATCH[0]}"
 				fileA="${fileA:${#platform}}"
-				if xis_ne "$platform" "$P_TARGET_PLATFORM#"; then
+				if xis_ne "$platform" "$TARGET_ARCH#"; then
 					skipped+=("$platform$(basename -- "$fileA")")
 					continue
 				fi
@@ -1731,13 +2061,13 @@ function xfiles_copy() {
 				continue
 			else
 				xerror "Unable to find \"$fileA\" for upload"
-				exit "1"
+				xasync_exit "1"
 			fi
 
 			local name_hash file_hash
 			name_hash=$(xhash_text "$fileA")
 			file_hash=$(xhash_file "$fileA")
-			#xecho "$name_hash :: $file_hash"
+			#xprint "$name_hash :: $file_hash"
 
 			if xis_false "$COPY_CACHE" || xis_ne "$(xcache_get "$name_hash")" "$file_hash"; then
 				if xis_eq "${#directories[@]}" "0"; then
@@ -1747,7 +2077,7 @@ function xfiles_copy() {
 				backup_target="${backup_target//\/\//\/}"
 				local backup_subdir
 				backup_subdir=$(dirname "$backup_target")
-				if ! xcontains "$backup_subdir" "${directories[@]}"; then
+				if ! xarray_contains "$backup_subdir" "${directories[@]}"; then
 					directories+=("$backup_subdir")
 				fi
 				symlinks="${symlinks}ln -s \"$fileA\" \"$backup_target\"; "
@@ -1772,21 +2102,22 @@ function xfiles_copy() {
 		if xis_ne "${#uploads[@]}" "0"; then
 			local upload_method="unknown"
 			if xis_false $USE_RSYNC_METHOD; then
-				local pkg="gzip -5 --no-name"
+				local pkg="gzip -5 --no-name" tar_args="--no-same-owner --no-same-permissions"
 				upload_method="ssh+gzip"
 				if xis_true "$USE_PIGZ_COMPRESSION"; then
 					pkg="$USE_PIGZ_BINARY --processes $(nproc) -9 --no-time --no-name"
 					upload_method="ssh+$USE_PIGZ_BINARY"
 				fi
 				P_SSH_HOST_STDIO="tar -cf - -C \"$P_UPLOAD_DIR\" --dereference \".\" | $pkg - | "
-				P_SSH_TARGET_STDIO="gzip -dc | tar --no-same-owner --no-same-permissions -xf - -C \"/\"; "
+				P_SSH_TARGET_STDIO="gzip -dc | tar $tar_args -xf - -C \"/\"; "
 			else
 				upload_method="$USE_RSYNC_BINARY"
 			fi
-			xecho "Uploading ${#uploads[@]} files via $upload_method: $(xjoin_elements true "${uploads[@]}")"
+			xprint "Uploading ${#uploads[@]} files via $upload_method:" \
+				"$(xjoin_elements true "${uploads[@]}")"
 		fi
 	else
-		xecho "Downloading ${#uploads[@]} files: $(xjoin_elements true "${uploads[@]}")"
+		xprint "Downloading ${#uploads[@]} files: $(xjoin_elements true "${uploads[@]}")"
 	fi
 
 	for pair in "${list[@]}"; do
@@ -1820,7 +2151,7 @@ function xservices_stop_vargs() {
 				P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}systemctl mask \"$service\"; "
 			fi
 		done
-		xecho "Stopping $# services: $(xjoin_elements true "$@")"
+		xprint "Stopping $# services: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1838,7 +2169,7 @@ function xservices_start_vargs() {
 			fi
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}systemctl start \"$service\"; "
 		done
-		xecho "Starting $# services: $(xjoin_elements true "$@")"
+		xprint "Starting $# services: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1853,7 +2184,7 @@ function xprocesses_stop_vargs() {
 		for procname in "$@"; do
 			P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}pkill \"$procname\"; "
 		done
-		xecho "Terminating $# processes: $(xjoin_elements true "$@")"
+		xprint "Terminating $# processes: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1868,7 +2199,7 @@ function xprocesses_start_vargs() {
 		for procname in "$@"; do
 			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$procname; "
 		done
-		xecho "Starting $# processes: $(xjoin_elements true "$@")"
+		xprint "Starting $# processes: $(xjoin_elements true "$@")"
 	fi
 }
 
@@ -1883,7 +2214,7 @@ function xcreate_directories_vargs() {
 		for dirname in "$@"; do
 			P_SSH_TARGET_POST="${P_SSH_TARGET_POST}mkdir -p \"$dirname\"; "
 		done
-		xecho "Creating $# directories: $(xjoin_elements false "$@")"
+		xprint "Creating $# directories: $(xjoin_elements false "$@")"
 	fi
 }
 
@@ -1905,23 +2236,9 @@ function xexecute_target_commands_vargs() {
 			P_SSH_TARGET_POST="$P_SSH_TARGET_POST$command; "
 		done
 		if xis_ne "${#commands[@]}" "0"; then
-			xecho "Executing ${#commands[@]} target commands: $(xjoin_elements false "${commands[@]}")"
+			xprint "Executing ${#commands[@]} target commands:" \
+				"$(xjoin_elements false "${commands[@]}")"
 		fi
-	fi
-}
-
-P_GOCACHE_CLEANED=false
-
-function xclean_gocache() {
-	if xis_false "$CLEAN_GOCACHE" || xis_true "$P_GOCACHE_CLEANED"; then
-		return 0
-	fi
-	P_GOCACHE_CLEANED=true
-	xecho "Cleaning Go compiler & linters cache..."
-	xclean_directories "$EXPORT_GOCACHE" "$HOME/.cache/go-build"
-	xexec go clean -cache
-	if xis_true "$GOLANGCI_LINT_ENABLE"; then
-		xexec "$LOCAL_GOLANGCI_LINT" cache clean
 	fi
 }
 
@@ -1930,304 +2247,220 @@ function xtest_installed() {
 	local binary="$2"
 	local instructions="$3"
 	if ! xis_file_exists "$binary"; then
-		xerror "Reqired binary $(xexecutable "$(basename -- "$binary")") is not installed."
+		xerror "Required binary $(xexecutable "$(basename -- "$binary")") is not installed."
 		xerror "To disable this feature set $enable_key=false in 'config-user.ini'."
 		xfatal "Check installation instructions: $(xhyperlink "$instructions")"
 	fi
 }
 
-P_GOLANGCI_LINT_DONE=false
-P_STATICCHECK_DONE=false
-P_GO_VET_DONE=false
-P_LLENCHECK_DONE=false
-P_PRECOMMIT_DONE=false
-
-function xreset_lint_state() {
-	P_GOLANGCI_LINT_DONE=false
-	P_STATICCHECK_DONE=false
-	P_GO_VET_DONE=false
-	P_LLENCHECK_DONE=false
-	P_PRECOMMIT_DONE=false
-}
-
-function xload_lint_state() {
-	local state=()
-	xsplit " " state "$(cat "$P_CACHEDB_DIR/__linters_result.state" 2>/dev/null)"
-	if xis_eq "${#state[@]}" "5"; then
-		P_GOLANGCI_LINT_DONE="${state[0]}"
-		P_STATICCHECK_DONE="${state[1]}"
-		P_GO_VET_DONE="${state[2]}"
-		P_LLENCHECK_DONE="${state[3]}"
-		P_PRECOMMIT_DONE="${state[4]}"
+function xasync_exec() {
+	if xis_true "$USE_ASYNC_LINTERS"; then
+		job_pool_run "$@"
 	else
-		xreset_lint_state
+		"$@"
 	fi
 }
 
-P_CHECK_PROJECT_WAIT=false
-P_CHECK_NAME_HASH=""
-P_CHECK_FILE_HASH=""
+P_PROJECT_TIMESTAMP=""
 
-function xsave_lint_state() {
-	if xis_eq "$P_CHECK_NAME_HASH" ""; then
-		return
-	fi
-	xcache_put "$P_CHECK_NAME_HASH" "$P_CHECK_FILE_HASH"
-	local items=(
-		"P_GOLANGCI_LINT_DONE"
-		"P_STATICCHECK_DONE"
-		"P_GO_VET_DONE"
-		"P_LLENCHECK_DONE"
-		"P_PRECOMMIT_DONE"
-	)
-	for item in "${items[@]}"; do
-		if xis_file_exists "$P_CACHEDB_DIR/__res_$item"; then
-			eval "$item"=true
-		fi
-	done
-	local state=(
-		"$P_GOLANGCI_LINT_DONE"
-		"$P_STATICCHECK_DONE"
-		"$P_GO_VET_DONE"
-		"$P_LLENCHECK_DONE"
-		"$P_PRECOMMIT_DONE"
-	)
-	echo "${state[@]}" >"$P_CACHEDB_DIR/__linters_result.state"
+function xproject_get_done() {
+	xis_eq "$(xcache_get "__done_$1")" "$P_PROJECT_TIMESTAMP"
 }
 
-function xcheck_results() {
+function xproject_set_done() {
+	xcache_put "__done_$1" "$P_PROJECT_TIMESTAMP"
+}
+
+P_LINT_DIFF_FILTER=()
+P_LINT_DIFF_ARGS=()
+
+function xlint_reset_results() {
+	xexec rm -rf \
+		"$P_CACHEDB_DIR/__done_GOLANGCI_LINT" \
+		"$P_CACHEDB_DIR/__done_STATICCHECK" \
+		"$P_CACHEDB_DIR/__done_GO_VET" \
+		"$P_CACHEDB_DIR/__done_LLENCHECK"
+}
+
+function xlint_process_result() {
 	if xis_ne "$EXEC_STATUS" "0"; then
 		xtext "$RED" "$EXEC_STDOUT"
 		xtext "$RED" "$EXEC_STDERR"
-		eval "$1"=false
 		if xis_true "$2"; then
-			xerror "$3 warnings has been detected. Fix before continue (status $(xexec_status "$EXEC_STATUS"))."
-			xsave_lint_state
-			exit "$EXEC_STATUS"
+			xerror "$3 warnings has been detected. Fix before continue" \
+				"(status $(xexec_status "$EXEC_STATUS"))."
+			xasync_exit "$EXEC_STATUS"
 		fi
 	else
+		xproject_set_done "$1"
 		xtext "" "$EXEC_STDOUT"
 		xtext "" "$EXEC_STDERR"
-		eval "$1"=true
-		xexec "echo true >\"$P_CACHEDB_DIR/__res_$1\" 2>&1"
 	fi
 }
 
-function xcheck_project() {
-	local wait_done="$1" dir_hash="$P_CACHEDB_DIR/__project_checklist.log"
-	local diff_filter_args=() diff_filter_command=""
-	if xis_true "$GOLANGCI_LINT_ENABLE" || xis_true "$STATICCHECK_ENABLE" ||
-		xis_true "$GO_VET_ENABLE" || xis_true "$LLENCHECK_ENABLE" ||
-		xis_true "$PRECOMMIT_ENABLE"; then
-		xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
-			-not -path "\"./.git/*\"" -exec date -r {} \
-			"\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
-		xload_lint_state
-		P_CHECK_NAME_HASH=$(xhash_text "$dir_hash")
-		P_CHECK_FILE_HASH=$(xhash_file "$dir_hash")
-		#xecho "$P_CHECK_NAME_HASH :: $P_CHECK_FILE_HASH"
-		if xis_ne "$(xcache_get "$P_CHECK_NAME_HASH")" "$P_CHECK_FILE_HASH" || xis_true "$CLEAN_GOCACHE"; then
-			xreset_lint_state
-		fi
-		if xis_true "$P_GOLANGCI_LINT_DONE" &&
-			xis_true "$P_STATICCHECK_DONE" &&
-			xis_true "$P_GO_VET_DONE" &&
-			xis_true "$P_LLENCHECK_DONE" &&
-			xis_true "$P_PRECOMMIT_DONE"; then
-			return 0
-		fi
-		xexec rm -f "$P_CACHEDB_DIR/__res_P_GOLANGCI_LINT_DONE" \
-			"$P_CACHEDB_DIR/__res_P_STATICCHECK_DONE" \
-			"$P_CACHEDB_DIR/__res_P_GO_VET_DONE" \
-			"$P_CACHEDB_DIR/__res_P_LLENCHECK_DONE" \
-			"$P_CACHEDB_DIR/__res_P_PRECOMMIT_DONE"
-		export PYTHONPYCACHEPREFIX="$P_TEMP_DIR/pycache"
-		if [[ ! -d "$PYTHONPYCACHEPREFIX" ]]; then
-			xexec mkdir -p "$PYTHONPYCACHEPREFIX"
-		fi
-		if xis_set "$GIT_COMMIT_FILTER"; then
-			diff_filter_args+=("-c=$GIT_COMMIT_FILTER")
-		fi
-		diff_filter_command=(
-			"python3" "-X" "pycache_prefix=\"$PYTHONPYCACHEPREFIX\""
-			".vscode/scripts/py-diff-check.py" "${diff_filter_args[@]}"
+function xlint_run_golangci_lint() {
+	if xis_false "$GOLANGCI_LINT_ENABLE" || xproject_get_done "GOLANGCI_LINT"; then
+		return 0
+	fi
+	xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" \
+		"https://golangci-lint.run/usage/install/"
+	local linter_args=("${GOLANGCI_LINT_ARGUMENTS[@]}") linters_list=()
+	xarray_sort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
+	if xarray_contains "all" "${linters_list[@]}"; then
+		local disabled_list=(
+			"${GOLANGCI_LINT_DEPRECATED[@]}"
+			"${GOLANGCI_LINT_SUPPRESSED[@]}"
 		)
-		xclean_gocache
-	fi
-	function run_golangci_lint() {
-		if xis_true "$GOLANGCI_LINT_ENABLE" && xis_false "$P_GOLANGCI_LINT_DONE"; then
-			xtest_installed "GOLANGCI_LINT_ENABLE" "$LOCAL_GOLANGCI_LINT" "https://golangci-lint.run/usage/install/"
-			local linter_args=("${GOLANGCI_LINT_ARGUMENTS[@]}") linters_list=()
-			xsort_unique linters_list "${GOLANGCI_LINT_LINTERS[@]}"
-			if xcontains "all" "${linters_list[@]}"; then
-				local disabled_list=("${GOLANGCI_LINT_DEPRECATED[@]}" "${GOLANGCI_LINT_SUPRESSED[@]}")
-				for linter in "${linters_list[@]}"; do
-					if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
-						continue
-					fi
-					if [[ "$linter" == -* ]]; then
-						disabled_list+=("${linter:1}")
-					fi
-				done
-				xsort_unique disabled_list "${disabled_list[@]}"
-				#linter_args+=("--enable-all")
-				#for linter in "${disabled_list[@]}"; do
-				#	linter_args+=("-D" "$linter")
-				#done
-				xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
-				local known_linters=() enabled_list=()
-				xsplit $'\n' known_linters "$EXEC_STDOUT"
-				for linter_desc in "${known_linters[@]}"; do
-					xsplit ":" linter_desc "$linter_desc"
-					if xis_eq "${#linter_desc[@]}" "0"; then
-						continue
-					fi
-					linter=${linter_desc[0]}
-					if xis_eq "$linter" "Enabled by default linters" ||
-						xis_eq "$linter" "Disabled by default linters"; then
-						continue
-					fi
-					if xis_eq "$linter" "Linters presets"; then
-						break
-					fi
-					xsplit " " linter_desc "$linter"
-					if xis_eq "${#linter_desc[@]}" "0"; then
-						continue
-					fi
-					if xis_eq "${#linter_desc[@]}" "2" &&
-						xis_eq "$(xclean "${linter_desc[1]}")" "[deprecated]"; then
-						continue
-					fi
-					linter="$(xclean "${linter_desc[0]}")"
-					if xis_unset "$linter"; then
-						continue
-					fi
-					enabled_list+=("$linter")
-					if ! xcontains "$linter" "${disabled_list[@]}"; then
-						linter_args+=("-E" "$linter")
-					fi
-				done
-				xsort_unique enabled_list "${enabled_list[@]}"
-				for linter in "${enabled_list[@]}"; do
-					if ! xcontains "$linter" "${disabled_list[@]}"; then
-						linter_args+=("-E" "$linter")
-					fi
-				done
-			else
-				linter_args+=("--disable-all")
-				for linter in "${linters_list[@]}"; do
-					if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
-						continue
-					fi
-					if [[ ! "$linter" == -* ]]; then
-						linter_args+=("-E" "$linter")
-					fi
-				done
+		for linter in "${linters_list[@]}"; do
+			if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+				continue
 			fi
-			local scheck="$P_TEMP_DIR/golangci-lint.log"
-			xecho "Running $(xdecorate "golangci-lint") (details: $(xhyperlink "file://$scheck"))"
-			xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
-				"./..." ">" "$scheck" "2>&1"
-			if xis_true "$GOLANGCI_LINT_FILTER"; then
-				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x -z
-			else
-				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x -z
+			if [[ "$linter" == -* ]]; then
+				disabled_list+=("${linter:1}")
 			fi
-			xcheck_results "P_GOLANGCI_LINT_DONE" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
-		fi
-	}
-	function run_staticckeck() {
-		if xis_true "$STATICCHECK_ENABLE" && xis_false "$P_STATICCHECK_DONE"; then
-			xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" "https://staticcheck.dev/docs/"
-			xexport_clean "${GOLANG_EXPORTS[@]}"
-			local flags=() go_version
-			go_version=$("$BUILDROOT_GOBIN" version)
-			go_version=$(awk '{print $3}' <<<"$go_version")
-			go_version="${go_version%.*}"
-			flags+=("-go" "${go_version:2}")
-			if xis_set "$STATICCHECK_CHECKS"; then
-				flags+=("-checks" "$STATICCHECK_CHECKS")
+		done
+		xarray_sort_unique disabled_list "${disabled_list[@]}"
+		#linter_args+=("--enable-all")
+		#for linter in "${disabled_list[@]}"; do
+		#	linter_args+=("-D" "$linter")
+		#done
+		xexec "$LOCAL_GOLANGCI_LINT" "help" "linters"
+		local known_linters=() enabled_list=()
+		xsplit $'\n' known_linters "$EXEC_STDOUT"
+		for linter_desc in "${known_linters[@]}"; do
+			xsplit ":" linter_desc "$linter_desc"
+			if xis_eq "${#linter_desc[@]}" "0"; then
+				continue
 			fi
-			local scheck="$P_TEMP_DIR/staticcheck.log"
-			xecho "Running $(xdecorate "staticcheck") (details: $(xhyperlink "file://$scheck"))"
-			xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
-			if xis_true "$STATICCHECK_FILTER"; then
-				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -p -x \
-					-e="\"$STATICCHECK_SUPRESS\""
-			else
-				xexec "$P_CANFAIL" cat "$scheck" "|" "${diff_filter_command[@]}" -a -p -x
+			linter=${linter_desc[0]}
+			if xis_eq "$linter" "Enabled by default linters" ||
+				xis_eq "$linter" "Disabled by default linters"; then
+				continue
 			fi
-			xcheck_results "P_STATICCHECK_DONE" "$STATICCHECK_FAIL" "Staticcheck"
-		fi
-	}
-	function run_go_vet_check() {
-		if xis_true "$GO_VET_ENABLE" && xis_false "$P_GO_VET_DONE"; then
-			xecho "Running $(xdecorate "go vet") on $(xdecorate "$TARGET_BUILD_LAUNCHER")..."
-			xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
-			xcheck_results "P_GO_VET_DONE" "$GO_VET_FAIL" "Go-vet"
-		fi
-	}
-	function run_llencheck() {
-		if xis_true "$LLENCHECK_ENABLE" && xis_false "$P_LLENCHECK_DONE"; then
-			local project_name
-			project_name="$(basename -- "$PWD")"
-			xecho "Running $(xdecorate "line-length-limit") check on $(xdecorate "$project_name")"
-			if xis_true "$LLENCHECK_FILTER"; then
-				xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
-					-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
-			else
-				xexec "$P_CANFAIL" "${diff_filter_command[@]}" \
-					-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${diff_filter_args[@]}"
+			if xis_eq "$linter" "Linters presets"; then
+				break
 			fi
-			xcheck_results "P_LLENCHECK_DONE" "$LLENCHECK_FAIL" "Line-length-limit"
-		fi
-	}
-	function run_precommit_check() {
-		if xis_true "$PRECOMMIT_ENABLE" && xis_false "$P_PRECOMMIT_DONE"; then
-			local project_name
-			project_name="$(basename -- "$PWD")"
-			xecho "Running $(xdecorate "pre-commit-checks") check on $(xdecorate "$project_name")"
-			xexec "$P_CANFAIL" "pre-commit" "run" -a
-			xcheck_results "P_PRECOMMIT_DONE" "$PRECOMMIT_FAIL" "Pre-commit-checks"
-		fi
-	}
-	if xis_true "$USE_ASYNC_LINTERS"; then
-		SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
-		source "$SCRIPT_DIR/go-job-pool.sh"
-		job_pool_init "$(nproc)" 0
-		job_pool_run run_golangci_lint
-		job_pool_run run_staticckeck
-		job_pool_run run_go_vet_check
-		job_pool_run run_llencheck
-		job_pool_run run_precommit_check
-		if xis_true "$wait_done"; then
-			job_pool_wait
-			job_pool_shutdown
-		fi
+			xsplit " " linter_desc "$linter"
+			if xis_eq "${#linter_desc[@]}" "0"; then
+				continue
+			fi
+			if xis_eq "${#linter_desc[@]}" "2" &&
+				xis_eq "$(xclean "${linter_desc[1]}")" "[deprecated]"; then
+				continue
+			fi
+			linter="$(xclean "${linter_desc[0]}")"
+			if xis_unset "$linter"; then
+				continue
+			fi
+			enabled_list+=("$linter")
+			if ! xarray_contains "$linter" "${disabled_list[@]}"; then
+				linter_args+=("-E" "$linter")
+			fi
+		done
+		xarray_sort_unique enabled_list "${enabled_list[@]}"
+		for linter in "${enabled_list[@]}"; do
+			if ! xarray_contains "$linter" "${disabled_list[@]}"; then
+				linter_args+=("-E" "$linter")
+			fi
+		done
 	else
-		run_golangci_lint
-		run_staticckeck
-		run_go_vet_check
-		run_llencheck
-		run_precommit_check
+		linter_args+=("--disable-all")
+		for linter in "${linters_list[@]}"; do
+			if xis_eq "$linter" "all" || xis_eq "$linter" "-all"; then
+				continue
+			fi
+			if [[ ! "$linter" == -* ]]; then
+				linter_args+=("-E" "$linter")
+			fi
+		done
 	fi
-	if xis_true "$wait_done"; then
-		xsave_lint_state
+	local scheck="$P_TEMP_DIR/golangci-lint.log"
+	xprint "Running $(xdecorate "golangci-lint") (details: $(xhyperlink "file://$scheck"))"
+	xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
+		"./..." ">" "$scheck" "2>&1"
+	if xis_true "$GOLANGCI_LINT_FILTER"; then
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -p -x -z
 	else
-		P_CHECK_PROJECT_WAIT=true
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x -z
 	fi
+	xlint_process_result "GOLANGCI_LINT" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 }
 
-function xcheck_project_wait() {
-	if xis_true "$P_CHECK_PROJECT_WAIT"; then
-		job_pool_wait
-		job_pool_shutdown
-		xsave_lint_state
+function xlint_run_staticckeck() {
+	if xis_false "$STATICCHECK_ENABLE" || xproject_get_done "STATICCHECK"; then
+		return 0
 	fi
+	xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" \
+		"https://staticcheck.dev/docs/"
+	xexport_clean "${GOLANG_EXPORTS[@]}"
+	local flags=() go_version
+	go_version=$("$BUILDROOT_GOBIN" version)
+	go_version=$(awk '{print $3}' <<<"$go_version")
+	go_version="${go_version%.*}"
+	flags+=("-go" "${go_version:2}")
+	if xis_set "$STATICCHECK_CHECKS"; then
+		flags+=("-checks" "$STATICCHECK_CHECKS")
+	fi
+	local scheck="$P_TEMP_DIR/staticcheck.log"
+	xprint "Running $(xdecorate "staticcheck") (details: $(xhyperlink "file://$scheck"))"
+	xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
+	if xis_true "$STATICCHECK_FILTER"; then
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -p -x \
+			-e="\"$STATICCHECK_SUPPRESS\""
+	else
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x
+	fi
+	xlint_process_result "STATICCHECK" "$STATICCHECK_FAIL" "Staticcheck"
 }
 
-function xbuild_project() {
-	xclean_gocache
+function xlint_run_go_vet_check() {
+	if xis_false "$GO_VET_ENABLE" || xproject_get_done "GO_VET"; then
+		return 0
+	fi
+	xprint "Running $(xdecorate "go vet") on $(xdecorate "$TARGET_BUILD_LAUNCHER")..."
+	xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
+	xlint_process_result "GO_VET" "$GO_VET_FAIL" "Go-vet"
+}
+
+function xlint_run_llencheck() {
+	if xis_false "$LLENCHECK_ENABLE" || xproject_get_done "LLENCHECK"; then
+		return 0
+	fi
+	xprint "Running $(xdecorate "line-length-limit") check on $(xproject_name)"
+	if xis_true "$LLENCHECK_FILTER"; then
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" \
+			-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${P_LINT_DIFF_ARGS[@]}"
+	else
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" \
+			-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${P_LINT_DIFF_ARGS[@]}"
+	fi
+	xlint_process_result "LLENCHECK" "$LLENCHECK_FAIL" "Line-length-limit"
+}
+
+function xlint_run_precommit_check() {
+	if xis_false "$PRECOMMIT_ENABLE" || xproject_get_done "PRECOMMIT"; then
+		return 0
+	fi
+	xprint "Running $(xdecorate "pre-commit-checks") check on $(xproject_name)"
+	xexec "$P_CANFAIL" "pre-commit" "run" -a
+	xlint_process_result "PRECOMMIT" "$PRECOMMIT_FAIL" "Pre-commit-checks"
+}
+
+function xlint_async_prepare() {
+	xpython_prepare
+	if xis_set "$GIT_COMMIT_FILTER"; then
+		export P_LINT_DIFF_ARGS+=("-c=$GIT_COMMIT_FILTER")
+	fi
+	export P_LINT_DIFF_FILTER=("${P_PYTHON_EXEC[@]}"
+		".vscode/scripts/py-diff-check.py" "${P_LINT_DIFF_ARGS[@]}"
+	)
+}
+
+function xcompile_project() {
+	if xproject_get_done "BUILD" && xis_false "$1"; then
+		return
+	fi
+	#xprint "Compiling $(xproject_name)..."
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
 	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
@@ -2238,20 +2471,44 @@ function xbuild_project() {
 		flags+=("$TARGET_BUILD_LAUNCHER")
 	fi
 
-	xexport_apply "${GOLANG_EXPORTS[@]}"
+	if xis_true "$P_DEBUG_GOENV"; then
+		xprint "Current buildroot configuration:"
+		P_EMIT_XLAT="none"
+		P_EMIT_PREFIX="  " xprint "BUILDROOT=$(xstring "$BUILDROOT_DIR")"
+		P_EMIT_PREFIX="  " xprint "BUILDROOT_HOST=$(xstring "$BUILDROOT_HOST_DIR")"
+		P_EMIT_PREFIX="  " xprint "BUILDROOT_TARGET=$(xstring "$BUILDROOT_TARGET_DIR")"
+		P_EMIT_XLAT="full" xprint "Golang version (\"$BUILDROOT_GOBIN\" version):"
+		P_EMIT_XLAT="base"
+		P_EMIT_PREFIX="  " xtext "$NC" "$("$BUILDROOT_GOBIN" version)"
+		P_EMIT_XLAT="full" xprint "Delve version (\"dlv\" version):"
+		P_EMIT_XLAT="base"
+		P_EMIT_PREFIX="  " xtext "$NC" "$(dlv version)"
+		xprint "Exporting Golang environment ($(xhyperlink "file://$P_TEMP_DIR/go.env")):"
+		P_EMIT_PREFIX="  " xexport_apply "${GOLANG_EXPORTS[@]}"
+		xprint "Readback Golang environment:"
+		P_EMIT_PREFIX="  " xtext "$NC" "$("$BUILDROOT_GOBIN" env)"
+		P_EMIT_XLAT="full"
+	else
+		xexport_apply "${GOLANG_EXPORTS[@]}"
+	fi
+	if xis_true "$CLEAN_GOCACHE"; then
+		xprint "Cleaning Go compiler & linters cache..."
+		xclean_directories "$EXPORT_GOCACHE" "$HOME/.cache/go-build"
+		xexec go clean -cache
+		if xis_true "$GOLANGCI_LINT_ENABLE"; then
+			xexec "$LOCAL_GOLANGCI_LINT" cache clean
+		fi
+	fi
 	xexec "$BUILDROOT_GOBIN" "${flags[@]}"
 	if xis_ne "$EXEC_STATUS" "0"; then
-		xdebug "BUILDROOT_DIR=$BUILDROOT_DIR"
-		xdebug "EXPORT_GOPATH=$EXPORT_GOPATH"
-		xdebug "EXPORT_GOROOT=$EXPORT_GOROOT"
-		xexit
+		xexec_exit
 	else
 		xexestat "Exec" "$EXEC_STDOUT" "$EXEC_STDERR" "$EXEC_STATUS"
 	fi
+	xproject_set_done "BUILD"
 }
 
-# Set camera features
-function xcamera_features() {
+function xprocess_camera_features() {
 	local feature_args=""
 	for feature in "${CAMERA_FEATURES_ON[@]}"; do
 		feature_args="$feature_args&$feature=true"
@@ -2264,7 +2521,7 @@ function xcamera_features() {
 	fi
 	local timeout=10
 	local wget_command=(timeout "$timeout" wget --no-proxy "--timeout=$timeout"
-		-q -O - "\"http://$TARGET_IPADDR/cgi/features.cgi?${feature_args:1}\"")
+		-q -O - "\"http://$TARGET_ADDR/cgi/features.cgi?${feature_args:1}\"")
 	xexec "${wget_command[*]}"
 	local response="${EXEC_STDOUT//[$'\t\r\n']/}"
 	xdebug "WGET response: $response"
@@ -2306,7 +2563,7 @@ function xcamera_features() {
 	fi
 
 	if xis_set "$features_set"; then
-		xecho "Camera features set to ${features_set:2}"
+		xprint "Camera features set to ${features_set:2}"
 	fi
 	if xis_set "$features_err"; then
 		xwarn "Failed to set camera features to ${features_err:2}"
@@ -2328,7 +2585,7 @@ function xtruncate_text_file() {
 		return 0
 	fi
 	local tmp_name="$name.tmp"
-	xdebug "Truncating $WRAPPER_LOGFILE from $actual to $target limit, thresold $limit."
+	xdebug "Truncating $WRAPPER_LOGFILE from $actual to $target limit, threshold $limit."
 	xexec "cp \"$name\" \"$tmp_name\""
 	local offset=$((actual - target))
 	xexec "tail -$offset \"$tmp_name\" > \"$name\""
@@ -2340,10 +2597,6 @@ function xtruncate_log_file() {
 }
 
 xtruncate_log_file
-
-function xsed_escape() {
-	printf '%s' "$*" | sed -e 's/[\/&-\"]/\\&/g'
-}
 
 function xsed_pattern() {
 	local result=()
@@ -2371,7 +2624,7 @@ function xprepare_runtime_scripts() {
 	)
 	if xis_true "$USE_OVERLAY_DIR"; then
 		local file_list files=() prefix target
-		local paths=(".vscode/overlay/common" ".vscode/overlay/$P_TARGET_PLATFORM")
+		local paths=(".vscode/overlay/common" ".vscode/overlay/$TARGET_ARCH")
 		for path in "${paths[@]}"; do
 			if ! xis_dir_exists "$path"; then
 				continue
@@ -2382,15 +2635,32 @@ function xprepare_runtime_scripts() {
 			for file in "${files[@]}"; do
 				target=${file:$prefix}
 				if xis_ne "$target" "/README.rst"; then
-					COPY_FILES+=("?$file|:${target}")
+					COPY_FILES+=("?$file|:$target")
 				fi
 			done
 		done
 	fi
 }
 
+function xinstall_keybindings() {
+	if xis_false "$INSTALL_KEYBINDINGS"; then
+		return
+	fi
+	xexec mkdir -p "$HOME/.config/Code/User"
+	xpython_exec "$P_CANFAIL" ".vscode/scripts/py-keybindings.py" \
+		"$HOME/.config/Code/User/keybindings.json" \
+		"$PWD/.vscode/keybindings.json"
+	if xis_ne "$EXEC_STATUS" "0"; then
+		xpython_exec "-m" "ensurepip" "--default-pip"
+		xpython_exec "-m" "pip" "install" "jstyleson"
+		xpython_exec ".vscode/scripts/py-keybindings.py" \
+			"$HOME/.config/Code/User/keybindings.json" \
+			"$PWD/.vscode/keybindings.json"
+	fi
+}
+
 function xistall_ssh_key() {
-	if xis_false "$INSTALL_SSH_KEYS"; then
+	if xis_eq "$TARGET_ARCH" "host" || xis_false "$INSTALL_SSH_KEYS"; then
 		return
 	fi
 	local key_a="$HOME/.ssh/goflame-key"
@@ -2401,8 +2671,5 @@ function xistall_ssh_key() {
 	fi
 	DIRECTORIES_CREATE+=("/root/.ssh")
 	COPY_FILES+=("$key_b|:/root/.ssh/goflame-key.pub")
-	EXECUTE_COMMANDS+=(
-		#"if [ ! -f /etc/ssh/sshd_config.old ]; cp /etc/ssh/sshd_config /etc/ssh/sshd_config.old; fi"
-		#"sed -i 's/^#PubkeyAuthentication/PubkeyAuthentication/g' /etc/ssh/sshd_config"
-	)
+	EXECUTE_COMMANDS+=()
 }

@@ -18,11 +18,11 @@ COPY_FILES+=(
 )
 
 EXECUTE_STUB_PATH="$P_TEMP_DIR"
-EXECUTE_STUB_NAME="$EXECUTE_STUB_PATH/go-execute-stub"
+EXECUTE_STUB_NAME="$EXECUTE_STUB_PATH/go-exec-stub"
 if [[ ! -f "$EXECUTE_STUB_NAME" ]]; then
 	xexec mkdir -p "$EXECUTE_STUB_PATH"
 	xexec go build -o "$EXECUTE_STUB_NAME" \
-		"$PWD/.vscode/scripts/go-execute-stub.go"
+		"$PWD/.vscode/scripts/go-exec-stub.go"
 fi
 
 xunreferenced \
@@ -32,4 +32,4 @@ xunreferenced \
 
 xprepare_runtime_scripts
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[EXEC]" \
-	"Building & deploying $(xdecorate "$TARGET_BIN_NAME")"
+	"Building & executing $(xdecorate "$TARGET_BIN_NAME")"

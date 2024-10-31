@@ -4,8 +4,25 @@
 
 	// List of extensions which should be recommended for users of this workspace.
 	"recommendations": [
+
+		// Go: Rich Go language support for Visual Studio Code
+		// https://marketplace.visualstudio.com/items?itemName=golang.go
 		"golang.go",
+
+		// Go Critic: Lints your Go code with go-critic, with some customizable options
+		// https://marketplace.visualstudio.com/items?itemName=imgg.go-critic-imgg
 		"imgg.go-critic-imgg",
-		"rioj7.command-variable",
+
+		// Rich Syntax Highlighting for Go language
+		// https://marketplace.visualstudio.com/items?itemName=furkanozalp.go-syntax"
+		"furkanozalp.go-syntax"
+
+		// Command Variable: Calculate command variables for launch.json and tasks.json
+		// https://marketplace.visualstudio.com/items?itemName=rioj7.command-variable
+		"rioj7.command-variable", // Command Variable
+
+		// ShellCheck:  Integrates ShellCheck into VS Code, a linter for Shell scripts
+		// https://marketplace.visualstudio.com/items?itemName=timonwong.shellcheck
+		"timonwong.shellcheck"
 	]
 }

@@ -7,10 +7,23 @@
         "debugAdapter": "legacy",
     },
     "go.lintTool": "golangci-lint",
-    "go.lintFlags": ["--fast"],
+    "go.lintFlags": [
+        "--fast"
+    ],
+    "go.vetFlags": [
+        "printfuncs=makeErrorf,makeSliceErrorf"
+    ],
+    "go.useLanguageServer": true,
+    //"go.buildOnSave": "on",
+    "editor.emptySelectionClipboard": false,
     "editor.rulers": [
         100
     ],
+    "[go]": {
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "golang.go",
+    },
     "[python]": {
         "editor.defaultFormatter": "ms-python.autopep8"
     },

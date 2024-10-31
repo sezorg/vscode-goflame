@@ -19,5 +19,4 @@ LLENCHECK_ENABLE=true
 PRECOMMIT_ENABLE=true
 CLEAN_GOCACHE=true
 
-xcheck_project true
-xexit
+xperform_build_and_deploy "[ECHO]" "[CHECK]" "Linting $(xdecorate "$TARGET_BIN_NAME")"

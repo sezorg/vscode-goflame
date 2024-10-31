@@ -57,6 +57,12 @@ function master_branch_lookup() {
 	return 1
 }
 
+function gmk() {
+	if [[ -f ./Makefile ]]; then
+		make
+	fi
+}
+
 function gl() {
     git shortlog --summary --numbered --all --no-merges --email
 }
@@ -67,11 +73,8 @@ function gri() {
 }
 
 function grc() {
+	gmk
 	git rebase --continue
-	if [[ -f ./Makefile ]]; then
-	echo " "
-	make
-	fi
 }
 
 function gru() {
@@ -91,10 +94,13 @@ function gs() {
 }
 
 function ga() {
+	gmk
+	echo "Staging modified files..."
 	git add -u
 }
 
 function gp() {
+	gmk
 	local target="$1"
 	if [[ "$target" == "" ]]; then
 		target="$(master_branch_lookup)"
@@ -167,7 +173,7 @@ function _resolve_variable() {
 			[[ -f "$last_config" ]]; then
 			# shellcheck disable=SC1090
 			source "$last_config"
-			actual_value="$TARGET_IPADDR"
+			actual_value="$TARGET_ADDR"
 		else
 			actual_value="x"
 		fi

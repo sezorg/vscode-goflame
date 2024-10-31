@@ -7,23 +7,23 @@
         // Command Variable extension:
         // ext install rioj7.command-variable
         {
-            "id": "TARGET_IPADDR",
+            "id": "TARGET_ADDR",
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "/var/tmp/goflame/config-vscode.ini",
-                "key": "TARGET_IPADDR",
-                "default": "[UNKNOWN-TARGET_IPADDR]"
+                "fileName": "/var/tmp/goflame/vscode-target.conf",
+                "key": "TARGET_ADDR",
+                "default": "[UNKNOWN-TARGET_ADDR]"
             }
         },
         {
-            "id": "TARGET_IPPORT",
+            "id": "TARGET_PORT",
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "/var/tmp/goflame/config-vscode.ini",
-                "key": "TARGET_IPPORT",
-                "default": "[UNKNOWN-TARGET_IPPORT]"
+                "fileName": "/var/tmp/goflame/vscode-target.conf",
+                "key": "TARGET_PORT",
+                "default": "[UNKNOWN-TARGET_PORT]"
             }
         },
         {
@@ -31,7 +31,7 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "/var/tmp/goflame/config-vscode.ini",
+                "fileName": "/var/tmp/goflame/vscode-target.conf",
                 "key": "TARGET_USER",
                 "default": "[UNKNOWN-TARGET_USER]"
             }
@@ -41,11 +41,11 @@
             "type": "command",
             "command": "extension.commandvariable.file.content",
             "args": {
-                "fileName": "/var/tmp/goflame/config-vscode.ini",
+                "fileName": "/var/tmp/goflame/vscode-target.conf",
                 "key": "TARGET_PASS",
                 "default": "[UNKNOWN-TARGET_PASS]"
             }
-        },
+        }
     ],
     "configurations": [
         {
@@ -54,8 +54,11 @@
             "type": "go",
             "mode": "exec",
             "debugAdapter": "dlv-dap",
-            "port": "${input:TARGET_IPPORT}",
-            "host": "${input:TARGET_IPADDR}",
+            "dlvFlags": [
+                "--check-go-version=false"
+            ],
+            "port": "${input:TARGET_PORT}",
+            "host": "${input:TARGET_ADDR}",
             "program": "/usr/bin/onvifd_debug",
             "args": [
                 "-settings",
@@ -63,35 +66,22 @@
                 //"-log" "date,time,short,utc,us,color,ex"
             ],
             "internalConsoleOptions": "openOnSessionStart",
-			"preLaunchTask": "launch-deploy-debug",
-            "console": "internalConsole",
+            "preLaunchTask": "launch-deploy-debug",
+            "console": "internalConsole"
         },
         {
             "name": "GO Deploy & Execute",
             "request": "launch",
             "type": "go",
             "mode": "exec",
-			"program": "/var/tmp/goflame/go-execute-stub",
+            "program": "/var/tmp/goflame/go-exec-stub",
             "args": [
-                "${input:TARGET_IPADDR}",
+                "${input:TARGET_ADDR}",
                 "${input:TARGET_USER}",
-                "${input:TARGET_PASS}",
+                "${input:TARGET_PASS}"
             ],
             "preLaunchTask": "launch-deploy-execute",
-            "postDebugTask": "launch-deploy-terminate",
-            "showLog": true,
-            "trace": "verbose",
-        },
-        {
-            "name": "GO Run StaticCheck",
-            "request": "launch",
-            "type": "go",
-            "mode": "exec",
-            "program": "${env:HOME}/go/bin/staticcheck",
-            "cwd": "${workspaceFolder}",
-            "args": [".vscode/scripts/go-execute-stub.go"],
-            "console": "internalConsole",
-            "preLaunchTask": "launch-go-staticcheck",
+            "postDebugTask": "launch-deploy-terminate"
         },
         {
             "name": "GO Debug x86_64",
@@ -101,8 +91,24 @@
             "program": "onvifd",
             "cwd": "${workspaceFolder}",
             "debugAdapter": "dlv-dap",
-            "args": ["-users", "${workspaceFolder}/init/users.toml"],
-            "preLaunchTask": "launch-x86-prepare",
+            "args": [
+                "-users",
+                "${workspaceFolder}/init/users.toml"
+            ],
+            "preLaunchTask": "launch-x86-prepare"
         },
-    ],
+        {
+            "name": "GO Run StaticCheck",
+            "request": "launch",
+            "type": "go",
+            "mode": "exec",
+            "program": "${env:HOME}/go/bin/staticcheck",
+            "cwd": "${workspaceFolder}",
+            "args": [
+                ".vscode/scripts/go-exec-stub.go"
+            ],
+            "console": "internalConsole",
+            "preLaunchTask": "launch-go-staticcheck"
+        }
+    ]
 }
