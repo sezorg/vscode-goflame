@@ -142,7 +142,7 @@ function _resolve_variable() {
 	local error_message="$4"
 	local value_path="$HOME/.config/sshcache"
 	if [[ "$actual_value" == "x" ]]; then
-		local last_config="/var/tmp/goflame/config-vscode.ini"
+		local last_config="/var/tmp/goflame/vscode-target.conf"
 		if [[ "$value_name" == "last_ip_addr" ]] &&
 			[[ -f "$last_config" ]]; then
 			# shellcheck disable=SC1090
