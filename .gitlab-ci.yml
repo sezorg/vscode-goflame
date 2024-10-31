@@ -1,0 +1,6 @@
+pages:
+ script:
+   echo "Publishing `doc'..."
+ artifacts:
+    paths:
+    - doc
