@@ -38,7 +38,8 @@ P_EMIT_PREFIX=""
 P_IGNORE_PATTERN=""
 P_DEBUG_TTY=false
 P_DEBUG_GOENV=false
-P_MESSAGE_SOURCE=$(basename -- "$0") #"${BASH_SOURCE[0]}")
+P_STARTUP_DLV=false # experimental
+P_MESSAGE_SOURCE=$(basename -- "$0")
 P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 P_TIME_STARTED="$(date +%s.%N)"
 P_TIME_CON_OUT=""
@@ -476,10 +477,12 @@ function xtext() {
 	if xis_unset "$source"; then
 		return 0
 	fi
-	xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
+	xsplit $'\n' lines "$source"
+	#xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
 	for line in "${lines[@]}"; do
 		line="${line//$'\r'/}"
 		if xis_set "$line"; then
+			line="${line//$NC/$NC$color}"
 			code_link="${line%% *}"
 			# shellcheck disable=SC2001
 			prefix=$(sed 's/:.*//' <<<"$code_link")
@@ -668,6 +671,7 @@ GOLANGCI_LINT_LINTERS=(
 GOLANGCI_LINT_ARGUMENTS=(
 	"--max-issues-per-linter" "0"
 	"--max-same-issues" "0"
+	"--allow-parallel-runners"
 )
 GOLANGCI_LINT_FILTER=true
 GOLANGCI_LINT_FAIL=false
@@ -1768,6 +1772,14 @@ EOF
 	fi
 }
 
+function xensure_delve_is_running() {
+	xssh "$P_CANFAIL" "pidof dlv"
+	if xis_eq "$EXEC_STDOUT" ""; then
+		xexec setsid konsole --hold -e sshpass -p "$TARGET_PASS" ssh "${SSH_FLAGS[@]}" \
+			"$TARGET_USER@$TARGET_ADDR" 'dl'
+	fi
+}
+
 function xrm() {
 	local files=""
 	for file in "$@"; do
@@ -1908,6 +1920,11 @@ function xperform_build_and_deploy() {
 	if xis_true "$flag_rebuild"; then
 		xasync_exec xprocess_camera_features
 		xasync_exec xinstall_keybindings
+	fi
+
+	if xis_true "$P_STARTUP_DLV" && xis_true "$flag_debug" &&
+		xis_true "$flag_rebuild" && xis_ne "$TARGET_ARCH" "host"; then
+		xasync_exec xensure_delve_is_running
 	fi
 
 	if xis_true "$flag_build" || xis_true "$flag_rebuild"; then
@@ -2283,16 +2300,17 @@ function xlint_reset_results() {
 }
 
 function xlint_process_result() {
+	local color="$1" state="$1" fail="$2" title="$3"
 	if xis_ne "$EXEC_STATUS" "0"; then
-		xtext "$RED" "$EXEC_STDOUT"
-		xtext "$RED" "$EXEC_STDERR"
-		if xis_true "$2"; then
-			xerror "$3 warnings has been detected. Fix before continue" \
+		xtext "$color" "$EXEC_STDOUT"
+		xtext "$color" "$EXEC_STDERR"
+		if xis_true "$fail"; then
+			xerror "$title warnings has been detected. Fix before continue" \
 				"(status $(xexec_status "$EXEC_STATUS"))."
 			xasync_exit "$EXEC_STATUS"
 		fi
 	else
-		xproject_set_done "$1"
+		xproject_set_done "$state"
 		xtext "" "$EXEC_STDOUT"
 		xtext "" "$EXEC_STDERR"
 	fi
@@ -2383,7 +2401,7 @@ function xlint_run_golangci_lint() {
 	else
 		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x -z
 	fi
-	xlint_process_result "GOLANGCI_LINT" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
+	xlint_process_result "$RED" "GOLANGCI_LINT" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 }
 
 function xlint_run_staticckeck() {
@@ -2410,7 +2428,7 @@ function xlint_run_staticckeck() {
 	else
 		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x
 	fi
-	xlint_process_result "STATICCHECK" "$STATICCHECK_FAIL" "Staticcheck"
+	xlint_process_result "$RED" "STATICCHECK" "$STATICCHECK_FAIL" "Staticcheck"
 }
 
 function xlint_run_go_vet_check() {
@@ -2419,7 +2437,7 @@ function xlint_run_go_vet_check() {
 	fi
 	xprint "Running $(xdecorate "go vet") on $(xdecorate "$TARGET_BUILD_LAUNCHER")..."
 	xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
-	xlint_process_result "GO_VET" "$GO_VET_FAIL" "Go-vet"
+	xlint_process_result "$RED" "GO_VET" "$GO_VET_FAIL" "Go-vet"
 }
 
 function xlint_run_llencheck() {
@@ -2434,7 +2452,7 @@ function xlint_run_llencheck() {
 		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" \
 			-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${P_LINT_DIFF_ARGS[@]}"
 	fi
-	xlint_process_result "LLENCHECK" "$LLENCHECK_FAIL" "Line-length-limit"
+	xlint_process_result "$RED" "LLENCHECK" "$LLENCHECK_FAIL" "Line-length-limit"
 }
 
 function xlint_run_precommit_check() {
@@ -2443,7 +2461,20 @@ function xlint_run_precommit_check() {
 	fi
 	xprint "Running $(xdecorate "pre-commit-checks") check on $(xproject_name)"
 	xexec "$P_CANFAIL" "pre-commit" "run" -a
-	xlint_process_result "PRECOMMIT" "$PRECOMMIT_FAIL" "Pre-commit-checks"
+	local lines=() output="" index line="" failed=false
+	xsplit $'\n' lines "$EXEC_STDOUT"
+	for line in "${lines[@]}"; do
+		if [[ "$line" == *"...Passed" ]]; then
+			line="$NC${line//\.\.\.Passed/\.\.\.${GREEN}Passed$NC}"
+			failed=false
+		elif [[ "$line" == *"...Failed" ]] || xis_true "$failed"; then
+			line="$RED$line$NC"
+			failed=true
+		fi
+		output+="$line"$'\n'
+	done
+	EXEC_STDOUT="$output"
+	xlint_process_result "" "PRECOMMIT" "$PRECOMMIT_FAIL" "Pre-commit-checks"
 }
 
 function xlint_async_prepare() {
