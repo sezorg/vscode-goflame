@@ -3,10 +3,10 @@
 #
 # Execute binary on the targets which does not support Delve debugging.
 
-DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
-DLOOP_RESTART_FILE="__DLOOP_RESTART_FILE__"
+set -euo pipefail
+#set -x # enable execution trace
 
-if [[ "$instance_guard" == "" ]]; then
+if [[ ! -v "instance_guard" ]] || [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
 	while true; do
 		if [[ -f "$0" ]]; then
@@ -29,8 +29,8 @@ if [[ "$instance_guard" == "" ]]; then
 	done
 fi
 
-set -euo pipefail
-#set -x
+DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
+DLOOP_RESTART_FILE="__DLOOP_RESTART_FILE__"
 
 RED=$(printf "\e[31m")
 GREEN=$(printf "\e[32m")
@@ -164,7 +164,8 @@ while true; do
 
 	cleanup
 	log "Starting $EXEC_BINARY_PATH [${EXEC_BINARY_ARGS[*]}]"
-	sh -c "\"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1 | grep -v \"$SUPPRESS_PATTERN\"" &
+	command="TERM=xterm-256color \"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1"
+	sh -c "$command | stdbuf -o0 grep -v \"$SUPPRESS_PATTERN\"" &
 
 	EXE_PROCESS_PID="$!"
 
@@ -174,12 +175,16 @@ while true; do
 		if [ ! -f "/proc/$EXE_PROCESS_PID/status" ]; then
 			break
 		fi
-		if [[ "$t1" != "$(digest "$DLOOP_RESTART_FILE")" ]] ||
-			[[ "$m1" != "$(digest "$EXEC_BINARY_PATH")" ]]; then
+		if [[ "$t1" != "$(digest "$DLOOP_RESTART_FILE")" ]]; then
+			echo "|| Restart file missing..."
+			break
+		fi
+		if [[ "$m1" != "$(digest "$EXEC_BINARY_PATH")" ]]; then
+			echo "|| Configuration changed..."
 			break
 		fi
 	done
 	rm -f "$DLOOP_RESTART_FILE"
 	cleanup
-
+	sleep 1
 done

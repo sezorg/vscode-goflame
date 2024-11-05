@@ -38,12 +38,13 @@ P_EMIT_PREFIX=""
 P_IGNORE_PATTERN=""
 P_DEBUG_TTY=false
 P_DEBUG_GOENV=false
-P_STARTUP_DLV=false # experimental
 P_MESSAGE_SOURCE=$(basename -- "$0")
 P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 P_TIME_STARTED="$(date +%s.%N)"
 P_TIME_CON_OUT=""
 P_TIME_LOG_OUT=""
+P_START_CONSOLE=true # experimental
+P_CONSOLE_ACTIVE=false
 
 P_TEMP_DIR="/var/tmp/goflame"
 P_CACHEDB_DIR="$P_TEMP_DIR/cachedb"
@@ -1536,10 +1537,29 @@ function xtty_resolve_ip() {
 	return 1
 }
 
-P_VSCODE_CONFIG_PATH="$P_TEMP_DIR/vscode-target.conf"
+P_TARGET_CONFIG_PATH="$P_TEMP_DIR/vscode-target.conf"
 
 function xdiscard_target_config() {
-	rm "$P_VSCODE_CONFIG_PATH"
+	rm "$P_TARGET_CONFIG_PATH"
+}
+
+function xsave_target_config() {
+	cat <<EOF >"$P_TARGET_CONFIG_PATH"
+# Machine generated file. Do not modify.
+# Variables TARGET_ADDR and TARGET_PORT should not be quoted.
+HOST_BUILDROOT="$BUILDROOT_DIR"
+TARGET_ADDR=$TARGET_ADDR
+TARGET_PORT=$TARGET_PORT
+TARGET_HOSTNAME="$TARGET_HOSTNAME"
+TARGET_MACADDR="$TARGET_MACADDR"
+TARGET_USER="$TARGET_USER"
+TARGET_PASS="$TARGET_PASS"
+TARGET_TTYPORT="$TARGET_TTYPORT"
+USE_RSYNC_METHOD="$USE_RSYNC_METHOD"
+USE_PIGZ_COMPRESSION="$USE_PIGZ_COMPRESSION"
+CONSOLE_ACTIVE="$P_CONSOLE_ACTIVE"
+CONFIG_HASH="$P_CONFIG_HASH"
+EOF
 }
 
 P_PYTHON_EXEC=()
@@ -1576,22 +1596,22 @@ function xresolve_target_config() {
 	P_RESOLVE_REASON=""
 	if xis_true "$force"; then
 		P_RESOLVE_REASON="forced by rebuild"
-	elif ! xis_file_exists "$P_VSCODE_CONFIG_PATH"; then
+	elif ! xis_file_exists "$P_TARGET_CONFIG_PATH"; then
 		P_RESOLVE_REASON="new configuration"
 	else
-		function load_config_hash() {
+		function xload_target_config_with_hash() {
 			CONFIG_HASH=""
 			# shellcheck disable=SC1090
-			source "$P_VSCODE_CONFIG_PATH"
+			source "$P_TARGET_CONFIG_PATH"
 			echo "$CONFIG_HASH"
 		}
-		config_hash="$(load_config_hash)"
+		config_hash="$(xload_target_config_with_hash)"
 		if xis_ne "$config_hash" "$P_CONFIG_HASH"; then
 			P_RESOLVE_REASON="configuration changed"
 		fi
 	fi
 	if xis_set "$P_RESOLVE_REASON"; then
-		xdebug "Creating target config for '$TARGET_ADDR' in $(xstring "$P_VSCODE_CONFIG_PATH")," \
+		xdebug "Creating target config for '$TARGET_ADDR' in $(xstring "$P_TARGET_CONFIG_PATH")," \
 			"reason: $P_RESOLVE_REASON"
 		xclean_directories "$P_CACHEDB_DIR" "$P_UPLOAD_DIR" "$P_SCRIPTS_DIR"
 		if xis_eq "$TARGET_ADDR" "tty" || xstring_begins_with "$TARGET_ADDR" "/dev/"; then
@@ -1743,24 +1763,13 @@ function xresolve_target_config() {
 		)
 		xsed_replace "$pattern" "$P_SCRIPTS_DIR/{dlv-loop.sh,dlv-exec.sh}"
 		xoverride_toolchain_wrapper true
-		cat <<EOF >"$P_VSCODE_CONFIG_PATH"
-# Machine generated file. Do not modify.
-# Variables TARGET_ADDR and TARGET_PORT should not be quoted.
-HOST_BUILDROOT="$BUILDROOT_DIR"
-TARGET_ADDR=$TARGET_ADDR
-TARGET_PORT=$TARGET_PORT
-TARGET_HOSTNAME="$TARGET_HOSTNAME"
-TARGET_MACADDR="$TARGET_MACADDR"
-TARGET_USER="$TARGET_USER"
-TARGET_PASS="$TARGET_PASS"
-TARGET_TTYPORT="$TARGET_TTYPORT"
-USE_RSYNC_METHOD="$USE_RSYNC_METHOD"
-USE_PIGZ_COMPRESSION="$USE_PIGZ_COMPRESSION"
-CONFIG_HASH="$P_CONFIG_HASH"
-EOF
+		P_CONSOLE_ACTIVE=false
+		xsave_target_config
 	fi
+	CONSOLE_ACTIVE="unknown"
 	# shellcheck disable=SC1090
-	source "$P_VSCODE_CONFIG_PATH"
+	source "$P_TARGET_CONFIG_PATH"
+	P_CONSOLE_ACTIVE="$CONSOLE_ACTIVE"
 	P_TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_HOSTNAME")"
 	if xis_ne "$TARGET_TTYPORT" ""; then
 		P_TARGET_HYPERLINK="$(xhyperlink "http://$TARGET_ADDR")"
@@ -1772,12 +1781,40 @@ EOF
 	fi
 }
 
-function xensure_delve_is_running() {
-	xssh "$P_CANFAIL" "pidof dlv"
-	if xis_eq "$EXEC_STDOUT" ""; then
-		xexec setsid konsole --hold -e sshpass -p "$TARGET_PASS" ssh "${SSH_FLAGS[@]}" \
-			"$TARGET_USER@$TARGET_ADDR" 'dl'
+function xstart_console_with_delve() {
+	local command status konsole started=false
+	if xis_false "$P_START_CONSOLE" ||
+		xis_true "$P_CONSOLE_ACTIVE"; then
+		return
 	fi
+	konsole="$(which "konsole")"
+	if xis_set "$konsole" && xis_eq "$TARGET_ARCH" "aarch64"; then
+		xssh "$P_CANFAIL" "pidof dlv"
+		if xis_eq "$EXEC_STDOUT" ""; then
+			command="sshpass -p \"$TARGET_PASS\""
+			command="$command ssh ${SSH_FLAGS[*]} \"$TARGET_USER@$TARGET_ADDR\" 'dl'"
+			nohup "$konsole" --new-tab -e "$command" >/dev/null 2>&1 &
+			status="$?"
+			if xis_ne "$status" "0"; then
+				xerror "Unable to start $(xdecorate "konsole") for $(xdecorate "$TARGET_ADDR")"
+				xfatal "Operation terminated with error $(xexec_status "$status")."
+			fi
+			for ((i = 0; i < 10; i++)); do
+				xssh "$P_CANFAIL" "pidof dlv"
+				if xis_ne "$EXEC_STDOUT" ""; then
+					started=true
+					break
+				fi
+				sleep 0.2
+			done
+			if xis_false "$started"; then
+				xerror "Unable to start $(xdecorate "dlv") on the $(xdecorate "$TARGET_ADDR")"
+				xfatal "Process $(xdecorate "dlv") seems to be inactive."
+			fi
+		fi
+	fi
+	P_CONSOLE_ACTIVE=true
+	xsave_target_config
 }
 
 function xrm() {
@@ -1898,7 +1935,7 @@ function xperform_build_and_deploy() {
 	xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
 		-not -path "\"./.git/*\"" -exec date -r {} "\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 	P_PROJECT_TIMESTAMP=$(xhash_file "$dir_hash")
-	xdebug "Project timestamp: $P_PROJECT_TIMESTAMP"
+	#xdebug "Project timestamp: $P_PROJECT_TIMESTAMP"
 
 	xlint_async_prepare
 
@@ -1911,8 +1948,8 @@ function xperform_build_and_deploy() {
 		job_pool_init "$(nproc)" 0
 	fi
 
-	xasync_exec xlint_run_golangci_lint
 	xasync_exec xlint_run_staticckeck
+	xasync_exec xlint_run_golangci_lint
 	xasync_exec xlint_run_go_vet_check
 	xasync_exec xlint_run_llencheck
 	xasync_exec xlint_run_precommit_check
@@ -1920,11 +1957,6 @@ function xperform_build_and_deploy() {
 	if xis_true "$flag_rebuild"; then
 		xasync_exec xprocess_camera_features
 		xasync_exec xinstall_keybindings
-	fi
-
-	if xis_true "$P_STARTUP_DLV" && xis_true "$flag_debug" &&
-		xis_true "$flag_rebuild" && xis_ne "$TARGET_ARCH" "host"; then
-		xasync_exec xensure_delve_is_running
 	fi
 
 	if xis_true "$flag_build" || xis_true "$flag_rebuild"; then
@@ -1957,6 +1989,10 @@ function xperform_build_and_deploy() {
 	fi
 
 	xflash_pending_commands
+
+	if xis_true "$flag_debug" && xis_ne "$TARGET_ARCH" "host"; then
+		xstart_console_with_delve
+	fi
 }
 
 function xkill() {
@@ -2300,7 +2336,7 @@ function xlint_reset_results() {
 }
 
 function xlint_process_result() {
-	local color="$1" state="$1" fail="$2" title="$3"
+	local color="$1" state="$2" fail="$3" title="$4"
 	if xis_ne "$EXEC_STATUS" "0"; then
 		xtext "$color" "$EXEC_STDOUT"
 		xtext "$color" "$EXEC_STDERR"

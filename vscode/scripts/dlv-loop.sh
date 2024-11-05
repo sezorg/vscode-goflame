@@ -4,8 +4,8 @@
 # Run Delve in infinite DAP loop with local console capture
 # To terminate use `ds' command
 
-DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
-DLOOP_STATUS_FILE="__DLOOP_STATUS_FILE__"
+set -euo pipefail
+#set -x # enable execution trace
 
 PATTERN="TARGET_PORT"
 if [[ "__TARGET_PORT__" == "__${PATTERN}__" ]]; then
@@ -13,7 +13,7 @@ if [[ "__TARGET_PORT__" == "__${PATTERN}__" ]]; then
 	exit "1"
 fi
 
-if [[ "$instance_guard" == "" ]]; then
+if [[ ! -v "instance_guard" ]] || [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
 	while true; do
 		if [[ -f "$0" ]]; then
@@ -36,8 +36,25 @@ if [[ "$instance_guard" == "" ]]; then
 	done
 fi
 
-set -euo pipefail
-#set -x
+SUPPRESS_LIST=()
+# -- Application startup messages
+SUPPRESS_LIST+=("warning layer=rpc Listening for remote connections")
+#SUPPRESS_LIST+=("concrete subprogram without address range at")
+#SUPPRESS_LIST+=("inlined call without address range at")
+SUPPRESS_LIST+=(" without address range at ")
+SUPPRESS_LIST+=("debug layer=debugger")
+SUPPRESS_LIST+=("info layer=debugger created breakpoint:")
+SUPPRESS_LIST+=("info layer=debugger cleared breakpoint:")
+# -- Interactive debugger related messages
+SUPPRESS_LIST+=("Failed to execute cursor closing: ERROR: cursor")
+# --- Annoying application messages
+SUPPRESS_LIST+=(__TARGET_SUPPRESS_MSSGS__)
+
+SUPPRESS_PATTERN="$(printf "\n%s" "${SUPPRESS_LIST[@]}")"
+SUPPRESS_PATTERN="${SUPPRESS_PATTERN:1}"
+
+DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
+DLOOP_STATUS_FILE="__DLOOP_STATUS_FILE__"
 
 RED=$(printf "\e[31m")
 GREEN=$(printf "\e[32m")
@@ -58,18 +75,17 @@ unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
 
 function cleanup() {
 	if [[ -f "$DLOOP_STATUS_FILE" ]]; then
-		rm -f "$DLOOP_STATUS_FILE"
+		dlv_pid="$(cat "$DLOOP_STATUS_FILE")"
+		nohup pkill -P "$dlv_pid" >/dev/null 2>&1 &
+		nohup kill -9 "$dlv_pid" >/dev/null 2>&1 &
+		rm -f "$DLOOP_STATUS_FILE" >/dev/null 2>&1
+		unset dlv_pid
 	fi
 }
+
 trap cleanup EXIT
 
-if [[ -f "$DLOOP_STATUS_FILE" ]]; then
-	dlv_pid="$(cat "$DLOOP_STATUS_FILE")"
-	pkill -P "$dlv_pid" >/dev/null 2>&1
-	kill "$dlv_pid" >/dev/null 2>&1
-	rm -f "$DLOOP_STATUS_FILE" >/dev/null 2>&1
-	unset dlv_pid
-fi
+cleanup
 
 function safe() {
 	local exit_status
@@ -95,23 +111,6 @@ function self_test() {
 		exit 155
 	fi
 }
-
-SUPPRESS_LIST=()
-# -- Application startup messages
-SUPPRESS_LIST+=("warning layer=rpc Listening for remote connections")
-#SUPPRESS_LIST+=("concrete subprogram without address range at")
-#SUPPRESS_LIST+=("inlined call without address range at")
-SUPPRESS_LIST+=(" without address range at ")
-SUPPRESS_LIST+=("debug layer=debugger")
-SUPPRESS_LIST+=("info layer=debugger created breakpoint:")
-SUPPRESS_LIST+=("info layer=debugger cleared breakpoint:")
-# -- Interactive debugger related messages
-SUPPRESS_LIST+=("Failed to execute cursor closing: ERROR: cursor")
-# --- Annoying application messages
-SUPPRESS_LIST+=(__TARGET_SUPPRESS_MSSGS__)
-
-SUPPRESS_PATTERN="$(printf "\n%s" "${SUPPRESS_LIST[@]}")"
-SUPPRESS_PATTERN="${SUPPRESS_PATTERN:1}"
 
 s1=$(digest "$0")
 first_time_run="1"
@@ -168,8 +167,9 @@ while :; do
 
 	self_test
 	log "Starting Delve headless server loop in DAP mode. Host: ${GRAY}http://$IP"
-	dap_args="--listen=:__TARGET_PORT__ --api-version=2 --check-go-version=false --log 2>&1"
-	sh -c "$dlv_binary dap $dap_args | grep -v \"$SUPPRESS_PATTERN\"" &
+	colors="TERM=xterm-256color"
+	dap_args="--listen=:__TARGET_PORT__ --api-version=2 --check-go-version=false --log"
+	sh -c "$colors $dlv_binary dap $dap_args 2>&1 | stdbuf -o0 grep -v \"$SUPPRESS_PATTERN\"" &
 	dlv_pid="$!"
 
 	echo "$dlv_pid" >"$DLOOP_STATUS_FILE"
