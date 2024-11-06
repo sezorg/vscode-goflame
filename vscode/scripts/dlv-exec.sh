@@ -165,7 +165,8 @@ while true; do
 	cleanup
 	log "Starting $EXEC_BINARY_PATH [${EXEC_BINARY_ARGS[*]}]"
 	command="TERM=xterm-256color \"$EXEC_BINARY_PATH\" ${EXEC_BINARY_ARGS[*]} 2>&1"
-	sh -c "$command | stdbuf -o0 grep -v \"$SUPPRESS_PATTERN\"" &
+	# sh -c "$command | stdbuf -o0 grep -v \"$SUPPRESS_PATTERN\"" &
+	sh -c "$command | grep -v \"$SUPPRESS_PATTERN\"" &
 
 	EXE_PROCESS_PID="$!"
 

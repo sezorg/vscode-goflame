@@ -49,7 +49,7 @@ COPY_FILES+=(
 	#"init/onvifd.service|:/usr/lib/systemd/system/onvifd.service"
 	#"init/users.toml|:/var/lib/onvifd/users.toml"
 )
-if [[ "$TARGET_ARCH" != "arm" ]]; then
+if [[ "$TARGET_ARCH" != "armv7l" ]]; then
 	COPY_FILES+=(
 		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
 	)

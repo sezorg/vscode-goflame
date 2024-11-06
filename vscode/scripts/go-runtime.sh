@@ -647,6 +647,7 @@ TARGET_EXEC_ARGS=()
 TARGET_SUPPRESS_MSSGS=()
 
 TARGET_BUILD_GOFLAGS=()
+TARGET_BUILD_GOTAGS=()
 TARGET_BUILD_LDFLAGS=()
 
 TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
@@ -2315,24 +2316,26 @@ function xasync_exec() {
 }
 
 P_PROJECT_TIMESTAMP=""
+P_PROJECT_DONE_PREF="__done_"
 
 function xproject_get_done() {
-	xis_eq "$(xcache_get "__done_$1")" "$P_PROJECT_TIMESTAMP"
+	xis_eq "$(xcache_get "$P_PROJECT_DONE_PREF$(xstring_to_lowercase "$1")")" "$P_PROJECT_TIMESTAMP"
 }
 
 function xproject_set_done() {
-	xcache_put "__done_$1" "$P_PROJECT_TIMESTAMP"
+	xcache_put "$P_PROJECT_DONE_PREF$(xstring_to_lowercase "$1")" "$P_PROJECT_TIMESTAMP"
 }
 
 P_LINT_DIFF_FILTER=()
 P_LINT_DIFF_ARGS=()
 
 function xlint_reset_results() {
-	xexec rm -rf \
-		"$P_CACHEDB_DIR/__done_GOLANGCI_LINT" \
-		"$P_CACHEDB_DIR/__done_STATICCHECK" \
-		"$P_CACHEDB_DIR/__done_GO_VET" \
-		"$P_CACHEDB_DIR/__done_LLENCHECK"
+	#linters=("GOLANGCI_LINT" "STATICCHECK" "GO_VET" "LLENCHECK") paths=()
+	#for linter in "${linters[@]}"; do
+	#	paths+=("$P_CACHEDB_DIR/$P_PROJECT_DONE_PREF$(xstring_to_lowercase "$linter")")
+	#done
+	#xexec rm -rf "${paths[@]}"
+	xexec rm -rf "$P_CACHEDB_DIR/$P_PROJECT_DONE_PREF*"
 }
 
 function xlint_process_result() {
@@ -2529,8 +2532,12 @@ function xcompile_project() {
 	fi
 	#xprint "Compiling $(xproject_name)..."
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
+	#xdebug "TARGET_BUILD_GOTAGS: ${TARGET_BUILD_GOTAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
 	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
+	if xis_ne "${#TARGET_BUILD_GOTAGS[@]}" "0"; then
+		flags+=("-tags=$(xarray_join "," "${TARGET_BUILD_GOTAGS[@]}")")
+	fi
 	if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
 		flags+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
 	fi
