@@ -43,7 +43,7 @@ P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 P_TIME_STARTED="$(date +%s.%N)"
 P_TIME_CON_OUT=""
 P_TIME_LOG_OUT=""
-P_START_CONSOLE=true # experimental
+P_START_CONSOLE="auto" # true/false/auto/kde/konsole/gnome/gnome-terminal
 P_CONSOLE_ACTIVE=false
 
 P_TEMP_DIR="/var/tmp/goflame"
@@ -1783,36 +1783,63 @@ function xresolve_target_config() {
 }
 
 function xstart_console_with_delve() {
-	local command status konsole started=false
-	if xis_false "$P_START_CONSOLE" ||
-		xis_true "$P_CONSOLE_ACTIVE"; then
+	local terminals=() processed=() terminal command status
+	if xis_unset "$P_START_CONSOLE" || xis_eq "$P_START_CONSOLE" "false" ||
+		xis_true "$P_CONSOLE_ACTIVE" ||
+		xis_ne "$TARGET_ARCH" "aarch64"; then
 		return
 	fi
-	konsole="$(which "konsole")"
-	if xis_set "$konsole" && xis_eq "$TARGET_ARCH" "aarch64"; then
-		xssh "$P_CANFAIL" "pidof dlv"
-		if xis_eq "$EXEC_STDOUT" ""; then
-			command="sshpass -p \"$TARGET_PASS\""
-			command="$command ssh ${SSH_FLAGS[*]} \"$TARGET_USER@$TARGET_ADDR\" 'dl'"
-			nohup "$konsole" --new-tab -e "$command" >/dev/null 2>&1 &
-			status="$?"
-			if xis_ne "$status" "0"; then
-				xerror "Unable to start $(xdecorate "konsole") for $(xdecorate "$TARGET_ADDR")"
-				xfatal "Operation terminated with error $(xexec_status "$status")."
-			fi
-			for ((i = 0; i < 10; i++)); do
-				xssh "$P_CANFAIL" "pidof dlv"
-				if xis_ne "$EXEC_STDOUT" ""; then
-					started=true
-					break
-				fi
-				sleep 0.2
-			done
-			if xis_false "$started"; then
-				xerror "Unable to start $(xdecorate "dlv") on the $(xdecorate "$TARGET_ADDR")"
-				xfatal "Process $(xdecorate "dlv") seems to be inactive."
-			fi
+	xssh "$P_CANFAIL" "pidof dlv"
+	if xis_ne "$EXEC_STDOUT" ""; then
+		P_CONSOLE_ACTIVE=true
+		xsave_target_config
+		return
+	fi
+	for terminal in "$P_START_CONSOLE" "$XDG_CURRENT_DESKTOP"; do
+		case "$(xstring_to_lowercase "$terminal")" in
+		*"kde"* | *"konsole"*) terminals+=("konsole") ;;
+		*"gnome"*) terminals+=("gnome-terminal") ;;
+		"auto" | "true") ;;
+		*) xwarn "Unsupported/unknown desktop environment or terminal: $terminal" ;;
+		esac
+	done
+	for terminal in "${terminals[@]}" "konsole" "gnome-terminal"; do
+		if xarray_contains "$terminal" "${processed[@]}"; then
+			continue
 		fi
+		processed+=("$terminal")
+		if xis_unset "$(which "$terminal")"; then
+			continue
+		fi
+		command="sshpass -p \"$TARGET_PASS\" ssh ${SSH_FLAGS[*]} \"$TARGET_USER@$TARGET_ADDR\" 'dl'"
+		case "$terminal" in
+		"konsole")
+			nohup "$terminal" --new-tab -e "$command" >/dev/null 2>&1 &
+			;;
+		"gnome-terminal")
+			nohup "$terminal" -- bash -c "$command; exec bash" >/dev/null 2>&1 &
+			;;
+		*) xfatal "Unsupported/unknown terminal: $terminal" ;;
+		esac
+		status="$?"
+		if xis_eq "$status" "0"; then
+			break
+		fi
+	done
+	if xis_eq "$status" "0"; then
+		status=""
+		for ((i = 0; i < 10; i++)); do
+			xssh "$P_CANFAIL" "pidof dlv"
+			if xis_ne "$EXEC_STDOUT" ""; then
+				status="0"
+				break
+			fi
+			sleep 0.1
+		done
+	fi
+	if xis_ne "$status" "0"; then
+		xerror "Unable to start $(xdecorate "dlv") on the $(xdecorate "$TARGET_ADDR")"
+		xfatal "Process $(xdecorate "dlv") seems to be inactive."
 	fi
 	P_CONSOLE_ACTIVE=true
 	xsave_target_config
