@@ -109,17 +109,21 @@ while [[ "$#" != 0 ]]; do
 done
 
 if [[ "$IP" == "" ]]; then
-	if [[ -f "$BASE/../../config.ini" ]]; then
-		source "$BASE/../../config.ini"
-		IP="$TARGET_IPADDR"
+	if [[ -f "$BASE/../../default.conf" ]]; then
+		source "$BASE/../../default.conf"
+		IP="$TARGET_ADDR"
 	fi
-	if [[ -f "$BASE/../../config-user.ini" ]]; then
-		source "$BASE/../../config-user.ini"
-		IP="$TARGET_IPADDR"
+	if [[ -f "$BASE/../../config.conf" ]]; then
+		source "$BASE/../../config.conf"
+		IP="$TARGET_ADDR"
 	fi
-	if [[ -f "/var/tmp/goflame/config-vscode.ini" ]]; then
-		source "/var/tmp/goflame/config-vscode.ini"
-		IP="$TARGET_IPADDR"
+	if [[ -f "$BASE/../../config.user" ]]; then
+		source "$BASE/../../config.user"
+		IP="$TARGET_ADDR"
+	fi
+	if [[ -f "/var/tmp/goflame/vscode-target.conf" ]]; then
+		source "/var/tmp/goflame/vscode-target.conf"
+		IP="$TARGET_ADDR"
 	fi
 fi
 
