@@ -472,7 +472,8 @@ function xclean() {
 }
 
 function xtext() {
-	local color="$1" source lines code_link prefix
+	local filter="$1" color="$2" source lines processed=() code_link prefix
+	shift
 	shift
 	source="$*"
 	if xis_unset "$source"; then
@@ -482,16 +483,21 @@ function xtext() {
 	#xsplit $'\n' lines "$(sed -r "$P_COLOR_FILTER" <<<"$source")"
 	for line in "${lines[@]}"; do
 		line="${line//$'\r'/}"
-		if xis_set "$line"; then
-			line="${line//$NC/$NC$color}"
-			code_link="${line%% *}"
-			# shellcheck disable=SC2001
-			prefix=$(sed 's/:.*//' <<<"$code_link")
-			if xis_file_exists "./$prefix"; then
-				xprint "$LINK$code_link$NC$color${line:${#code_link}}"
-			else
-				xprint "$color$line$NC"
-			fi
+		if xis_unset "$line"; then
+			continue
+		fi
+		if xis_true "$filter" && xarray_contains "$line" "${processed[@]}"; then
+			continue
+		fi
+		processed+=("$line")
+		line="${line//$NC/$NC$color}"
+		code_link="${line%% *}"
+		# shellcheck disable=SC2001
+		prefix=$(sed 's/:.*//' <<<"$code_link")
+		if xis_file_exists "./$prefix"; then
+			xprint "$LINK$code_link$NC$color${line:${#code_link}}"
+		else
+			xprint "$color$line$NC"
 		fi
 	done
 }
@@ -663,6 +669,7 @@ TTY_RETRY="3"
 BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
 CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
+ENABLE_LINTERS=true
 REBUILD_FORCE_LINTERS=true
 GOLANGCI_LINT_ENABLE=false
 GOLANGCI_LINT_LINTERS=(
@@ -810,20 +817,45 @@ if xis_true "$USE_NO_COLORS"; then
 	NCC=""
 fi
 
-if ! xis_defined TARGET_ARCH || xis_unset "$TARGET_ARCH"; then
-	TARGET_ARCH=""
-	if xis_file_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
-		TARGET_ARCH="armv7l"
-	elif xis_file_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
-		TARGET_ARCH="aarch64"
-	elif ! xis_dir_exists "$BUILDROOT_DIR"; then
-		P_EMIT_XLAT="none" xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not" \
-			"exist: $(xstring "$BUILDROOT_DIR")."
-	else
-		P_EMIT_XLAT="none" xfatal "Can not determine target architecture from" \
-			"$(xdecorate "BUILDROOT_DIR"): $(xstring "$BUILDROOT_DIR")."
+function xresolve_target_arch() {
+	if ! xis_defined TARGET_ARCH || xis_unset "$TARGET_ARCH"; then
+		TARGET_ARCH=""
+		if xis_file_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
+			TARGET_ARCH="armv7l"
+		elif xis_file_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
+			TARGET_ARCH="aarch64"
+		elif ! xis_dir_exists "$BUILDROOT_DIR"; then
+			P_EMIT_XLAT="none" xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not" \
+				"exist: $(xstring "$BUILDROOT_DIR")."
+		else
+			P_EMIT_XLAT="none" xfatal "Can not determine target architecture from" \
+				"$(xdecorate "BUILDROOT_DIR"): $(xstring "$BUILDROOT_DIR")."
+		fi
 	fi
-fi
+}
+
+function xapply_arch_variables() {
+	local names suffix target
+	xsplit $'\n' names "$(compgen -v)"
+	suffix="_$(xstring_to_uppercase "$TARGET_ARCH")"
+	for name in "${names[@]}"; do
+		if [[ ! "$name" =~ .*"$suffix"$ ]]; then
+			continue
+		fi
+		target=${name%"$suffix"}
+		if ! xis_defined "$target"; then
+			continue
+		fi
+		if [[ "$(declare -p "$target")" =~ "declare -a" ]]; then
+			eval "$target=(\"\${${name}[@]}\")"
+		else
+			eval "$target=\"\$$name\""
+		fi
+	done
+}
+
+xresolve_target_arch
+xapply_arch_variables
 
 P_TARGET_HYPERLINK="UNKNOWN-TARGET"
 P_TARGET_GOCXX=""
@@ -1236,8 +1268,8 @@ EOF
 			xdebug "$EXEC_STDOUT"
 			xerror "$message"
 		else
-			xtext "$RED" "$EXEC_STDERR"
-			xtext "$RED" "$EXEC_STDOUT"
+			xtext false "$RED" "$EXEC_STDERR"
+			xtext false "$RED" "$EXEC_STDOUT"
 		fi
 		xerror "Terminating with status $(xexec_status "$EXEC_STATUS")"
 		xasync_exit "$EXEC_STATUS"
@@ -1976,11 +2008,13 @@ function xperform_build_and_deploy() {
 		job_pool_init "$(nproc)" 0
 	fi
 
-	xasync_exec xlint_run_staticckeck
-	xasync_exec xlint_run_golangci_lint
-	xasync_exec xlint_run_go_vet_check
-	xasync_exec xlint_run_llencheck
-	xasync_exec xlint_run_precommit_check
+	if xis_true "$ENABLE_LINTERS"; then
+		xasync_exec xlint_run_staticckeck
+		xasync_exec xlint_run_golangci_lint
+		xasync_exec xlint_run_go_vet_check
+		xasync_exec xlint_run_llencheck
+		xasync_exec xlint_run_precommit_check
+	fi
 
 	if xis_true "$flag_rebuild"; then
 		xasync_exec xprocess_camera_features
@@ -2368,8 +2402,8 @@ function xlint_reset_results() {
 function xlint_process_result() {
 	local color="$1" state="$2" fail="$3" title="$4"
 	if xis_ne "$EXEC_STATUS" "0"; then
-		xtext "$color" "$EXEC_STDOUT"
-		xtext "$color" "$EXEC_STDERR"
+		xtext true "$color" "$EXEC_STDOUT"
+		xtext true "$color" "$EXEC_STDERR"
 		if xis_true "$fail"; then
 			xerror "$title warnings has been detected. Fix before continue" \
 				"(status $(xexec_status "$EXEC_STATUS"))."
@@ -2377,8 +2411,8 @@ function xlint_process_result() {
 		fi
 	else
 		xproject_set_done "$state"
-		xtext "" "$EXEC_STDOUT"
-		xtext "" "$EXEC_STDERR"
+		xtext true "" "$EXEC_STDOUT"
+		xtext true "" "$EXEC_STDERR"
 	fi
 }
 
@@ -2580,14 +2614,14 @@ function xcompile_project() {
 		P_EMIT_PREFIX="  " xprint "BUILDROOT_TARGET=$(xstring "$BUILDROOT_TARGET_DIR")"
 		P_EMIT_XLAT="full" xprint "Golang version (\"$BUILDROOT_GOBIN\" version):"
 		P_EMIT_XLAT="base"
-		P_EMIT_PREFIX="  " xtext "$NC" "$("$BUILDROOT_GOBIN" version)"
+		P_EMIT_PREFIX="  " xtext false "$NC" "$("$BUILDROOT_GOBIN" version)"
 		P_EMIT_XLAT="full" xprint "Delve version (\"dlv\" version):"
 		P_EMIT_XLAT="base"
-		P_EMIT_PREFIX="  " xtext "$NC" "$(dlv version)"
+		P_EMIT_PREFIX="  " xtext false "$NC" "$(dlv version)"
 		xprint "Exporting Golang environment ($(xhyperlink "file://$P_TEMP_DIR/go.env")):"
 		P_EMIT_PREFIX="  " xexport_apply "${GOLANG_EXPORTS[@]}"
 		xprint "Readback Golang environment:"
-		P_EMIT_PREFIX="  " xtext "$NC" "$("$BUILDROOT_GOBIN" env)"
+		P_EMIT_PREFIX="  " xtext false "$NC" "$("$BUILDROOT_GOBIN" env)"
 		P_EMIT_XLAT="full"
 	else
 		xexport_apply "${GOLANG_EXPORTS[@]}"
