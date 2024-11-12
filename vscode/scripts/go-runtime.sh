@@ -710,6 +710,7 @@ LLENCHECK_TABWIDTH=4
 LLENCHECK_LIMIT=100
 LLENCHECK_FILTER=true
 LLENCHECK_FAIL=true
+LLENCHECK_SUPPRESS=("ghdrcheck")
 PRECOMMIT_ENABLE=false
 PRECOMMIT_FAIL=true
 
@@ -2545,12 +2546,16 @@ function xlint_run_llencheck() {
 		return 0
 	fi
 	xprint "Running $(xdecorate "line-length-limit") check on $(xproject_name)"
+	local suppress=()
+	if xis_ne "${#LLENCHECK_SUPPRESS[@]}" "0"; then
+		suppress=("--nolint" "$(xarray_join "," "${LLENCHECK_SUPPRESS[@]}")")
+	fi
 	if xis_true "$LLENCHECK_FILTER"; then
-		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" \
-			-l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${P_LINT_DIFF_ARGS[@]}"
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" -l="$LLENCHECK_LIMIT" \
+			-t="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}"
 	else
-		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" \
-			-a -l="$LLENCHECK_LIMIT" -t="$LLENCHECK_TABWIDTH" "${P_LINT_DIFF_ARGS[@]}"
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" -a -l="$LLENCHECK_LIMIT" \
+			-t="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}"
 	fi
 	xlint_process_result "$RED" "LLENCHECK" "$LLENCHECK_FAIL" "Line-length-limit"
 }
@@ -2579,6 +2584,7 @@ function xlint_run_precommit_check() {
 
 function xlint_async_prepare() {
 	xpython_prepare
+	P_LINT_DIFF_ARGS=()
 	if xis_set "$GIT_COMMIT_FILTER"; then
 		export P_LINT_DIFF_ARGS+=("-c=$GIT_COMMIT_FILTER")
 	fi

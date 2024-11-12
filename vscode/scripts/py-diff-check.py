@@ -37,6 +37,7 @@ class Config:
     excludeNonPrefixed = False
     excludeNolintWarns = False
     printAll = False
+    noLintList = []
     exitCode = 0
 
 
@@ -170,6 +171,13 @@ def parse_arguments():
         action='store_true',
         default=False,
     )
+    parser.add_argument(
+        '-n', '--nolint',
+        help='Comma separated list of suppressed linters',
+        required=False,
+        type=str,
+        default="",
+    )
     arguments, unknown_args = parser.parse_known_args()
     Config.debugLevel = arguments.debug
     # debug(f'arguments={arguments}')
@@ -190,6 +198,7 @@ def parse_arguments():
     Config.excludeNonPrefixed = arguments.exclude_non_prefixed
     Config.excludeNolintWarns = arguments.exclude_nolint
     Config.printAll = arguments.print_all
+    Config.noLintList = arguments.nolint.split(',')
     return arguments
 
 
@@ -296,6 +305,7 @@ class BuiltinLintersRunner:
         self.line_index = 0
         self.line_text = ''
         self.in_imports = 0
+        self.in_hdrcheck = 0
         return
 
     def run(self):
@@ -303,36 +313,55 @@ class BuiltinLintersRunner:
             self.process_all()
             return
         for change_set in self.git_diff.change_list:
+            self.file_path = change_set.file_path
+            self.in_imports = 0
+            self.in_hdrcheck = 0
+            need_file = False
+            debug(f'Runing DIFF on {self.file_path}')
             for line in change_set.appended_lines:
-
-                self.file_path = change_set.file_path
+                need_file = True
                 self.line_index = line.target_line_no
-                self.line_text = line.value.rstrip(
-                    '\r\n').expandtabs(Config.tabWidth)
-                debug(
-                    f'Change: {self.file_path}:{self.line_index}: {self.line_text}')
-                self.process_line()
+                self.line_text = line.value.rstrip('\r\n').expandtabs(Config.tabWidth)
+                debug(f'Diff: {self.file_path}:{self.line_index}: {self.line_text}')
+                self.process_diff()
+            if need_file:
+                debug(f'Runing FULL on {self.file_path}')
+                self.process_file(False, True)
         return
 
     def process_all(self):
         git_files = GitFiles()
         for self.file_path in git_files.files:
             self.file_path = self.file_path.strip()
+            self.in_imports = 0
+            self.in_hdrcheck = 0
             if self.file_path == "":
                 continue
-            lines = open(self.file_path, 'r', encoding='utf-8').readlines()
-            for index, line in enumerate(lines):
-                self.line_index = index + 1
-                self.line_text = line.expandtabs(Config.tabWidth)
-                self.process_line()
+            self.process_file(True, True)
         return
 
-    def process_line(self):
+    def process_file(self, diff_check, full_check):
+        lines = open(self.file_path, 'r', encoding='utf-8').readlines()
+        for index, line in enumerate(lines):
+            self.line_index = index + 1
+            self.line_text = line.rstrip('\r\n').expandtabs(Config.tabWidth)
+            debug(f'Full: {self.file_path}:{self.line_index}: {self.line_text}')
+            if diff_check:
+                self.process_diff()
+            if full_check:
+                self.process_full()
+        return
+
+    def process_diff(self):
         self.process_lllcheck()
         self.process_wrapcheck()
         self.process_declcheck()
         self.process_deprecheck()
-        # self.process_gimpcheck()
+        return
+
+    def process_full(self):
+        self.process_ghdrcheck()
+        self.process_gimpcheck()
         return
 
     def process_lllcheck(self):
@@ -425,26 +454,36 @@ class BuiltinLintersRunner:
         self.output_message(type_id, f'Use of method is deprecated: \'{check}\'')
         return
 
+    def process_ghdrcheck(self):
+        type_id = 'ghdrcheck'
+        if self.in_hdrcheck == 0 and self.line_text != '':
+            self.in_hdrcheck = 1
+            if self.line_text.startswith('/*'):
+                self.output_message_no_code(
+                    type_id, 'Consider using \'//\' instead of \'/*\' in header comment')
+        return
+
     def process_gimpcheck(self):
         type_id = 'gimpcheck'
+        if self.in_imports < 0:
+            return
         if self.line_text.startswith('import ('):
             self.in_imports = 1
-            self.output_message(type_id, 'Sep start')
+        elif self.in_imports == 0:
             return
-        if self.in_imports != 0:
-            if self.line_text == '':
-                self.in_imports += 1
-                self.output_message(type_id, 'Sep space')
-                return
-            if self.line_text.startswith(')'):
-                self.output_message(type_id, f'Sep end {self.in_imports}')
-                if self.in_imports > 2 and not self.is_suppressed(type_id):
-                    self.output_message(type_id, 'Multiple separator lines in imports block')
-                self.in_imports = 0
-                return
+        elif self.line_text == '':
+            self.in_imports += 1
+        elif self.line_text.startswith(')'):
+            if self.in_imports > 2 and not self.is_suppressed(type_id):
+                self.output_message_no_code(type_id, 'Multiple separator lines in imports block' +
+                                            f' (actual {self.in_imports-1}, max 1)')
+            self.in_imports = -1
+            return
         return
 
     def is_suppressed(self, suppress):
+        if suppress in Config.noLintList:
+            return True
         prefix = 'nolint:'
         offset = self.line_text.rfind(prefix)
         if offset < 0:
@@ -457,14 +496,19 @@ class BuiltinLintersRunner:
                 return False
         return False
 
-    def output_message(self, type_id, message):
+    def output_message_no_code(self, type_id, message):
         if self.is_suppressed(type_id):
-            return
+            return '', False
         prefix = f'{self.file_path}:{self.line_index}: '
         print(f'{prefix}{message} ({type_id})')
-        if not Config.excludeNonPrefixed:
-            print(f'{prefix}{self.line_text} ({type_id})')
         Config.exitCode = 2
+        return prefix, True
+
+    def output_message(self, type_id, message):
+        prefix, enable = self.output_message_no_code(type_id, message)
+        if enable and not Config.excludeNonPrefixed:
+            print(f'{prefix}{self.line_text} ({type_id})')
+        return enable
 
     @staticmethod
     def select_first_alnum_word(string):
