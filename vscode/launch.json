@@ -84,7 +84,7 @@
             "postDebugTask": "launch-deploy-terminate"
         },
         {
-            "name": "GO Debug x86_64",
+            "name": "GO HOST Debug",
             "type": "go",
             "request": "launch",
             "mode": "exec",
@@ -95,7 +95,23 @@
                 "-users",
                 "${workspaceFolder}/init/users.toml"
             ],
-            "preLaunchTask": "launch-x86-prepare"
+            "preLaunchTask": "launch-host-debug"
+        },
+        {
+            "name": "GO HOST Test",
+            "type": "go",
+            "request": "launch",
+            "mode": "exec",
+            "cwd": "${workspaceFolder}",
+            "debugAdapter": "dlv-dap",
+            // View coverage: go tool cover -html=tests/coverprofile.out
+            "program": "tests/test.test",
+            "args": [
+                "-test.v",
+                "-test.coverprofile",
+                "tests/coverprofile.out"
+            ],
+            "preLaunchTask": "launch-host-test"
         },
         {
             "name": "GO Run StaticCheck",

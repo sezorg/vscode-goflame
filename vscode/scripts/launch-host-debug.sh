@@ -31,5 +31,3 @@ TARGET_BUILD_LDFLAGS=(
 
 xperform_build_and_deploy "[ECHO]" "[BUILD]" "[DEBUG]" \
 	"Building & deploying $(xdecorate "$TARGET_BIN_NAME")"
-
-#xcompile_project false

@@ -1957,23 +1957,33 @@ function xforce_linters() {
 	xlint_reset_results
 }
 
+function xreset_build_flags() {
+	P_FLAG_BUILD=false
+	P_FLAG_REBUILD=false
+	P_MODE_DEBUG=false
+	P_MODE_EXEC=false
+	P_MODE_TEST=false
+}
+
 function xperform_build_and_deploy() {
-	local flag_build=false flag_rebuild=false flag_debug=false flag_exec=false
+	xreset_build_flags
 
 	while :; do
 		if xis_eq "$1" "[BUILD]"; then
-			flag_build=true
+			P_FLAG_BUILD=true
 		elif xis_eq "$1" "[REBUILD]"; then
-			flag_rebuild=true
+			P_FLAG_REBUILD=true
 			if xis_true "$REBUILD_FORCE_LINTERS"; then
 				xforce_linters
 			fi
 		elif xis_eq "$1" "[CHECK]"; then
 			xforce_linters
 		elif xis_eq "$1" "[DEBUG]"; then
-			flag_debug=true
+			P_MODE_DEBUG=true
+		elif xis_eq "$1" "[TEST]"; then
+			P_MODE_TEST=true
 		elif xis_eq "$1" "[EXEC]"; then
-			flag_exec=true
+			P_MODE_EXEC=true
 		elif xis_eq "$1" "[ECHO]"; then
 			xset XECHO_ENABLED=true
 			clear
@@ -1983,9 +1993,9 @@ function xperform_build_and_deploy() {
 		shift
 	done
 
-	xresolve_target_config "$flag_rebuild"
-	if xis_true "$flag_rebuild" || xis_set "$P_RESOLVE_REASON"; then
-		flag_rebuild=true
+	xresolve_target_config "$P_FLAG_REBUILD"
+	if xis_true "$P_FLAG_REBUILD" || xis_set "$P_RESOLVE_REASON"; then
+		P_FLAG_REBUILD=true
 		xlint_reset_results
 		xistall_ssh_key
 	fi
@@ -1994,7 +2004,8 @@ function xperform_build_and_deploy() {
 
 	local dir_hash="$P_CACHEDB_DIR/__project_timestamps.log"
 	xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
-		-not -path "\"./.git/*\"" -exec date -r {} "\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
+		-not -path "\"./.git/*\"" -not -path "\"./tests/*\"" " \
+		"-exec date -r {} "\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
 	P_PROJECT_TIMESTAMP=$(xhash_file "$dir_hash")
 	#xdebug "Project timestamp: $P_PROJECT_TIMESTAMP"
 
@@ -2017,13 +2028,13 @@ function xperform_build_and_deploy() {
 		xasync_exec xlint_run_precommit_check
 	fi
 
-	if xis_true "$flag_rebuild"; then
+	if xis_true "$P_FLAG_REBUILD"; then
 		xasync_exec xprocess_camera_features
 		xasync_exec xinstall_keybindings
 	fi
 
-	if xis_true "$flag_build" || xis_true "$flag_rebuild"; then
-		xasync_exec xcompile_project "$flag_rebuild"
+	if xis_true "$P_FLAG_REBUILD" || xis_true "$P_FLAG_BUILD"; then
+		xasync_exec xcompile_project
 	fi
 
 	if xis_true "$USE_ASYNC_LINTERS"; then
@@ -2032,7 +2043,7 @@ function xperform_build_and_deploy() {
 	fi
 	xasync_exit
 
-	if xis_false "$flag_debug" && xis_true "$flag_exec"; then
+	if xis_false "$P_MODE_DEBUG" && xis_true "$P_MODE_EXEC"; then
 		P_SSH_TARGET_PREF="rm -f \"$DLOOP_RESTART_FILE\"; $P_SSH_TARGET_PREF"
 		EXECUTE_COMMANDS+=("@echo 1 > $DLOOP_RESTART_FILE")
 	fi
@@ -2046,14 +2057,14 @@ function xperform_build_and_deploy() {
 	xservices_start
 	xprocesses_start
 
-	if xis_false "$flag_exec" && xis_false "$flag_debug"; then
+	if xis_false "$P_MODE_EXEC" && xis_false "$P_MODE_DEBUG" && xis_false "$P_MODE_TEST"; then
 		P_SSH_TARGET_PREF="${P_SSH_TARGET_PREF}rm -f \"$DLOOP_ENABLE_FILE\"; "
 		xexecute_target_commands_vargs "@echo 1 > $DLOOP_ENABLE_FILE"
 	fi
 
 	xflash_pending_commands
 
-	if xis_true "$flag_debug" && xis_ne "$TARGET_ARCH" "host"; then
+	if xis_true "$P_MODE_DEBUG" && xis_ne "$TARGET_ARCH" "host"; then
 		xstart_console_with_delve
 	fi
 }
@@ -2594,22 +2605,31 @@ function xlint_async_prepare() {
 }
 
 function xcompile_project() {
-	if xproject_get_done "BUILD" && xis_false "$1"; then
+	if xproject_get_done "BUILD" && xis_false "$P_FLAG_REBUILD"; then
 		return
 	fi
 	#xprint "Compiling $(xproject_name)..."
 	#xdebug "TARGET_BUILD_GOFLAGS: ${TARGET_BUILD_GOFLAGS[*]}"
 	#xdebug "TARGET_BUILD_GOTAGS: ${TARGET_BUILD_GOTAGS[*]}"
 	#xdebug "TARGET_BUILD_LDFLAGS: ${TARGET_BUILD_LDFLAGS[*]}"
-	local flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
+	if xis_false "$P_MODE_TEST"; then
+		flags=("build" "${TARGET_BUILD_GOFLAGS[@]}")
+	else
+		flags=("test" "-C" "$PWD" "-covermode=count" "-c" "-o" "$PWD/tests/")
+	fi
 	if xis_ne "${#TARGET_BUILD_GOTAGS[@]}" "0"; then
 		flags+=("-tags=$(xarray_join "," "${TARGET_BUILD_GOTAGS[@]}")")
 	fi
 	if xis_ne "${#TARGET_BUILD_LDFLAGS[@]}" "0"; then
 		flags+=("-ldflags \"${TARGET_BUILD_LDFLAGS[@]}\"")
 	fi
-	if xis_set "$TARGET_BUILD_LAUNCHER"; then
-		flags+=("$TARGET_BUILD_LAUNCHER")
+	if xis_false "$P_MODE_TEST"; then
+		if xis_set "$TARGET_BUILD_LAUNCHER"; then
+			flags+=("$TARGET_BUILD_LAUNCHER")
+		fi
+	else
+		flags+=("./...")
+		xexec "$P_CANFAIL" rm -rf "$PWD/tests/*"
 	fi
 
 	if xis_true "$P_DEBUG_GOENV"; then

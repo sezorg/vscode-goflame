@@ -44,12 +44,20 @@
             "command": ".vscode/scripts/launch-go-staticcheck.sh"
         },
         {
-            "label": "launch-x86-prepare",
+            "label": "launch-host-debug",
             "type": "process",
             "group": "build",
             "echoCommand": false,
             "hide": true,
-            "command": ".vscode/scripts/launch-x86-prepare.sh"
+            "command": ".vscode/scripts/launch-host-debug.sh"
+        },
+        {
+            "label": "launch-host-test",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "command": ".vscode/scripts/launch-host-test.sh"
         },
         {
             "label": "Goflame: Build workspace",
