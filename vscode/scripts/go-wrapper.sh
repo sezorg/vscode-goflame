@@ -51,7 +51,7 @@ COPY_FILES+=(
 )
 if [[ "$TARGET_ARCH" != "armv7l" ]]; then
 	COPY_FILES+=(
-		"$BUILDROOT_TARGET_DIR/usr/bin/dlv|:/usr/bin/dlv"
+		#"$TOOLCHAIN_DIR/usr/bin/dlv|:/usr/bin/dlv"
 	)
 fi
 
@@ -174,24 +174,17 @@ if xis_set "$P_LOCAL_COMMAND"; then
 fi
 
 if xis_ne "${#P_BUILD_COMMANDS[@]}" "0"; then
-	if [[ -f "./$TARGET_BIN_SOURCE" ]]; then
-		xprepare_runtime_scripts
-		xperform_build_and_deploy "${P_BUILD_COMMANDS[@]}" \
-			"Rebuild & install $(xdecorate "$TARGET_BIN_NAME")"
-		exit "0"
-	elif xis_unset "$TARGET_BIN_SOURCE"; then
+	if xis_unset "$TARGET_BIN_SOURCE"; then
 		xerror "Invalid configuration: variable $(xdecorate "TARGET_BIN_SOURCE") is not set"
 		exit "1"
-	else
-		xerror "Main executable $(xdecorate "$TARGET_BIN_SOURCE") does not exist"
-		exit "1"
 	fi
+	xprepare_runtime_scripts
+	xperform_build_and_deploy "${P_BUILD_COMMANDS[@]}" \
+		"Rebuild & install $(xdecorate "$TARGET_BIN_NAME")"
 else
 	# Execute original Golang command
 	xprint "$BUILDROOT_GOBIN $*"
 	xexport_apply "${GOLANG_EXPORTS[@]}"
 	xexec "$BUILDROOT_GOBIN" "$@"
-
+	xexec_exit
 fi
-
-xexec_exit

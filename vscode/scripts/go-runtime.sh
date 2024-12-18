@@ -57,9 +57,7 @@ WRAPPER_LOGFILE="$P_TEMP_DIR/go-wrapper.log"
 XECHO_ENABLED=false
 XDEBUG_ENABLED=false
 
-BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
-BUILDROOT_HOST_DIR="UNKNOWN-BUILDROOT_HOST"
-BUILDROOT_TARGET_DIR="UNKNOWN-BUILDROOT_TARGET"
+TOOLCHAIN_DIR="UNKNOWN-TOOLCHAIN_DIR"
 EXPORT_GOROOT="UNKNOWN-GOROOT"
 EXPORT_GOTOOLDIR="UNKNOWN-GOTOOLDIR"
 EXPORT_GOPATH="UNKNOWN-GOPATH"
@@ -357,9 +355,7 @@ function xemit() {
 		if xis_eq "${#P_EMIT_XLAT_FULL[@]}" "0"; then
 			local pre="$BLUE\$" out="$NC"
 			xemit_xlat P_EMIT_XLAT_BASE \
-				"${pre}BUILDROOT_HOST$out" "$BUILDROOT_HOST_DIR" \
-				"${pre}BUILDROOT_TARGET$out" "$BUILDROOT_TARGET_DIR" \
-				"${pre}BUILDROOT$out" "$BUILDROOT_DIR" \
+				"${pre}TOOLCHAIN$out" "$TOOLCHAIN_DIR" \
 				"${pre}PWD$out" "$PWD" \
 				"${pre}HOME$out" "$HOME"
 			xemit_xlat P_EMIT_XLAT_FULL \
@@ -666,7 +662,7 @@ TTY_PASS=""
 TTY_DELAY="300" # milliseconds
 TTY_RETRY="3"
 
-BUILDROOT_DIR="UNKNOWN-BUILDROOT_DIR"
+TOOLCHAIN_DIR="UNKNOWN-TOOLCHAIN_DIR"
 CLEAN_GOCACHE=false
 GIT_COMMIT_FILTER="" #
 ENABLE_LINTERS=true
@@ -821,16 +817,16 @@ fi
 function xresolve_target_arch() {
 	if ! xis_defined TARGET_ARCH || xis_unset "$TARGET_ARCH"; then
 		TARGET_ARCH=""
-		if xis_file_exists "$BUILDROOT_DIR/output/host/bin/arm-buildroot-linux-gnueabihf-gcc"; then
+		if xis_file_exists "$TOOLCHAIN_DIR//bin/arm-buildroot-linux-gnueabihf-gcc"; then
 			TARGET_ARCH="armv7l"
-		elif xis_file_exists "$BUILDROOT_DIR/output/host/bin/aarch64-buildroot-linux-gnu-gcc"; then
+		elif xis_file_exists "$TOOLCHAIN_DIR//bin/aarch64-buildroot-linux-gnu-gcc"; then
 			TARGET_ARCH="aarch64"
-		elif ! xis_dir_exists "$BUILDROOT_DIR"; then
-			P_EMIT_XLAT="none" xfatal "Toolchain $(xdecorate "BUILDROOT_DIR") does not" \
-				"exist: $(xstring "$BUILDROOT_DIR")."
+		elif ! xis_dir_exists "$TOOLCHAIN_DIR"; then
+			P_EMIT_XLAT="none" xfatal "Toolchain $(xdecorate "TOOLCHAIN_DIR") does not" \
+				"exist: $(xstring "$TOOLCHAIN_DIR")."
 		else
 			P_EMIT_XLAT="none" xfatal "Can not determine target architecture from" \
-				"$(xdecorate "BUILDROOT_DIR"): $(xstring "$BUILDROOT_DIR")."
+				"$(xdecorate "TOOLCHAIN_DIR"): $(xstring "$TOOLCHAIN_DIR")."
 		fi
 	fi
 }
@@ -886,8 +882,6 @@ DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
-BUILDROOT_HOST_DIR="$BUILDROOT_DIR/output/host"
-BUILDROOT_TARGET_DIR="$BUILDROOT_DIR/output/target"
 BUILDROOT_GOBIN="go"
 
 EXPORT_AR=""
@@ -987,8 +981,7 @@ EXPORT_GOARCH="$P_TARGET_GOARCH"
 EXPORT_GOFLAGS="-mod=mod" # "-mod=vendor"
 
 if xis_ne "$TARGET_ARCH" "host"; then
-	#EXPORT_GOROOT="$BUILDROOT_HOST_DIR/go" # 1.17
-	EXPORT_GOROOT="$BUILDROOT_HOST_DIR/lib/go" # 1.19
+	EXPORT_GOROOT="$TOOLCHAIN_DIR/go" # 1.19
 
 	BUILDROOT_GOBIN="$EXPORT_GOROOT/bin/go"
 	EXPORT_GOPATH="$HOME/go/goflame/go-path"
@@ -1006,12 +999,12 @@ if xis_ne "$TARGET_ARCH" "host"; then
 		#"-g2"
 		#"--verbose"
 	)
-	EXPORT_CGO_CYYFLAGS+=("-g" "-O2" "-I" "$BUILDROOT_DIR/output/target/usr/include/libxml2")
+	EXPORT_CGO_CYYFLAGS+=("-g" "-O2" "-I" "$TOOLCHAIN_DIR/include/libxml2")
 	EXPORT_CGO_CFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
 	EXPORT_CGO_CXXFLAGS=("${EXPORT_CGO_CYYFLAGS[@]}")
 	EXPORT_CGO_LDFLAGS=()
-	EXPORT_CC="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-gcc"
-	EXPORT_CXX="$BUILDROOT_HOST_DIR/bin/$TARGET_GOCXX-g++"
+	EXPORT_CC="$TOOLCHAIN_DIR/bin/$TARGET_GOCXX-gcc"
+	EXPORT_CXX="$TOOLCHAIN_DIR/bin/$TARGET_GOCXX-g++"
 fi
 
 if xis_true false; then
@@ -1030,8 +1023,6 @@ if xis_true false; then
 		"$NC" \
 		"$NCC" \
 		\
-		"$BUILDROOT_HOST_DIR" \
-		"$BUILDROOT_TARGET_DIR" \
 		"$TARGET_BIN_SOURCE" \
 		"$TARGET_BIN_DESTIN" \
 		"$TARGET_BIN_NAME" \
@@ -1348,7 +1339,7 @@ function xresolve_buildroot_real_compilers() {
 # Override toolchain-wrapper set by BR_COMPILER_PARANOID_UNSAFE_PATH buildroot
 # configuratoiopn parameter.
 function xoverride_toolchain_wrapper() {
-	local force="$1" toolchain_wrapper="$BUILDROOT_HOST_DIR/bin/toolchain-wrapper"
+	local force="$1" toolchain_wrapper="$TOOLCHAIN_DIR/bin/toolchain-wrapper"
 	if xis_file_exists "$toolchain_wrapper"; then
 		if ! xis_file_exists "$toolchain_wrapper.org"; then
 			xdebug "Backup and setting up toolchain-wrapper: $toolchain_wrapper"
@@ -1581,7 +1572,7 @@ function xsave_target_config() {
 	cat <<EOF >"$P_TARGET_CONFIG_PATH"
 # Machine generated file. Do not modify.
 # Variables TARGET_ADDR and TARGET_PORT should not be quoted.
-HOST_BUILDROOT="$BUILDROOT_DIR"
+HOST_BUILDROOT="$TOOLCHAIN_DIR"
 TARGET_ADDR=$TARGET_ADDR
 TARGET_PORT=$TARGET_PORT
 TARGET_HOSTNAME="$TARGET_HOSTNAME"
@@ -1730,7 +1721,7 @@ function xresolve_target_config() {
 			xerror "Unexpected target $(xhyperlink "http://$TARGET_ADDR") architecture" \
 				"$(xdecorate "$target_mach"), expected $(xdecorate "$TARGET_ARCH")"
 			xerror "Probably invalid values in $(xdecorate TARGET_ARCH) and" \
-				"$(xdecorate BUILDROOT_DIR) variables"
+				"$(xdecorate TOOLCHAIN_DIR) variables"
 			xfatal "Check contents of the $(xhyperlink "file://.vscode/config-user.ini") or" \
 				"$(xhyperlink "file://.vscode/config.ini")"
 		fi
@@ -2605,7 +2596,9 @@ function xlint_async_prepare() {
 }
 
 function xcompile_project() {
+	#xdebug "Rebuilding $(xproject_name)..."
 	if xproject_get_done "BUILD" && xis_false "$P_FLAG_REBUILD"; then
+		#xdebug "Skipping rebuilding $(xproject_name)..."
 		return
 	fi
 	#xprint "Compiling $(xproject_name)..."
@@ -2635,9 +2628,7 @@ function xcompile_project() {
 	if xis_true "$P_DEBUG_GOENV"; then
 		xprint "Current buildroot configuration:"
 		P_EMIT_XLAT="none"
-		P_EMIT_PREFIX="  " xprint "BUILDROOT=$(xstring "$BUILDROOT_DIR")"
-		P_EMIT_PREFIX="  " xprint "BUILDROOT_HOST=$(xstring "$BUILDROOT_HOST_DIR")"
-		P_EMIT_PREFIX="  " xprint "BUILDROOT_TARGET=$(xstring "$BUILDROOT_TARGET_DIR")"
+		P_EMIT_PREFIX="  " xprint "TOOLCHAIN_DIR=$(xstring "$TOOLCHAIN_DIR")"
 		P_EMIT_XLAT="full" xprint "Golang version (\"$BUILDROOT_GOBIN\" version):"
 		P_EMIT_XLAT="base"
 		P_EMIT_PREFIX="  " xtext false "$NC" "$("$BUILDROOT_GOBIN" version)"
