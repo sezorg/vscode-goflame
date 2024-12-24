@@ -12,10 +12,11 @@ import sys
 import uuid
 
 import requests
+import warnings
 
+warnings.filterwarnings("ignore", category=DeprecationWarning)
 
 os.environ.pop("http_proxy", None)
-
 
 def execute(args):
     execute_soap(args) if args.soap else execute_jsonrpc(args)
