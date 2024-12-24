@@ -1355,14 +1355,7 @@ function xoverride_toolchain_wrapper() {
 
 xoverride_toolchain_wrapper false
 
-P_CONFIG_HASH_INITIAL=(
-	"$PWD" "$TARGET_ARCH"
-	"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-	"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-)
-
-P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
-P_CONFIG_HASH="${P_CONFIG_HASH:0:32}"
+P_CONFIG_HASH=""
 
 function xhash_text() {
 	local string_hash
@@ -1983,6 +1976,15 @@ function xperform_build_and_deploy() {
 		fi
 		shift
 	done
+
+	local config_hash_list config_hash
+	config_hash_list=(
+		"$PWD" "$TARGET_ARCH"
+		"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+		"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	)
+	config_hash=$(md5sum <<<"${config_hash_list[*]}")
+	P_CONFIG_HASH="${config_hash:0:32}"
 
 	xresolve_target_config "$P_FLAG_REBUILD"
 	if xis_true "$P_FLAG_REBUILD" || xis_set "$P_RESOLVE_REASON"; then
