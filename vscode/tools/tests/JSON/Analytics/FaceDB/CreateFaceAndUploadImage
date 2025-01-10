@@ -1,0 +1,50 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+face_id="SomeNewFace"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": ["$face_id"]
+}
+DELIMITER
+)
+json_test analytics/DeleteFaces
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id",
+	"FirstName": "Ivan",
+	"LastName": "$RANDOM"
+}
+DELIMITER
+)
+json_test analytics/CreateFace
+
+curl --digest -u "$USER:$PASS" -v -F '0.jpg=@"Files/0.jpg"' "http://$IP/upload/facedb/$face_id/identification_image"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id"
+}
+DELIMITER
+)
+json_test analytics/GetFace
+
+output_file="/var/tmp/image.jpg"
+rm -f "$output_file"
+curl --digest -u "$USER:$PASS" -w -S -v --digest http://$IP/download/facedb/SomeNewFace/image-0000.jpg --output "$output_file"
+if [ -f "$output_file" ]; then
+	xdg-open "$output_file"
+fi
+
+output_file="/var/tmp/description.json"
+rm -f "$output_file"
+curl --digest -u "$USER:$PASS" -w -S -v --digest http://$IP/download/facedb/SomeNewFace/description.json --output "$output_file"
+if [ -f "$output_file" ]; then
+	xdg-open "$output_file"
+fi

@@ -8,7 +8,9 @@ JSON=$(
 	"Id": "Jacob/Batalon",
 	"Images": [
 		"http://$IP/download/facedb/Jacob_Batalon/thumbnail.jpg",
-		"http://$IP/download/facedb/Jacob_Batalon/1.jpg"
+		"http://$IP/download/facedb/Jacob_Batalon/image-0000.jpg",
+		"http://$IP/download/facedb/Jacob_Batalon/image-0001.jpg",
+		"http://$IP/download/facedb/Jacob_Batalon/image-0002.jpg"
 	]
 }
 DELIMITER

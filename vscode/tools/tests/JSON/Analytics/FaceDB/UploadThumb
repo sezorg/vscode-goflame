@@ -1,0 +1,5 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl --digest -u "$USER:$PASS" -v -F '0.jpg=@"Files/0.jpg"' "http://$IP/upload/facedb/Jacob%2FBatalon/thumbnail_image"
