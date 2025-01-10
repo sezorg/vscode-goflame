@@ -2,8 +2,6 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # GO compiler wrapper.
-#
-# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
 
@@ -150,18 +148,18 @@ function xparse_go_arguments() {
 
 xparse_go_arguments "$@"
 
-if [[ ! -f "$BUILDROOT_GOBIN" ]]; then
-	xerror "Can not find Go executable at \"$BUILDROOT_GOBIN\"."
-	xerror "Check BUILDROOT_DIR variable in your $(xconfig_files)."
-	if [[ -d "$BUILDROOT_DIR" ]]; then
-		lookup_dir=$(find "$BUILDROOT_DIR" -name "using-buildroot-toolchain.txt" -maxdepth 5)
-		xdebug "Actual BUILDROOT_DIR=\"$BUILDROOT_DIR\""
+if [[ ! -f "$TOOLCHAIN_GOBIN" ]]; then
+	xerror "Can not find Go executable at \"$TOOLCHAIN_GOBIN\"."
+	xerror "Check TOOLCHAIN_DIR variable in your $(xconfig_files)."
+	if [[ -d "$TOOLCHAIN_DIR" ]]; then
+		lookup_dir=$(find "$TOOLCHAIN_DIR" -name "using-buildroot-toolchain.txt" -maxdepth 5)
+		xdebug "Actual TOOLCHAIN_DIR=\"$TOOLCHAIN_DIR\""
 		xdebug "Found buildroot doc file: $lookup_dir"
 		if xis_set "$lookup_dir"; then
 			lookup_dir="$(dirname "$lookup_dir")"
 			lookup_dir="$(dirname "$lookup_dir")"
 			lookup_dir="$(dirname "$lookup_dir")"
-			xprint "HINT: Set BUILDROOT_DIR=$(xstring "$lookup_dir")."
+			xprint "HINT: Set TOOLCHAIN_DIR=$(xstring "$lookup_dir")."
 		fi
 	fi
 	exit "1"
@@ -183,8 +181,8 @@ if xis_ne "${#P_BUILD_COMMANDS[@]}" "0"; then
 		"Rebuild & install $(xdecorate "$TARGET_BIN_NAME")"
 else
 	# Execute original Golang command
-	xprint "$BUILDROOT_GOBIN $*"
+	xprint "$TOOLCHAIN_GOBIN $*"
 	xexport_apply "${GOLANG_EXPORTS[@]}"
-	xexec "$BUILDROOT_GOBIN" "$@"
+	xexec "$TOOLCHAIN_GOBIN" "$@"
 	xexec_exit
 fi

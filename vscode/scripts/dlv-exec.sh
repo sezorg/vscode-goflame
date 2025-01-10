@@ -4,7 +4,6 @@
 # Execute binary on the targets which does not support Delve debugging.
 
 set -euo pipefail
-#set -x # enable execution trace
 
 if [[ ! -v "instance_guard" ]] || [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"

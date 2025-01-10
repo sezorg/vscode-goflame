@@ -5,7 +5,6 @@
 # To terminate use `ds' command
 
 set -euo pipefail
-#set -x # enable execution trace
 
 PATTERN="TARGET_PORT"
 if [[ "__TARGET_PORT__" == "__${PATTERN}__" ]]; then

@@ -63,7 +63,6 @@
             "args": [
                 "-settings",
                 "/root/onvifd.settings"
-                //"-log" "date,time,short,utc,us,color,ex"
             ],
             "internalConsoleOptions": "openOnSessionStart",
             "preLaunchTask": "launch-deploy-debug",
@@ -105,7 +104,7 @@
             "cwd": "${workspaceFolder}",
             "debugAdapter": "dlv-dap",
             // View coverage: go tool cover -html=tests/coverprofile.out
-            "program": "tests/test.test",
+            "program": "tests/onvifserver.test",
             "args": [
                 "-test.v",
                 "-test.coverprofile",

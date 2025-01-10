@@ -2,11 +2,8 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # Deploy binary to remote host (Delve should run in infinite loop)
-#
-# Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
 
 set -euo pipefail
-#set -x
 
 # Include Golang environment
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)

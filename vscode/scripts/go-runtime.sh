@@ -2,13 +2,11 @@
 # Copyright 2022 RnD Center "ELVEES", JSC
 #
 # GO compiler wrapper environment
+# Lookup for unnecessary complex variable references: \$\{\w+\}([^\w]|$)
 #
 # Log messages are stored into file:///var/tmp/goflame/go-wrapper.log
-#
-# Lookup for unnecessary complex variable references: \$\{\w+\}([^\w]|$)
 
 set -euo pipefail
-#set -x # enable execution trace
 
 CE=$'\u1B[' # Color escape
 RED="${CE}31m"
@@ -43,7 +41,7 @@ P_MESSAGE_SOURCE="${P_MESSAGE_SOURCE%.*}"
 P_TIME_STARTED="$(date +%s.%N)"
 P_TIME_CON_OUT=""
 P_TIME_LOG_OUT=""
-P_START_CONSOLE="auto" # true/false/auto/kde/konsole/gnome/gnome-terminal
+P_START_CONSOLE="true" # true/false/auto/kde/konsole/gnome/gnome-terminal
 P_CONSOLE_ACTIVE=false
 
 P_TEMP_DIR="/var/tmp/goflame"
@@ -698,6 +696,7 @@ STATICCHECK_ENABLE=false
 STATICCHECK_CHECKS="all"
 STATICCHECK_FILTER=true
 STATICCHECK_SUPPRESS=""
+STATICCHECK_GO_VERSION=""
 STATICCHECK_FAIL=true
 GO_VET_ENABLE=false
 GO_VET_FLAGS=("-composites=true")
@@ -883,7 +882,7 @@ DLOOP_ENABLE_FILE="/tmp/dlv-loop-enable"
 DLOOP_STATUS_FILE="/tmp/dlv-loop-status"
 DLOOP_RESTART_FILE="/tmp/dlv-loop-restart"
 
-BUILDROOT_GOBIN="go"
+TOOLCHAIN_GOBIN="go"
 
 EXPORT_AR=""
 EXPORT_CC=""
@@ -984,7 +983,7 @@ EXPORT_GOFLAGS="-mod=mod" # "-mod=vendor"
 if xis_ne "$TARGET_ARCH" "host"; then
 	EXPORT_GOROOT="$TOOLCHAIN_DIR/go" # 1.19
 
-	BUILDROOT_GOBIN="$EXPORT_GOROOT/bin/go"
+	TOOLCHAIN_GOBIN="$EXPORT_GOROOT/bin/go"
 	EXPORT_GOPATH="$HOME/go/goflame/go-path"
 	EXPORT_GOMODCACHE="$EXPORT_GOPATH/pkg/mod"
 	EXPORT_GOCACHE="$EXPORT_GOPATH/cache"
@@ -1029,7 +1028,7 @@ if xis_true false; then
 		"$TARGET_BIN_NAME" \
 		"${TARGET_EXEC_ARGS[@]}" \
 		"$WRAPPER_LOGFILE" \
-		"$BUILDROOT_GOBIN" \
+		"$TOOLCHAIN_GOBIN" \
 		"$LOCAL_GOBIN" \
 		"$LOCAL_DLVBIN" \
 		"${GOLANG_EXPORTS[@]}"
@@ -1227,7 +1226,7 @@ function xexec() {
 		"python3" | "rsync" | "sshpass")
 			timeout="$USE_SHELL_TIMEOUT"
 			;;
-		"go" | "golangci-lint" | "pre-commit" | "staticcheck")
+		"go" | "dlv" | "golangci-lint" | "pre-commit" | "staticcheck")
 			timeout="$USE_GOLANG_TIMEOUT"
 			;;
 		*)
@@ -1356,7 +1355,14 @@ function xoverride_toolchain_wrapper() {
 
 xoverride_toolchain_wrapper false
 
-P_CONFIG_HASH=""
+P_CONFIG_HASH_INITIAL=(
+	"$PWD" "$TARGET_ARCH"
+	"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+)
+
+P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
+P_CONFIG_HASH="${P_CONFIG_HASH:0:32}"
 
 function xhash_text() {
 	local string_hash
@@ -1803,8 +1809,7 @@ function xresolve_target_config() {
 function xstart_console_with_delve() {
 	local terminals=() processed=() terminal command status
 	if xis_unset "$P_START_CONSOLE" || xis_eq "$P_START_CONSOLE" "false" ||
-		xis_true "$P_CONSOLE_ACTIVE" ||
-		xis_ne "$TARGET_ARCH" "aarch64"; then
+		xis_true "$P_CONSOLE_ACTIVE" || xis_ne "$TARGET_ARCH" "aarch64"; then
 		return
 	fi
 	xssh "$P_CANFAIL" "pidof dlv"
@@ -1978,20 +1983,12 @@ function xperform_build_and_deploy() {
 		shift
 	done
 
-	local config_hash_list config_hash
-	config_hash_list=(
-		"$PWD" "$TARGET_ARCH"
-		"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-		"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-	)
-	config_hash=$(md5sum <<<"${config_hash_list[*]}")
-	P_CONFIG_HASH="${config_hash:0:32}"
-
 	xresolve_target_config "$P_FLAG_REBUILD"
 	if xis_true "$P_FLAG_REBUILD" || xis_set "$P_RESOLVE_REASON"; then
 		P_FLAG_REBUILD=true
 		xlint_reset_results
 		xistall_ssh_key
+		xpython_exec "-m" "pip" "install" "unidiff"
 	fi
 
 	xprint "$* to $TARGET_ARCH target $P_TARGET_HYPERLINK"
@@ -2000,7 +1997,7 @@ function xperform_build_and_deploy() {
 	xexec find -L "." -type f "\(" -iname "\"*\"" ! -iname "\"$TARGET_BIN_SOURCE\"" "\)" \
 		-not -path "\"./.git/*\"" -not -path "\"./tests/*\"" " \
 		"-exec date -r {} "\"+%m-%d-%Y %H:%M:%S\"" "\;" ">" "$dir_hash"
-	P_PROJECT_TIMESTAMP=$(xhash_file "$dir_hash")
+	P_PROJECT_TIMESTAMP="$(xhash_file "$dir_hash")"
 	#xdebug "Project timestamp: $P_PROJECT_TIMESTAMP"
 
 	xlint_async_prepare
@@ -2503,9 +2500,11 @@ function xlint_run_golangci_lint() {
 	xexec "$P_CANFAIL" "$LOCAL_GOLANGCI_LINT" "run" "${linter_args[@]}" \
 		"./..." ">" "$scheck" "2>&1"
 	if xis_true "$GOLANGCI_LINT_FILTER"; then
-		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -p -x -z
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" \
+			--parse-stdin --exclude-non-prefixed --exclude-nolint
 	else
-		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x -z
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" \
+			--parse-stdin --exclude-non-prefixed --exclude-nolint --print-all
 	fi
 	xlint_process_result "$RED" "GOLANGCI_LINT" "$GOLANGCI_LINT_FAIL" "Golangci-lint"
 }
@@ -2517,22 +2516,31 @@ function xlint_run_staticckeck() {
 	xtest_installed "STATICCHECK_ENABLE" "$LOCAL_STATICCHECK" \
 		"https://staticcheck.dev/docs/"
 	xexport_clean "${GOLANG_EXPORTS[@]}"
-	local flags=() go_version
-	go_version=$("$BUILDROOT_GOBIN" version)
-	go_version=$(awk '{print $3}' <<<"$go_version")
-	go_version="${go_version%.*}"
-	flags+=("-go" "${go_version:2}")
+	local flags=()
+	if xis_set "$STATICCHECK_GO_VERSION"; then
+		if xis_ne "$STATICCHECK_GO_VERSION" "default"; then
+			flags+=("-go" "$STATICCHECK_GO_VERSION")
+		fi
+	else
+		local go_version
+		go_version=$("$TOOLCHAIN_GOBIN" version)
+		go_version=$(awk '{print $3}' <<<"$go_version")
+		go_version="${go_version%.*}"
+		flags+=("-go" "${go_version:2}")
+	fi
 	if xis_set "$STATICCHECK_CHECKS"; then
 		flags+=("-checks" "$STATICCHECK_CHECKS")
 	fi
 	local scheck="$P_TEMP_DIR/staticcheck.log"
 	xprint "Running $(xdecorate "staticcheck") (details: $(xhyperlink "file://$scheck"))"
-	xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">" "$scheck"
+	xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "-version" "2>&1" ">" "$scheck"
+	xexec "$P_CANFAIL" "$LOCAL_STATICCHECK" "${flags[@]}" "./..." "2>&1" ">>" "$scheck"
 	if xis_true "$STATICCHECK_FILTER"; then
-		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -p -x \
-			-e="\"$STATICCHECK_SUPPRESS\""
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" \
+			--parse-stdin --exclude-non-prefixed --exclude-list="\"$STATICCHECK_SUPPRESS\""
 	else
-		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" -a -p -x
+		xexec "$P_CANFAIL" cat "$scheck" "|" "${P_LINT_DIFF_FILTER[@]}" \
+			--parse-stdin --exclude-non-prefixed --print-all
 	fi
 	xlint_process_result "$RED" "STATICCHECK" "$STATICCHECK_FAIL" "Staticcheck"
 }
@@ -2542,7 +2550,7 @@ function xlint_run_go_vet_check() {
 		return 0
 	fi
 	xprint "Running $(xdecorate "go vet") on $(xdecorate "$TARGET_BUILD_LAUNCHER")..."
-	xexec "$P_CANFAIL" "$BUILDROOT_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
+	xexec "$P_CANFAIL" "$TOOLCHAIN_GOBIN" "vet" "${GO_VET_FLAGS[@]}" "./..."
 	xlint_process_result "$RED" "GO_VET" "$GO_VET_FAIL" "Go-vet"
 }
 
@@ -2556,11 +2564,11 @@ function xlint_run_llencheck() {
 		suppress=("--nolint" "$(xarray_join "," "${LLENCHECK_SUPPRESS[@]}")")
 	fi
 	if xis_true "$LLENCHECK_FILTER"; then
-		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" -l="$LLENCHECK_LIMIT" \
-			-t="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}"
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" --line-length-limit="$LLENCHECK_LIMIT" \
+			--tab-width="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}"
 	else
-		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" -a -l="$LLENCHECK_LIMIT" \
-			-t="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}"
+		xexec "$P_CANFAIL" "${P_LINT_DIFF_FILTER[@]}" --line-length-limit="$LLENCHECK_LIMIT" \
+			--tab-width="$LLENCHECK_TABWIDTH" "${suppress[@]}" "${P_LINT_DIFF_ARGS[@]}" --print-all
 	fi
 	xlint_process_result "$RED" "LLENCHECK" "$LLENCHECK_FAIL" "Line-length-limit"
 }
@@ -2632,16 +2640,16 @@ function xcompile_project() {
 		xprint "Current buildroot configuration:"
 		P_EMIT_XLAT="none"
 		P_EMIT_PREFIX="  " xprint "TOOLCHAIN_DIR=$(xstring "$TOOLCHAIN_DIR")"
-		P_EMIT_XLAT="full" xprint "Golang version (\"$BUILDROOT_GOBIN\" version):"
+		P_EMIT_XLAT="full" xprint "Golang version (\"$TOOLCHAIN_GOBIN\" version):"
 		P_EMIT_XLAT="base"
-		P_EMIT_PREFIX="  " xtext false "$NC" "$("$BUILDROOT_GOBIN" version)"
+		P_EMIT_PREFIX="  " xtext false "$NC" "$("$TOOLCHAIN_GOBIN" version)"
 		P_EMIT_XLAT="full" xprint "Delve version (\"dlv\" version):"
 		P_EMIT_XLAT="base"
 		P_EMIT_PREFIX="  " xtext false "$NC" "$(dlv version)"
 		xprint "Exporting Golang environment ($(xhyperlink "file://$P_TEMP_DIR/go.env")):"
 		P_EMIT_PREFIX="  " xexport_apply "${GOLANG_EXPORTS[@]}"
 		xprint "Readback Golang environment:"
-		P_EMIT_PREFIX="  " xtext false "$NC" "$("$BUILDROOT_GOBIN" env)"
+		P_EMIT_PREFIX="  " xtext false "$NC" "$("$TOOLCHAIN_GOBIN" env)"
 		P_EMIT_XLAT="full"
 	else
 		xexport_apply "${GOLANG_EXPORTS[@]}"
@@ -2654,7 +2662,7 @@ function xcompile_project() {
 			xexec "$LOCAL_GOLANGCI_LINT" cache clean
 		fi
 	fi
-	xexec "$BUILDROOT_GOBIN" "${flags[@]}"
+	xexec "$TOOLCHAIN_GOBIN" "${flags[@]}"
 	if xis_ne "$EXEC_STATUS" "0"; then
 		xexec_exit
 	else

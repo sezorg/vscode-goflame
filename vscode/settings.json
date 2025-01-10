@@ -1,6 +1,7 @@
 {
     "go.alternateTools": {
         "go": "${workspaceFolder}/.vscode/scripts/go-wrapper.sh",
+        // Переодпедеоление команды запука Delve из $LOCAL_DLVBIN
         //"dlv": "${workspaceFolder}/.vscode/scripts/dlv-wrapper.sh",
     },
     "go.delveConfig": {
@@ -14,7 +15,7 @@
         "printfuncs=makeErrorf,makeSliceErrorf"
     ],
     "go.useLanguageServer": true,
-    //"go.buildOnSave": "on",
+    // "go.buildOnSave": "on", // Actually incompatible with LanguageServer
     "editor.emptySelectionClipboard": false,
     "editor.rulers": [
         100

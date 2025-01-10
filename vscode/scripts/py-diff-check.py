@@ -22,8 +22,7 @@ import re
 import select
 import subprocess
 import sys
-
-unidiff = __import__("py-unidiff")
+import unidiff
 
 
 class Config:
@@ -31,7 +30,7 @@ class Config:
     verboseLevel = 0
     lineLengthLimit = 0
     tabWidth = 0
-    parseInput = False
+    parseStdin = False
     excludeList = ""
     gitCommit = ""
     excludeNonPrefixed = False
@@ -130,7 +129,7 @@ def parse_arguments():
         default=4,
     )
     parser.add_argument(
-        '-p', '--parse-input',
+        '-p', '--parse-stdin',
         help='Parse STDIN and suppress messages which does not belongs to current `git diff`',
         required=False,
         action='store_true',
@@ -192,7 +191,7 @@ def parse_arguments():
     Config.verboseLevel = arguments.verbose
     Config.lineLengthLimit = arguments.line_length_limit
     Config.tabWidth = arguments.tab_width
-    Config.parseInput = arguments.parse_input
+    Config.parseStdin = arguments.parse_stdin
     Config.excludeList = arguments.exclude_list
     Config.gitCommit = arguments.commit
     Config.excludeNonPrefixed = arguments.exclude_non_prefixed
@@ -609,7 +608,7 @@ class WarningsSuppressor:
 def main():
     parse_arguments()
     git_diff = GitDiff()
-    if Config.parseInput or select.select([sys.stdin, ], [], [], 0.0)[0]:
+    if Config.parseStdin or select.select([sys.stdin, ], [], [], 0.0)[0]:
         debug('Starting WarningsSuppressor...')
         WarningsSuppressor(git_diff).run()
     else:
