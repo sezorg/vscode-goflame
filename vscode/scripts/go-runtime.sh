@@ -613,6 +613,7 @@ SCP_KEXES=(
 
 SCP_FLAGS=(
 	-T
+	-o ProxyCommand=none
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
