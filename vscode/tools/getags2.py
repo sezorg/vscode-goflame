@@ -607,6 +607,8 @@ class GerritTags:
         self.brach_created.append(state.revision)
         # debug(f'{vars(state)}')
         entry_name = state.number
+        if self.email == '':
+            entry_name = state.username + '/' + state.number
         if self.patchsets:
             if mode == 'currentPatchSet':
                 entry_name = state.number + self.branch_separator + 'CUR'
@@ -618,8 +620,8 @@ class GerritTags:
             entry_name += self.branch_separator + 'WIP'
         # if state.child_count == 0:
         #    entry_name += self.branch_separator + 'TOP'
-        if self.email == '':
-            entry_name += self.branch_separator + state.username
+        # if self.email == '':
+        #    entry_name += self.branch_separator + state.username
         branch_name = self.branch_prefix + entry_name + self.branch_postfix
         if config.subject_enabled:
             subject = re.sub(r'[^\w\s]', r'', ' ' + state.subject)
