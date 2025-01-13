@@ -11,6 +11,7 @@
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 SSH_FLAGS=(
+	-o ProxyCommand=none
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
 	-o ConnectTimeout=5
