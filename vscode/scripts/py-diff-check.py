@@ -340,6 +340,8 @@ class BuiltinLintersRunner:
         return
 
     def process_file(self, diff_check, full_check):
+        if os.path.isdir(self.file_path):
+            return
         lines = open(self.file_path, 'r', encoding='utf-8').readlines()
         for index, line in enumerate(lines):
             self.line_index = index + 1
