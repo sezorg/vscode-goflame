@@ -44,6 +44,7 @@ P_TIME_LOG_OUT=""
 P_START_CONSOLE="true" # true/false/auto/kde/konsole/gnome/gnome-terminal
 P_CONSOLE_ACTIVE=false
 
+P_VSCODE_DIR="$PWD/.vscode"
 P_TEMP_DIR="/var/tmp/goflame"
 P_CACHEDB_DIR="$P_TEMP_DIR/cachedb"
 P_SCRIPTS_DIR="$P_TEMP_DIR/scripts"
@@ -1344,11 +1345,11 @@ function xoverride_toolchain_wrapper() {
 		if ! xis_file_exists "$toolchain_wrapper.org"; then
 			xdebug "Backup and setting up toolchain-wrapper: $toolchain_wrapper"
 			xexec cp -f "$toolchain_wrapper" "$toolchain_wrapper.pre"
-			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+			xexec cp -f "$P_VSCODE_DIR/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
 			xexec mv "$toolchain_wrapper.pre" "$toolchain_wrapper.org"
 		elif xis_true "$force"; then
 			xdebug "Forced setting up toolchain-wrapper: $toolchain_wrapper"
-			xexec cp -f ".vscode/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
+			xexec cp -f "$P_VSCODE_DIR/scripts/go-toolchain-wrapper.sh" "$toolchain_wrapper"
 		fi
 	fi
 }
@@ -1357,8 +1358,8 @@ xoverride_toolchain_wrapper false
 
 P_CONFIG_HASH_INITIAL=(
 	"$PWD" "$TARGET_ARCH"
-	"$(find -L ".vscode/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-	"$(find -L ".vscode" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L "$P_VSCODE_DIR/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	"$(find -L "$P_VSCODE_DIR" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
 )
 
 P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
@@ -1741,7 +1742,7 @@ function xresolve_target_config() {
 				xssh "$P_CANFAIL" "$command && echo $? >$status && cat $status && rm $status"
 				if xis_ne "$EXEC_STDOUT" "0"; then
 					if xis_unset "${missing[*]}"; then
-						local source=".vscode/bin/$binary_name-$TARGET_ARCH"
+						local source="$P_VSCODE_DIR/bin/$binary_name-$TARGET_ARCH"
 						local target="$target_path/$binary_name"
 						if xis_file_exists "$source"; then
 							xprint "Installing $(xdecorate "$binary_name-$TARGET_ARCH") to" \
@@ -1775,7 +1776,7 @@ function xresolve_target_config() {
 		for item in "${TARGET_SUPPRESS_MSSGS[@]}"; do
 			suppress="$suppress\t\"$item\"\n"
 		done
-		xexec cp ".vscode/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
+		xexec cp "$P_VSCODE_DIR/scripts/{dlv-loop.sh,dlv-exec.sh}" "$P_SCRIPTS_DIR/"
 		pattern=$(
 			xsed_pattern \
 				"__TARGET_PORT__" "$TARGET_PORT" \
@@ -2602,7 +2603,7 @@ function xlint_async_prepare() {
 		export P_LINT_DIFF_ARGS+=("-c=$GIT_COMMIT_FILTER")
 	fi
 	export P_LINT_DIFF_FILTER=("${P_PYTHON_EXEC[@]}"
-		".vscode/scripts/py-diff-check.py" "${P_LINT_DIFF_ARGS[@]}"
+		"$P_VSCODE_DIR/scripts/py-diff-check.py" "${P_LINT_DIFF_ARGS[@]}"
 	)
 }
 
@@ -2783,11 +2784,11 @@ function xprepare_runtime_scripts() {
 	COPY_FILES+=(
 		"?$P_SCRIPTS_DIR/dlv-loop.sh|:/usr/bin/dl"
 		"?$P_SCRIPTS_DIR/dlv-exec.sh|:/usr/bin/de"
-		"?.vscode/scripts/onvifd-install.sh|:/usr/bin/oi"
+		"?$P_VSCODE_DIR/scripts/onvifd-install.sh|:/usr/bin/oi"
 	)
 	if xis_true "$USE_OVERLAY_DIR"; then
 		local file_list files=() prefix target
-		local paths=(".vscode/overlay/common" ".vscode/overlay/$TARGET_ARCH")
+		local paths=("$P_VSCODE_DIR/overlay/common" "$P_VSCODE_DIR/overlay/$TARGET_ARCH")
 		for path in "${paths[@]}"; do
 			if ! xis_dir_exists "$path"; then
 				continue
@@ -2810,15 +2811,15 @@ function xinstall_keybindings() {
 		return
 	fi
 	xexec mkdir -p "$HOME/.config/Code/User"
-	xpython_exec "$P_CANFAIL" ".vscode/scripts/py-keybindings.py" \
+	xpython_exec "$P_CANFAIL" "$P_VSCODE_DIR/scripts/py-keybindings.py" \
 		"$HOME/.config/Code/User/keybindings.json" \
-		"$PWD/.vscode/keybindings.json"
+		"$P_VSCODE_DIR/keybindings.json"
 	if xis_ne "$EXEC_STATUS" "0"; then
 		xpython_exec "-m" "ensurepip" "--default-pip"
 		xpython_exec "-m" "pip" "install" "jstyleson"
-		xpython_exec ".vscode/scripts/py-keybindings.py" \
+		xpython_exec "$P_VSCODE_DIR/scripts/py-keybindings.py" \
 			"$HOME/.config/Code/User/keybindings.json" \
-			"$PWD/.vscode/keybindings.json"
+			"$P_VSCODE_DIR/keybindings.json"
 	fi
 }
 
