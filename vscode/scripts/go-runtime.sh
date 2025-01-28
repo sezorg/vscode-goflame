@@ -1356,11 +1356,13 @@ function xoverride_toolchain_wrapper() {
 
 xoverride_toolchain_wrapper false
 
-P_CONFIG_HASH_INITIAL=(
-	"$PWD" "$TARGET_ARCH"
-	"$(find -L "$P_VSCODE_DIR/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-	"$(find -L "$P_VSCODE_DIR" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
-)
+P_CONFIG_HASH_INITIAL=("$PWD" "$TARGET_ARCH")
+if xis_dir_exists "$P_VSCODE_DIR"; then
+	P_CONFIG_HASH_INITIAL+=(
+		"$(find -L "$P_VSCODE_DIR/scripts" -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+		"$(find -L "$P_VSCODE_DIR" -maxdepth 1 -type f -printf "%p %TY-%Tm-%Td %TH:%TM:%TS %Tz\n")"
+	)
+fi
 
 P_CONFIG_HASH=$(md5sum <<<"${P_CONFIG_HASH_INITIAL[*]}")
 P_CONFIG_HASH="${P_CONFIG_HASH:0:32}"
