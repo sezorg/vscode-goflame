@@ -6,19 +6,43 @@
 
 set -euo pipefail
 
+RED=$(printf "\e[31m")
+GREEN=$(printf "\e[32m")
+YELLOW=$(printf "\e[33m")
+BLUE=$(printf "\e[34m")
+GRAY=$(printf "\e[90m")
+NC=$(printf "\e[0m")
+
+function log() {
+	echo "$BLUE|| $*$NC"
+}
+
+function error() {
+	echo "$RED*** ERROR: $*$NC"
+}
+
+DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
+DLOOP_STATUS_FILE="__DLOOP_STATUS_FILE__"
+
 PATTERN="TARGET_PORT"
 if [[ "__TARGET_PORT__" == "__${PATTERN}__" ]]; then
 	log "${RED}IP port number is not set. Do not run this script directly.$NC"
 	exit "1"
 fi
 
+status_reload=155
 if [[ ! -v "instance_guard" ]] || [[ "$instance_guard" == "" ]]; then
 	export instance_guard="root"
 	while true; do
 		if [[ -f "$0" ]]; then
+			set +e
 			"$0"
 			status="$?"
-			if [[ "$status" != "155" ]]; then
+			set -e
+			if [[ "$status" != "$status_reload" ]]; then
+				if [[ "$status" != "0" ]]; then
+					error "Script exit status $status"
+				fi
 				exit "$status"
 			fi
 			count="20"
@@ -34,6 +58,21 @@ if [[ ! -v "instance_guard" ]] || [[ "$instance_guard" == "" ]]; then
 		fi
 	done
 fi
+
+function at_error() {
+	set +u
+	local parent_lineno="$1"
+	local message="$2"
+	local code="${3:-1}"
+	error "Error on or near line $parent_lineno"
+	if [[ -n "$message" ]]; then
+		error "$message"
+	fi
+	error "Exiting with status $code"
+	exit "$code"
+}
+
+trap 'at_error $LINENO' ERR
 
 SUPPRESS_LIST=()
 # -- Application startup messages
@@ -52,22 +91,8 @@ SUPPRESS_LIST+=(__TARGET_SUPPRESS_MSSGS__)
 SUPPRESS_PATTERN="$(printf "\n%s" "${SUPPRESS_LIST[@]}")"
 SUPPRESS_PATTERN="${SUPPRESS_PATTERN:1}"
 
-DLOOP_ENABLE_FILE="__DLOOP_ENABLE_FILE__"
-DLOOP_STATUS_FILE="__DLOOP_STATUS_FILE__"
-
-RED=$(printf "\e[31m")
-GREEN=$(printf "\e[32m")
-YELLOW=$(printf "\e[33m")
-BLUE=$(printf "\e[34m")
-GRAY=$(printf "\e[90m")
-NC=$(printf "\e[0m")
-
 IP=$(ifconfig | grep -Eo 'inet (addr:)?([0-9]*\.){3}[0-9]*' |
 	grep -Eo '([0-9]*\.){3}[0-9]*' | grep -v '127.0.0.1')
-
-function log() {
-	echo "$BLUE|| $*$NC"
-}
 
 function unused() { :; }
 unused "$RED" "$GREEN" "$YELLOW" "$BLUE" "$GRAY" "$NC"
@@ -107,7 +132,7 @@ function self_test() {
 	s2=$(digest "$0")
 	if [[ "$s1" != "$s2" ]]; then
 		log "${GREEN}INFORMATION: The script has been updated via external upload. Restarting...$NC"
-		exit 155
+		exit "$status_reload"
 	fi
 }
 
