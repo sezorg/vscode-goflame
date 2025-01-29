@@ -1,0 +1,53 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+face_id="SomeNewFace-$RANDOM"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": ["$face_id"]
+}
+DELIMITER
+)
+json_test analytics/DeleteFaces
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id",
+	"FirstName": "Ivan",
+	"LastName": "$RANDOM"
+}
+DELIMITER
+)
+json_test analytics/CreateFace
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id"
+}
+DELIMITER
+)
+json_test analytics/GetFace
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id",
+	"FirstName": "SomeFirstName - $RANDOM"
+}
+DELIMITER
+)
+json_test analytics/ModifyFace
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id"
+}
+DELIMITER
+)
+json_test analytics/GetFace

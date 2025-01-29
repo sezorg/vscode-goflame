@@ -50,3 +50,26 @@ curl --digest -u "$USER:$PASS" -w -S -v --digest http://$IP/download/facedb/$fac
 if [ -f "$output_file" ]; then
 	xdg-open "$output_file"
 fi
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id",
+	"Images": [
+		"/download/facedb/$face_id/image-0000.jpg",
+		"/download/facedb/$face_id/image-0001.jpg"
+	]
+}
+DELIMITER
+)
+json_test analytics/DeleteFaceImages
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "$face_id"
+}
+DELIMITER
+)
+json_test analytics/GetFace
+
