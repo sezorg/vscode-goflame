@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Token": "/dev/mmcblk1"
+}
+DELIMITER
+)
+TIMEOUT=30
+COUNT=0
+while true; do
+	COUNT=$((COUNT + 1))
+	echo "Formatting step: $COUNT..."
+	json_test storagecontrol/FormatStorage
+	echo "Formatting step: $COUNT: done"
+done
