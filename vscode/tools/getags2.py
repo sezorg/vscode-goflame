@@ -744,9 +744,9 @@ class GerritTags:
 
     def print_header(self, username_len):
         if self.patchsets or self.all_users:
-            index = f'{Colors.gray}---'
+            index = f'{Colors.gray}----'
         else:
-            index = f'{Colors.gray}--'
+            index = f'{Colors.gray}---'
         user_name = ''
         if self.email == '':
             user_name = 'user'
@@ -767,9 +767,9 @@ class GerritTags:
         self.branch_index += 1
         index = ''
         if self.patchsets or self.all_users:
-            index = f'{Colors.gray}{self.branch_index:03d}'
+            index = f'{Colors.gray}{self.branch_index:04d}'
         else:
-            index = f'{Colors.gray}{self.branch_index:02d}'
+            index = f'{Colors.gray}{self.branch_index:03d}'
         revision = Colors.green + state.revision[:8]
         user_name = ''
         if self.email == '':
