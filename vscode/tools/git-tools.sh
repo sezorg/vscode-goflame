@@ -47,7 +47,7 @@ function gh() {
 }
 
 function master_branch_lookup() {
-	local branches=("master" "main" "ipcam" "ecam02" "ecam03" "mcom03")
+	local branches=("ipcam" "ecam02" "ecam03" "mcom03" "master" "main")
 	for branch in "${branches[@]}"; do
 		if (git rev-parse --verify "$branch" >/dev/null 2>&1); then
 			echo "$branch"
@@ -75,6 +75,10 @@ function gri() {
 
 function grc() {
 	gmk
+	grcf
+}
+
+function grcf() {
 	git rebase --continue
 }
 
@@ -96,12 +100,20 @@ function gs() {
 
 function ga() {
 	gmk
+	gaf
+}
+
+function gaf() {
 	echo "Staging modified files..."
 	git add -u
 }
 
 function gp() {
 	gmk
+	gpf
+}
+
+function gpf() {
 	local target="$1"
 	if [[ "$target" == "" ]]; then
 		target="$(master_branch_lookup)"
