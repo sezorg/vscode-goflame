@@ -159,7 +159,7 @@ function begins_with() {
 }
 
 download_target=""
-download_dir="/var/tmp/mcom03-sd-update"
+download_dir="/var/tmp/mcom03-sdcard-update"
 mkdir -p "$download_dir"
 if [[ "$arg_purge_cache" != "" ]]; then
 	rm -rf "${download_dir:?}/"* >/dev/null 2>&1
@@ -218,7 +218,7 @@ resolve_format_mmc_path
 source_swu_path=""
 
 function resolve_source_swu_path() {
-	local source="$arg_swu_file"
+	local source="$arg_swu_file" http_path
 	if [[ -f "$arg_swu_file" ]]; then
 		source_swu_path="$source"
 		debug "Using SWU: $source_swu_path..."
@@ -226,6 +226,13 @@ function resolve_source_swu_path() {
 		download_file "$arg_swu_file"
 		source_swu_path="$download_target"
 		debug "Using SWU: $arg_swu_file..."
+	elif [[ "${#arg_swu_file}" == 32 ]]; then
+		http_path="https://zuul.elvees.com:8000/periodic/gerrit.elvees.com"
+		http_path="$http_path/ecam03/buildroot/master/ecam03-dev-buildroot-build"
+		http_path="$http_path/${arg_swu_file:0:7}/artifacts/images/ecam03.swu"
+		download_file "$http_path"
+		source_swu_path="$download_target"
+		debug "Using SWU: $http_path..."
 	fi
 	if [[ ! -f "$source_swu_path" ]]; then
 		fatal "Failed to resolve '$source_swu_path' SWU file."
