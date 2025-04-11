@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+#
+# Copyright 2025 RnD Center "ELVEES", JSC
+# VSCode Golang debugging configuration.
+#
+
+# shellcheck disable=SC2034,SC2209
+
+# Этот файл следует переименовать как 'project.user' и добавить в него собственные настройки.
+# Описание параметров и значения по умолчанию см. в .vscode/project.default
+
+WORKSPACE="$HOME/Workspace/Elvees"
+TOOLCHAIN="aarch64-buildroot-linux-gnu_sdk-buildroot"
+
+TARGET_ADDR=192.168.19.74
+TOOLCHAIN_DIR="$WORKSPACE/toolchains/$TOOLCHAIN"

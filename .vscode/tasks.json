@@ -1,0 +1,106 @@
+// Copyright 2025 RnD Center "ELVEES", JSC
+{
+    // See https://go.microsoft.com/fwlink/?LinkId=733558
+    // for the documentation about the tasks.json format
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "launch-deploy-debug",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": false,
+            "isBuildCommand": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-debug"
+            ]
+        },
+        {
+            "label": "launch-deploy-execute",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "isBuildCommand": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-exec-start"
+            ]
+        },
+        {
+            "label": "launch-deploy-terminate",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-exec-stop"
+            ]
+        },
+        {
+            "label": "launch-go-staticcheck",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-lint"
+            ]
+        },
+        {
+            "label": "launch-host-debug",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-host-debug"
+            ]
+        },
+        {
+            "label": "launch-host-test",
+            "type": "process",
+            "group": "build",
+            "echoCommand": false,
+            "hide": true,
+            "command": ".vscode/scripts/go-wrapper.sh",
+            "args": [
+                "--goflame-tests"
+            ]
+        },
+        {
+            "label": "Goflame: Build workspace",
+            "detail": "Go: Build Workspace: ${workspaceFolder}",
+            "type": "go",
+            "group": "build",
+            "hide": true,
+            "command": "build",
+            "args": [
+                "./..."
+            ],
+            "problemMatcher": [
+                "$go"
+            ]
+        },
+        {
+            "label": "Goflame: Check&build workspace",
+            "detail": "Go: Check&build Workspace: ${workspaceFolder}",
+            "type": "go",
+            "group": "build",
+            "hide": true,
+            "command": "build",
+            "args": [
+                "--goflame-rebuild",
+                "--goflame-lint",
+                "./..."
+            ],
+            "problemMatcher": [
+                "$go"
+            ]
+        }
+    ]
+}

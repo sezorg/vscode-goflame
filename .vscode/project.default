@@ -1,0 +1,227 @@
+#!/usr/bin/env bash
+#
+# Copyright 2025 RnD Center "ELVEES", JSC
+# VSCode Golang default debugging configuration.
+#
+
+# shellcheck disable=SC2034,SC2209
+
+#
+# В Н И М А Н И Е !
+# Файл не предназначен для редактирования.
+# Вместо этого см. инструкцию в "project.conf".
+#
+
+# Параметры Golang & Proxy
+GODEBUG="" # См. go.dev/doc/diagnostics#godebug (например, "inittrace=1")
+GOPROXY="http://athens.elvees.com,https://proxy.golang.org,direct"
+
+# Основные параметры проекта
+TOOLCHAIN_DIR="$HOME/workspace/elvees/aarch64-buildroot-linux-gnu_sdk-buildroot"
+TARGET_ADDR=127.0.0.1 # hostname, "tty" или "/dev/ttyUSB<N>" для получения IP через USB-COM
+TARGET_DOMAIN="elvees.com"
+TARGET_PORT=2345
+TARGET_USER=root
+TARGET_PASS=root
+
+# Архитектура и компилятор (если не заданы, определяются автоматически)
+#TARGET_ARCH="armv7l"
+#TARGET_GOCXX="arm-buildroot-linux-gnueabihf"
+#TARGET_ARCH="aarch64"
+#TARGET_GOCXX="aarch64-buildroot-linux-gnu"
+
+# Параметры связи через COM-порт
+TTY_PORT="auto" # пустая строка или "auto" - автоматическое определение
+TTY_SPEED="115200"
+TTY_PICOCOM="picocom"
+TTY_USER=""
+TTY_PASS=""
+TTY_DELAY="300" # milliseconds
+TTY_RETRY="3"
+
+# Параметры сборки и запуска проекта
+TARGET_BUILD_LAUNCHER="UNKNOWN-TARGET_BUILD_LAUNCHER"
+TARGET_BINARY_NAME="UNKNOWN-TARGET_BINARY_NAME"
+TARGET_BINARY_PATH="UNKNOWN-TARGET_BINARY_PATH"
+TARGET_BINARY_ARGS+=()
+
+# Параметры сборки исполняемого файла
+# Полезные опции: "-race", "-v", "-msan", "-asan" (см. pkg.go.dev/cmd/go)
+TARGET_BUILD_GOFLAGS+=(
+	"-gcflags=\"-N -l\""
+	"-modcacherw"
+)
+
+TARGET_BUILD_GOTAGS+=()
+
+TARGET_BUILD_LDFLAGS+=()
+
+# Шаблоны сообщений, отбрасываемых из вывода
+TARGET_SUPPRESS_MSSGS+=(
+	# Delve specific messages
+	" debug layer=debugger "
+	" error layer=dap "
+	" info layer=debugger cleared breakpoint:"
+	" info layer=debugger created breakpoint:"
+	" layer=dap recovered panic"
+	" layer=debugger launching process with args"
+	" warning layer=rpc Listening for remote connections"
+	" without address range at "
+)
+
+# Очистка кеша Golang
+CLEAN_GOCACHE=false
+
+# Включение либо отключение всех линтеров
+ENABLE_LINTERS=true
+
+# Включение и параметры линтера `golangci-lint`
+GOLANGCI_LINT_ENABLE=true
+GOLANGCI_LINT_FILTER=true
+GOLANGCI_LINT_FAIL=false
+GOLANGCI_LINT_SUPPRESS+=(
+	# deprecated linters
+	"deadcode"
+	"execinquery"
+	"exhaustivestruct"
+	"exportloopref"
+	"golint"
+	"gomnd"
+	"ifshort"
+	"interfacer"
+	"maligned"
+	"nosnakecase"
+	"scopelint"
+	"structcheck"
+	"tenv"
+	"varcheck"
+)
+GOLANGCI_LINT_LINTERS+=(
+	"all"
+)
+GOLANGCI_LINT_ARGUMENTS+=(
+	"--max-issues-per-linter" "0"
+	"--max-same-issues" "0"
+	"--allow-parallel-runners"
+)
+
+# Включение и набор проверок для `staticcheck`
+STATICCHECK_ENABLE=true
+STATICCHECK_CHECKS="all"
+STATICCHECK_FILTER=true
+STATICCHECK_GO_VERSION="1.20"
+STATICCHECK_FAIL=false
+STATICCHECK_SUPPRESS+=()
+
+# Включение и параметры запуска `go vet`
+GO_VET_ENABLE=true
+GO_VET_FILTER=true
+GO_VET_FLAGS+=("-composites=true")
+GO_VET_FAIL=false
+
+# Параметры для `line-length-limit`
+LLENCHECK_ENABLE=true
+LLENCHECK_TABWIDTH=4
+LLENCHECK_LIMIT=100
+LLENCHECK_FAIL=false
+LLENCHECK_SUPPRESS+=()
+
+# Включение запуска `pre-commit`
+PRECOMMIT_ENABLE=true
+PRECOMMIT_FAIL=false
+
+# Включение линтеров в режиме пересборки проекта
+ON_REBUILD_STEP_ENABLE=true
+ON_REBUILD_STEP_FILTER=true
+ON_REBUILD_STEP_FAIL=true
+
+GOLANGCI_LINT_ENABLE_REBUILD="$ON_REBUILD_STEP_ENABLE"
+GOLANGCI_LINT_FILTER_REBUILD="$ON_REBUILD_STEP_FILTER"
+GOLANGCI_LINT_FAIL_REBUILD="$ON_REBUILD_STEP_FAIL"
+
+STATICCHECK_ENABLE_REBUILD="$ON_REBUILD_STEP_ENABLE"
+STATICCHECK_FILTER_REBUILD="$ON_REBUILD_STEP_FILTER"
+STATICCHECK_FAIL_REBUILD="$ON_REBUILD_STEP_FAIL"
+
+GO_VET_ENABLE_REBUILD="$ON_REBUILD_STEP_ENABLE"
+GO_VET_FAIL_REBUILD="$ON_REBUILD_STEP_FAIL"
+
+LLENCHECK_ENABLE_REBUILD="$ON_REBUILD_STEP_ENABLE"
+LLENCHECK_FILTER_REBUILD="$ON_REBUILD_STEP_FILTER"
+LLENCHECK_FAIL_REBUILD="$ON_REBUILD_STEP_FAIL"
+
+PRECOMMIT_ENABLE_REBUILD=false # "$ON_REBUILD_STEP_ENABLE"
+PRECOMMIT_FAIL_REBUILD="$ON_REBUILD_STEP_FAIL"
+
+# Включение проверок в режиме запуска линтеров
+ON_LINT_STEP_ENABLE=true
+ON_LINT_STEP_FILTER=true
+ON_LINT_STEP_FAIL=true
+
+GOLANGCI_LINT_ENABLE_LINT="$ON_LINT_STEP_ENABLE"
+GOLANGCI_LINT_FILTER_LINT="$ON_LINT_STEP_FILTER"
+GOLANGCI_LINT_FAIL_LINT="$ON_LINT_STEP_FAIL"
+
+STATICCHECK_ENABLE_LINT="$ON_LINT_STEP_ENABLE"
+STATICCHECK_FILTER_LINT="$ON_LINT_STEP_FILTER"
+STATICCHECK_FAIL_LINT="$ON_LINT_STEP_FAIL"
+
+GO_VET_ENABLE_LINT="$ON_LINT_STEP_ENABLE"
+GO_VET_FAIL_LINT="$ON_LINT_STEP_FAIL"
+
+LLENCHECK_ENABLE_LINT="$ON_LINT_STEP_ENABLE"
+LLENCHECK_FILTER_LINT="$ON_LINT_STEP_FILTER"
+LLENCHECK_FAIL_LINT="$ON_LINT_STEP_FAIL"
+
+PRECOMMIT_ENABLE_LINT="$ON_LINT_STEP_ENABLE"
+PRECOMMIT_FAIL_LINT="$ON_LINT_STEP_FAIL"
+
+# Копирование файлов
+COPY_FILES+=()
+
+# Включение кеширования файлов
+COPY_CACHE=true
+COPY_CACHE_REBUILD=false
+
+# Создание директорий
+DIRECTORIES_CREATE+=()
+
+# Удаление файлов
+DELETE_FILES+=()
+
+# Выполнение команды
+EXECUTE_COMMANDS+=()
+
+# Останов сервисов
+SERVICES_STOP+=()
+
+# Запуск сервисов
+SERVICES_START+=()
+
+# Останов процессов
+PROCESSES_STOP+=()
+
+# Запуск процессов
+PROCESSES_START+=()
+
+# Включение features Web-интерфейса
+# См. README.rst и frontend/configs/features*.json в
+# https://gerrit.elvees.com/admin/repos/tools/ipcamweb
+WEB_FEATURES_ON+=()
+
+# Выключение features Web-интерфейса
+WEB_FEATURES_OFF+=()
+
+# Дополнительные настройки
+USE_GO_VERSION="default"
+USE_HTTP_PROXY=
+USE_RSYNC_METHOD=true
+USE_RSYNC_BINARY="rsync"
+USE_PIGZ_COMPRESSION=true
+USE_PIGZ_BINARY="pigz"
+USE_ASYNC_LINTERS=true
+USE_NO_COLORS=false
+USE_SERVICE_MASKS=false
+USE_OVERLAY_DIR=""
+USE_SHELL_TIMEOUT=10
+USE_GOLANG_TIMEOUT=300

@@ -1,0 +1,33 @@
+// Copyright 2025 RnD Center "ELVEES", JSC
+{
+    "go.alternateTools": {
+        "go": "${workspaceFolder}/.vscode/scripts/go-wrapper.sh"
+    },
+    "go.delveConfig": {
+        "debugAdapter": "dlv-dap",
+        "dlvFlags": []
+    },
+    "go.lintTool": "golangci-lint",
+    "go.lintFlags": [
+        "--fast"
+    ],
+    "go.vetFlags": [
+        "printfuncs=makeErrorf,makeSliceErrorf"
+    ],
+    "go.useLanguageServer": true,
+    "editor.emptySelectionClipboard": false,
+    "editor.rulers": [
+        100
+    ],
+    "[go]": {
+        "editor.insertSpaces": true,
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "golang.go"
+    },
+    "[python]": {
+        "editor.defaultFormatter": "ms-python.autopep8"
+    },
+    "git.enabled": true,
+    "git.autofetch": false,
+    "cSpell.language": "en,ru"
+}
