@@ -1,0 +1,36 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"InitialTerminationTime": "PT1M",
+	"Filter": {
+		"TopicExpression": [{
+			"Dialect": "http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet",
+			"Expression": "tns1:Monitoring/ProcessorUsage"
+		}]
+	}
+}
+DELIMITER
+)
+json_test event/CreatePullPointSubscription
+
+time="$(date --rfc-3339=ns | sed 's/ /T/; s/\(\....\).*\([+-]\)/\1\2/g')"
+echo "time=$time"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"InitialTerminationTime": "$time",
+	"Filter": {
+		"TopicExpression": [{
+			"Dialect": "http://www.onvif.org/ver10/tev/topicExpression/ConcreteSet",
+			"Expression": "tns1:Monitoring/ProcessorUsage"
+		}]
+	}
+}
+DELIMITER
+)
+json_test event/CreatePullPointSubscription
