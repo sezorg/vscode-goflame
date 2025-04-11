@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"PTZConfigurationToken": "zoom"
+}
+DELIMITER
+)
+json_test ptz/GetConfiguration

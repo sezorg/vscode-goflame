@@ -1,0 +1,80 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+  cat <<DELIMITER
+{
+    "PTZConfiguration": {
+      "Name": "Zoom configuration",
+      "UseCount": 0,
+      "Token": "zoom",
+      "NodeToken": "zoom",
+      "DefaultAbsolutePantTiltPositionSpace": null,
+      "DefaultAbsoluteZoomPositionSpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/PositionGenericSpace",
+      "DefaultRelativePanTiltTranslationSpace": null,
+      "DefaultRelativeZoomTranslationSpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/TranslationGenericSpace",
+      "DefaultContinuousPanTiltVelocitySpace": "http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace",
+      "DefaultContinuousZoomVelocitySpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/VelocityGenericSpace",
+      "DefaultPTZSpeed": {
+        "PanTilt": {
+          "X": 1.0,
+          "Y": 1,
+          "Space": "http://www.onvif.org/ver10/tptz/PanTiltSpaces/GenericSpeedSpace"
+        },
+        "Zoom": {
+          "X": 0,
+          "Space": "http://www.onvif.org/ver10/tptz/ZoomSpaces/ZoomGenericSpeedSpace"
+        }
+      },
+      "DefaultPTZTimeout": "PT0S",
+      "PanTiltLimits": null,
+      "ZoomLimits": null,
+      "Extension": null,
+      "MoveRamp": 0,
+      "PresetRamp": 0,
+      "PresetTourRamp": 0
+    }
+}
+DELIMITER
+)
+
+JSON=$(
+  cat <<DELIMITER
+{
+"PTZConfiguration": {
+      "Name": "Zoom configuration",
+      "UseCount": 0,
+      "Token": "zoom",
+      "NodeToken": "zoom",
+      "DefaultAbsolutePantTiltPositionSpace": null,
+      "DefaultAbsoluteZoomPositionSpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/PositionGenericSpace",
+      "DefaultRelativePanTiltTranslationSpace": null,
+      "DefaultRelativeZoomTranslationSpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/TranslationGenericSpace",
+      "DefaultContinuousPanTiltVelocitySpace": "http://www.onvif.org/ver10/tptz/PanTiltSpaces/VelocityGenericSpace",
+      "DefaultContinuousZoomVelocitySpace": "http://www.onvif.org/ver10/tptz/ZoomSpaces/VelocityGenericSpace",
+      "DefaultPTZSpeed": {
+        "PanTilt": {
+          "X": 10.1,
+          "Y": 0.1,
+          "Space": "http://www.onvif.org/ver10/tptz/PanTiltSpaces/GenericSpeedSpace"
+        },
+        "Zoom": {
+          "X": 0,
+          "Space": "http://www.onvif.org/ver10/tptz/ZoomSpaces/ZoomGenericSpeedSpace"
+        }
+      },
+      "DefaultPTZTimeout": "PT0S",
+      "PanTiltLimits": null,
+      "ZoomLimits": null,
+      "Extension": null,
+      "MoveRamp": 0,
+      "PresetRamp": 0,
+      "PresetTourRamp": 0
+    },
+    "ForcePersistence": false
+  }
+DELIMITER
+)
+
+json_test ptz/SetConfiguration
