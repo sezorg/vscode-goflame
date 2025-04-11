@@ -1,0 +1,251 @@
+#!/bin/bash
+set -euo pipefail
+
+TTY_PORT="/dev/tty-usb2uart-ASSET-2233"
+TTY_SPEED="115200"
+TTY_PICOCOM="./picocom"
+TTY_LOGIN="root"
+TTY_PASS="root"
+TTY_DELAY="200" # milliseconds
+
+STATIC_IP="192.168.19.74"
+HIDUSB_RELAY=1
+
+RED=$(printf "\e[31m")
+GREEN=$(printf "\e[32m")
+YELLOW=$(printf "\e[33m")
+BLUE=$(printf "\e[34m")
+GRAY=$(printf "\e[90m")
+NC=$(printf "\e[0m")
+
+function time_now() {
+	date "+%s.%N"
+}
+
+TIME_STARTED="$(time_now)"
+
+function format_time() {
+	local from="$1" to="$2"
+	local time days days_frac hours hours_frac mins secs prefix pad="0000000"
+	time=$(echo "$to - $from" | bc)
+	days=$(echo "$time/86400" | bc)
+	days_frac=$(echo "$time-86400*$days" | bc)
+	hours=$(echo "$days_frac/3600" | bc)
+	hours_frac=$(echo "$days_frac-3600*$hours" | bc)
+	mins=$(echo "$hours_frac/60" | bc)
+	secs=$(echo "$hours_frac-60*$mins" | bc)
+	secs=$(printf "%02.3fs" "$secs")
+	secs="${pad:${#secs}}$secs"
+	if [[ "$days" != "0" ]]; then
+		printf "%dd %02.2dh %02.2dm %s" "$days" "$hours" "$mins" "$secs"
+	elif [[ "$hours" != "0" ]]; then
+		printf "%dh %02.2dm %s" "$hours" "$mins" "$secs"
+	elif [[ "$mins" != "0" ]]; then
+		printf "%dm %s" "$mins" "$secs"
+	else
+		printf "%s" "$secs"
+	fi
+}
+
+function elapsed_time() {
+	local text blank="--------------- "
+	text=$(format_time "$TIME_STARTED" "$(time_now)")
+	echo "${blank:${#text}}$GREEN$text$NC - "
+}
+
+function log() {
+	echo "$(elapsed_time)$*" >&2
+}
+
+function debug() {
+	echo "$(elapsed_time)${GRAY}DEBUG: $*$NC" >&2
+}
+
+function warn() {
+	echo "$(elapsed_time)${YELLOW}WARN: $*$NC" >&2
+}
+
+function error() {
+	echo "$(elapsed_time)${RED}*** ERROR: $*$NC" >&2
+}
+
+function fatal() {
+	echo "$(elapsed_time)${RED}*** FATAL: $*$NC" >&2
+	exit 1
+}
+
+if [[ ! -f "$TTY_PICOCOM" ]]; then
+	TTY_PICOCOM="$(which picocom)"
+fi
+if [[ ! -f "$TTY_PICOCOM" ]]; then
+	fatal "Unable to find 'picocom' (dnf install picocom)."
+fi
+
+function tty() {
+	local format="" text
+	for ((i = 0; i <= $#; i++)); do
+		format="$format%s\r"
+	done
+	# shellcheck disable=SC2059
+	text="$(printf "$format" "$@")"
+	#debug "tty-send: --->$text<---"
+	text=$("$TTY_PICOCOM" -qrb "$TTY_SPEED" -x "$TTY_DELAY" "$TTY_PORT" -t "$text" 2>&1)
+	#debug "tty-recv: --->$text<---"
+	echo "$text"
+}
+
+function tty_is() {
+	[[ "$(tty "$1")" == *"$2"* ]]
+}
+
+function logout() {
+	if tty_is "" "#"; then
+		if tty_is "exit" "exit not allowed"; then
+			log "Booting u-boot"
+			tty "boot" >/dev/null 2>&1
+		else
+			log "Logging out"
+			tty "" >/dev/null 2>&1
+		fi
+	fi
+}
+
+function login() {
+	logout
+	if tty_is "" "login:"; then
+		if tty_is "$TTY_LOGIN" "Password:"; then
+			tty_is "$TTY_PASS" "#"
+			#debug "login: logged in with $TTY_LOGIN/$TTY_PASS"
+			return 0
+		fi
+	fi
+	return 1
+}
+
+function peek_ip() {
+	if ! login; then
+		return 1
+	fi
+	local text lines=() line match
+	# shellcheck disable=SC2207
+	IFS=$'\r' lines=($(tty "ifconfig | grep 'inet addr:' | grep 'Bcast:'"))
+	#readarray -t lines <<<"$(tty "ifconfig | grep 'inet addr:' | grep 'Bcast:'")"
+	for line in "${lines[@]}"; do
+		#debug "peek_ip: processing line: '$line'"
+		match=$(echo "$line" | grep -oE "\b([0-9]{1,3}\.){3}[0-9]{1,3}\b" | awk 'NR==1{print $1}')
+		if [[ "$match" != "" ]]; then
+			#debug "peek_ip: IP match: '$match'"
+			eval "$1"="$match"
+			return 0
+		fi
+	done
+	return 1
+}
+
+function wait_for_ip() {
+	local start_time current_time elapsed_time ip="$1" timeout="$2"
+	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
+		timeout="15"
+	fi
+	start_time=$(date +%s)
+	while true; do
+		if peek_ip "$ip"; then
+			return 0
+		fi
+		sleep 0.5
+		current_time=$(date +%s)
+		elapsed_time=$((current_time - start_time))
+		#debug "wait_for_ip: start_time=$start_time current_time=$current_time elapsed_time=$elapsed_time"
+		if [[ "$elapsed_time" -ge "$timeout" ]]; then
+			#debug "wait_for_ip: timeout"
+			return 1
+		fi
+	done
+}
+
+function ping_ip() {
+	local start_time current_time elapsed_time ip="$1" timeout="$2"
+	if [[ "$timeout" == "" ]] || [[ "$timeout" -le "0" ]]; then
+		timeout="10"
+	fi
+	start_time=$(date +%s)
+	while true; do
+		#debug "ping_ip: ping -c 1 -i 0.5 $ip &>/dev/null"
+		if timeout 0.5 ping -c 1 "$ip" &>/dev/null; then
+			return 0
+		fi
+		current_time=$(date +%s)
+		elapsed_time=$((current_time - start_time))
+		#debug "ping_ip: start_time=$start_time current_time=$current_time elapsed_time=$elapsed_time"
+		if [[ "$elapsed_time" -ge "$timeout" ]]; then
+			#debug "ping_ip: timeout"
+			return 1
+		fi
+	done
+}
+
+function power_ctl() {
+	hidusb-relay-cmd "$1" "1"
+}
+
+function http() {
+	echo "${BLUE}http://$1$NC"
+}
+
+function iter() {
+	local iteration="$1" message="$2" text
+	text=$(printf "Iteration $YELLOW%4.4d$NC - %s" "$iteration" "$message")
+	log "$text"
+}
+
+function camera_probe() {
+	local iteration="$1" initial_ip="$2"
+	iter "$iteration" "Waiting for u-boot boot"
+	sleep 10
+	iter "$iteration" "Waiting for Linux boot-up"
+	sleep 10
+	iter "$iteration" "Checking camera availability"
+	if ping_ip "$initial_ip" "15"; then
+		return
+	fi
+	iter "$iteration" "${YELLOW}Unavailable, waiting some more time$NC"
+	if ping_ip "$initial_ip" "15"; then
+		return
+	fi
+	iter "$iteration" "${YELLOW}Getting IP via TTY$NC"
+	if ! wait_for_ip "actual_ip" "0"; then
+		fatal "Unable to get camera IP (does camera is booted up?)"
+	fi
+	if [[ "$actual_ip" != "$initial_ip" ]]; then
+		error "IP changed from '$initial_ip' to '$actual_ip'"
+		fatal "Test failed"
+	fi
+}
+
+function execute_test() {
+	local initial_ip actual_ip
+	log "Reading IP information from $BLUE'$TTY_PORT'$NC, please wait..."
+	power_ctl ON
+	if ! wait_for_ip "initial_ip" "30"; then
+		fatal "Unable to get camera IP (does camera power is on?)"
+	fi
+	if [[ "$initial_ip" == "$STATIC_IP" ]]; then
+		fatal "Camera already has a static IP $STATIC_IP"
+	fi
+	log "Starting test on $(http "$initial_ip")."
+	local start_time current_time elapsed_time iteration=0
+	while true; do
+		local boot_start boot_end
+		iteration=$((iteration + 1))
+		iter "$iteration" "Restarting camera"
+		power_ctl OFF
+		sleep 1
+		power_ctl ON
+		boot_start=$(time_now)
+		camera_probe "$iteration" "$initial_ip"
+		boot_end=$(time_now)
+		iter "$iteration" "OK, boot time $(format_time "$boot_start" "$boot_end")"
+	done
+}
+
+execute_test
