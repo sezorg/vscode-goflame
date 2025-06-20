@@ -46,6 +46,7 @@ def generate_cookies(user, password):
 def execute_jsonrpc(args):
     url = f"http://{args.address}"
     endpoints = {
+        "login": f"{url}/api/v2/login",
         "device": f"{url}/api/v2/devicemgmt",
         "analytics": f"{url}/api/v2/analytics",
         "media2": f"{url}/api/v2/media2",

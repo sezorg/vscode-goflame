@@ -10,5 +10,3 @@ JSON=$(
 DELIMITER
 )
 json_test login/GetUsers
-
-Vxdmak32@

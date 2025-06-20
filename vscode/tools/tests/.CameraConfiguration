@@ -270,7 +270,9 @@ function soap_test() {
 	if [[ "$TIMEOUT" == "" ]]; then
 		TIMEOUT="$DEF_TIMEOUT"
 	fi
-	output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" \
+	#output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" \
+	#	-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -l "$JSON" 2>&1)
+	output=$(timeout "$TIMEOUT" ecam request --auth cookies \
 		-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -l "$JSON" 2>&1)
 	retcode="$?"
 	elapsed=$(format_time "$start_time" "$(date +%s.%N)")

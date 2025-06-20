@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"AuxiliaryCommand": ""
+}
+DELIMITER
+)
+json_test device/SendAuxiliaryCommand

@@ -1,0 +1,31 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "JobConfiguration": {
+    "RecordingToken": "sdcard",
+    "Mode": "Idle",
+    "Priority": 0,
+    "Source": [
+      {
+        "SourceToken": {
+          "Token": "user",
+          "Type": "http://www.onvif.org/ver10/schema/Profile"
+        },
+        "AutoCreateReceiver": false,
+        "Tracks": [
+          {
+            "SourceTag": "",
+            "Destination": "user-video"
+          }
+        ]
+      }
+    ]
+  }
+}
+DELIMITER
+)
+json_test recording/CreateRecordingJob

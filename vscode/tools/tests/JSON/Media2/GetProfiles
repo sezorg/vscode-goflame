@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Type": ["VideoSource"]
+}
+DELIMITER
+)
+json_test media2/GetProfiles
