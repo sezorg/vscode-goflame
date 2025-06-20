@@ -47,6 +47,7 @@ class Config:
         self.unprotect_git = True
         self.expire_unreachable = False
         self.patch_number = ''
+        self.master_branch = ''
         self.default_master_branch = 'master'
 
 
@@ -166,6 +167,12 @@ def parse_arguments():
         default=0,
     )
     parser.add_argument(
+        '-m', '--master',
+        type=str,
+        required=False,
+        help='Use specified master branch'
+    )
+    parser.add_argument(
         '-r', '--rebase',
         help=f'Rebase top level branches chains above the {decorate(config.default_master_branch)}',
         required=False,
@@ -204,6 +211,7 @@ def parse_arguments():
     config.debug_level = arguments.debug
     config.verbose_level = arguments.verbose
     config.patch_number = arguments.patch_number
+    config.master_branch = arguments.master
     config.rebase_chains = arguments.rebase
     config.rebase_for_all = arguments.rebase_all
     config.expire_unreachable = arguments.expire_unreachable
@@ -239,15 +247,15 @@ class Shell:
         self.stdout = stdout.decode()
         self.stderr = stderr.decode()
         self.status = proc.returncode
-        if not silent and not self.succeded():
+        if not silent and not self.succeeded():
             error(f'Failed to execute: {self.params}')
             error(f'{self.stderr.strip()}')
 
-    def succeded(self):
+    def succeeded(self):
         return self.status == 0
 
-    def assert_succeded(self, error_message):
-        if self.succeded():
+    def assert_succeeded(self, error_message):
+        if self.succeeded():
             return
         error(error_message)
         if self.stdout != '':
@@ -260,14 +268,14 @@ class Shell:
         debug(f'Shell params: {self.params}')
         debug(f'Shell stdout: {self.stdout}')
         debug(f'Shell stderr: {self.stderr}')
-        debug(f'Shell status: {self.status}, succeded {self.succeded()}')
+        debug(f'Shell status: {self.status}, succeeded {self.succeeded()}')
 
 
 class GitConfig:
     def __init__(self):
         self.data = {}
         status = Shell(['git', 'config', '--list'])
-        status.assert_succeded('Unable to get Git configuration')
+        status.assert_succeeded('Unable to get Git configuration')
         lines = status.stdout.split('\n')
         for line in lines:
             pos = line.find('=')
@@ -285,15 +293,17 @@ class GitConfig:
         if self.repository_url == '':
             error('Unable to retrieve repository URL')
             fatal('Looks like current directory is not a valid Git repository')
-        self.master_branch = ''
-        for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03', 'mcom03']:
-            status = Shell(['git', 'rev-parse', '--verify',
-                           branch_name], silent=True)
-            if status.succeded():
-                self.master_branch = branch_name
-                break
-        if self.master_branch == '':
+        self.master_branch = config.master_branch
+        if self.master_branch is None:
+            for branch_name in ['master', 'main', 'ipcam', 'ecam02', 'ecam03', 'mcom03']:
+                status = Shell(['git', 'rev-parse', '--verify',
+                               branch_name], silent=True)
+                if status.succeeded():
+                    self.master_branch = branch_name
+                    break
+        if self.master_branch is None:
             fatal('Failed to detect Git repository \'master\' branch')
+        debug(f'master branch is "{self.master_branch}"')
 
 
 class State:
@@ -328,8 +338,8 @@ class GerritTags:
             if command.find('@') < 0:
                 self.email += user_email[user_email.index('@'):]
         self.filter = ['status:open']
-        if self.email != '':
-            self.filter.append('author:'+self.email)
+        # if self.email != '':
+        #    self.filter.append('author:'+self.email)
         self.branch_prefix = 'B/'
         self.branch_postfix = ''
         self.branch_separator = '.'
@@ -352,10 +362,10 @@ class GerritTags:
 
     def resolve_current(self):
         status = Shell(['git', 'rev-parse', 'HEAD'])
-        status.assert_succeded('Failed to obtain current revision')
+        status.assert_succeeded('Failed to obtain current revision')
         self.current_revision = status.stdout.strip()
         status = Shell(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
-        status.assert_succeded('Failed to obtain current branch name')
+        status.assert_succeeded('Failed to obtain current branch name')
         self.current_branch = status.stdout.strip()
         if self.current_branch.startswith(self.branch_prefix):
             branch = self.current_branch[len(self.branch_prefix):]
@@ -368,7 +378,7 @@ class GerritTags:
 
     def remove_branches(self):
         status = Shell(['git', 'branch', '--format', '%(refname:short)'])
-        status.assert_succeded('Unable get list of actual Git branches')
+        status.assert_succeeded('Unable get list of actual Git branches')
         branches = status.stdout.split('\n')
         self.branch_index = 0
         branches_delete = []
@@ -377,27 +387,27 @@ class GerritTags:
                 if branch_name == self.current_branch:
                     debug(f'Checking out to {self.current_revision}')
                     status = Shell(['git', 'checkout', self.current_revision])
-                    status.assert_succeded(f'Failed to checkout to {self.current_revision}')
+                    status.assert_succeeded(f'Failed to checkout to {self.current_revision}')
                 if config.unprotect_git:
                     branches_delete.append(branch_name)
                 self.branch_index += 1
         if len(branches_delete) != 0:
             debug(f'Deleting local branches: {branches_delete}')
             status = Shell(['git', 'branch', '-D']+branches_delete)
-            status.assert_succeded(f'Can not delete branches: {branches_delete}')
+            status.assert_succeeded(f'Can not delete branches: {branches_delete}')
 
     def cleanup_pending(self):
         if not config.expire_unreachable:
             return
         status = Shell(['git', 'reflog', 'expire', '--expire-unreachable=all'])  # --all
-        status.assert_succeded('Unable to run Git reflog expire')
+        status.assert_succeeded('Unable to run Git reflog expire')
         status = Shell(['git', 'gc', '--prune=now'])
-        status.assert_succeded('Unable to run Git gc --prune=now')
+        status.assert_succeeded('Unable to run Git gc --prune=now')
         return
 
     def peek_gerrit_project(self):
         status = Shell(['git', 'remote', 'show', '-n', 'origin'])
-        status.assert_succeded('Failed to get remote repoistory configuration')
+        status.assert_succeeded('Failed to get remote repository configuration')
         lines = status.stdout.split('\n')
         for line in lines:
             pos = line.find('Push  URL:')
@@ -422,11 +432,11 @@ class GerritTags:
             return
         status = Shell(['git', 'checkout', '--merge',
                         '-B', self.master_branch, 'origin/'+self.master_branch])
-        status.assert_succeded(f'Failed to checkout to {decorate(self.master_branch)}')
+        status.assert_succeeded(f'Failed to checkout to {decorate(self.master_branch)}')
         status = Shell(['git', 'fetch', self.repository_url])
-        status.assert_succeded(f'Failed to fetch from {self.repository_url}')
+        status.assert_succeeded(f'Failed to fetch from {self.repository_url}')
         status = Shell(['git', 'pull', '--rebase', '--autostash'])
-        status.assert_succeded(f'Failed to pull {decorate(self.master_branch)} branch.')
+        status.assert_succeeded(f'Failed to pull {decorate(self.master_branch)} branch.')
         self.branch_index = 0
         if not self.peek_gerrit_project():
             fatal(f'Failed to retrieve Gerrit project configuration from {self.repository_url}')
@@ -434,9 +444,10 @@ class GerritTags:
         args += [self.gerrit_host, 'gerrit', 'query', '--current-patch-set', '--format', 'JSON',
                  '--all-approvals', 'project:' + self.gerrit_project]
         status = Shell(args + self.filter)
-        status.assert_succeded(f'Failed to fetch from {self.repository_url}')
+        status.assert_succeeded(f'Failed to fetch from {self.repository_url}')
         # file:///var/tmp/gerrit-project/all.txt
         debug_dir = '/var/tmp/gerrit-project'
+        debug(f'Gerrit JSON: file://{debug_dir}/all.txt')
         if config.debug_level > 0:
             if os.path.isdir(debug_dir):
                 shutil.rmtree(debug_dir)
@@ -531,7 +542,7 @@ class GerritTags:
 
     def create_branches(self):
         status = Shell(['git', 'fetch', 'origin'], True)
-        status.assert_succeded(f'Failed to fetch remote branches from {decorate('origin')}')
+        status.assert_succeeded(f'Failed to fetch remote branches from {decorate('origin')}')
         username_len = 0
         for state in self.state_list:
             if username_len < len(state.username):
@@ -549,8 +560,8 @@ class GerritTags:
             self.create_branch(state.mode, state)
         # list branches including master
         status = Shell(['git', 'branch', '--contains', self.master_branch], True)
-        status.assert_succeded(f'Failed to get list of branches containing '
-                               f'{decorate(self.master_branch)} branch.')
+        status.assert_succeeded(f'Failed to get list of branches containing '
+                                f'{decorate(self.master_branch)} branch.')
         lines = status.stdout.split('\n')
         line_count = len(lines)
         line_index = 0
@@ -600,7 +611,7 @@ class GerritTags:
         return
 
     def create_branch(self, mode, state) -> None:
-        if self.email not in ('', state.email):
+        if self.email != '' and self.email != state.email:
             return
         if state.revision in self.brach_created:
             return
@@ -628,18 +639,19 @@ class GerritTags:
             branch_name += re.sub(r'[\s]', r'-', subject)
         state.branch_name = branch_name
         # status = Shell(['git', 'fetch', self.repository_url, state.ref])
-        # status.assert_succeded(f'Failed to fetch remote {
+        # status.assert_succeeded(f'Failed to fetch remote {
         #    state.ref} from {self.repository_url}')
         status = Shell(['git', 'branch', branch_name, state.revision], True)
-        if not status.succeded():
+        if not status.succeeded():
             status = Shell(['git', 'fetch', self.repository_url, state.ref])
-            status.assert_succeded(f'Failed to fetch remote {state.ref} from {self.repository_url}')
+            status.assert_succeeded(
+                f'Failed to fetch remote {state.ref} from {self.repository_url}')
             status = Shell(['git', 'branch', branch_name, state.revision], True)
-            status.assert_succeded(f'Failed to create branch  {
-                                   decorate(branch_name)} at {state.revision}')
+            status.assert_succeeded(f'Failed to create branch  {
+                decorate(branch_name)} at {state.revision}')
         status = Shell(['git', 'config', 'branch.'+branch_name + '.description',
                         state.subject], True)
-        status.assert_succeded(f'Failed to set branch {decorate(branch_name)} description.')
+        status.assert_succeeded(f'Failed to set branch {decorate(branch_name)} description.')
 
     def rebase_branches(self):
         if not config.rebase_chains:
@@ -670,8 +682,8 @@ class GerritTags:
     def rebase_state_branch_safe(self, state):
         stash_name = state.branch_name + '.stash.backup'
         status = Shell(['git', 'stash', 'push', '-m', stash_name])
-        status.assert_succeded(f'Failed to save stash {stash_name} while rebasing {
-                               decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to save stash {stash_name} while rebasing {
+            decorate(state.branch_name)}')
         text = status.stdout.strip()
         debug(f'Save stash output: {text}')
         with ExitStack() as stack:
@@ -688,8 +700,8 @@ class GerritTags:
     def rebase_state_branch_restore(self, state, stash_name):
         debug(f'Restoring local changes from stash {stash_name}')
         status = Shell(['git', 'stash', 'list'])
-        status.assert_succeded(f'Failed to list stashes while rebasing {
-                               decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to list stashes while rebasing {
+            decorate(state.branch_name)}')
         pattern = r"stash@{(\d+)}.+:\s(.+)"
         matches = re.findall(pattern, status.stdout)
         stash_index_found = ''
@@ -703,23 +715,23 @@ class GerritTags:
             branch_name = decorate(state.branch_name)
             fatal(f'Failed to retrieve index for stash {stash_name} while rebasing {branch_name}')
         status = Shell(['git', 'stash', 'apply', stash_index_found])
-        status.assert_succeded(f'Failed to apply stash {stash_name} while rebasing {
-                               decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to apply stash {stash_name} while rebasing {
+            decorate(state.branch_name)}')
         status = Shell(['git', 'stash', 'drop', stash_index_found])
-        status.assert_succeded(f'Failed to drop stash {stash_name} while rebasing {
-                               decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to drop stash {stash_name} while rebasing {
+            decorate(state.branch_name)}')
 
     def rebase_state_branch(self, state):
         debug(f'Running rebase on branch {state.branch_name}')
         status = Shell(['git', 'switch', state.branch_name])
-        status.assert_succeded(f'Failed to switch to {decorate(state.branch_name)} branch')
+        status.assert_succeeded(f'Failed to switch to {decorate(state.branch_name)} branch')
         status = Shell(['git', 'rebase', '--update-refs', self.master_branch])
-        status.assert_succeded(f'Failed to rebase branch {decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to rebase branch {decorate(state.branch_name)}')
         text = status.stdout.strip()
         if 'is up to date' not in text and text != '':
             print(f'{text}')
         status = Shell(['git', 'push', 'origin', 'HEAD:refs/for/' + self.master_branch])
-        status.assert_succeded(f'Failed to push rebased branch {decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to push rebased branch {decorate(state.branch_name)}')
         text = status.stdout.strip()
         if text != '':
             print(f'{text}')
@@ -737,7 +749,7 @@ class GerritTags:
         debug(f'Checking out targets: {targets}')
         for target in targets:
             status = Shell(['git', 'checkout', target])
-            if status.succeded():
+            if status.succeeded():
                 return
             warning(f'Failed to checkout to target {decorate(target)}')
         fatal(f'Failed to checkout to targets {targets}')
@@ -777,6 +789,8 @@ class GerritTags:
             while len(user_name) < username_len:
                 user_name = ' ' + user_name
             user_name = Colors.nc + ' ' + user_name
+        elif self.email != state.email:
+            return
         branch = Colors.blue + self.branch_prefix + state.number + self.branch_postfix
         subject = state.subject
         info = ''
