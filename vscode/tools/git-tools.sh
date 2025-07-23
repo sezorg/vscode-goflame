@@ -18,6 +18,17 @@ SSH_FLAGS=(
 	-o ConnectionAttempts=1
 	-o ServerAliveInterval=1
 	-o ServerAliveCountMax=2
+	-o ForwardX11=no
+)
+
+SSHFS_FLAGS=(
+	-o ProxyCommand=none
+	-o StrictHostKeyChecking=no
+	-o UserKnownHostsFile=/dev/null
+	-o ConnectTimeout=5
+	-o ConnectionAttempts=1
+	-o ServerAliveInterval=1
+	-o ServerAliveCountMax=2
 )
 
 function gh() {
@@ -452,7 +463,7 @@ function sf() {
 	local mount_point="$HOME/Devices/$ip_address"
 	mkdir -p "$mount_point"
 	fusermount -u "$mount_point" >/dev/null 2>&1
-	echo $pass | sshfs "${SSH_FLAGS[@]}" "$user@$ip_address:/" "$mount_point" -o workaround=rename -o password_stdin
+	echo $pass | sshfs "${SSHFS_FLAGS[@]}" "$user@$ip_address:/" "$mount_point" -o workaround=rename -o password_stdin
 	echo "Done. Mounted to: $mount_point"
 	if [[ -x "$(command -v dolphin)" ]]; then
 		dolphin "$mount_point"
