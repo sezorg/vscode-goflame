@@ -1,0 +1,12 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+}
+DELIMITER
+)
+json_test recording/GetServiceCapabilities
+
