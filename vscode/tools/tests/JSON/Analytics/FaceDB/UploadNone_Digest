@@ -1,0 +1,5 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl --digest -u "$USER:$PASS" -v -F 'demo.facedb=@"Files/nofile"' "http://$IP/upload/facedb"

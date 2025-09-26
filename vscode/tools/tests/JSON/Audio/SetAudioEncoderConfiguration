@@ -6,9 +6,9 @@ JSON=$(
 	cat <<DELIMITER
 {
 	"Configuration": {
-		"Name": "AEC",
+		"Name": "AEC H.264",
 		"UseCount": 2,
-		"Token": "aec-1",
+		"Token": "aec-h264",
 		"Encoding": "G711",
 		"Bitrate": 64,
 		"SampleRate": 8,

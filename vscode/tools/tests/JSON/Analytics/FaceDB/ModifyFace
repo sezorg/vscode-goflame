@@ -11,3 +11,13 @@ JSON=$(
 DELIMITER
 )
 json_test analytics/ModifyFace
+
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"Id": "Jacob/Batalon"
+}
+DELIMITER
+)
+json_test analytics/GetFace

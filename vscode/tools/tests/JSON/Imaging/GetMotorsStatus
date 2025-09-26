@@ -5,8 +5,8 @@
 JSON=$(
 	cat <<DELIMITER
 {
-	"Type": ["All"]
+	"VideoSourceToken":"src"
 }
 DELIMITER
 )
-json_test media2/GetProfiles
+json_test imaging/GetMotorsStatus
