@@ -485,8 +485,8 @@ class GerritTags:
             state.username = owner['username']
             current_patch_set = project['currentPatchSet']
             if not {'number', 'revision', 'ref', 'parents'} <= current_patch_set.keys():
-                warning(f'Invalid current_patch_set: {
-                        current_patch_set} in state {decorate(state.number)}')
+                warning(f'Invalid current_patch_set: {current_patch_set} '
+                        f'in state {decorate(state.number)}')
                 continue
             state.patch_num = str(current_patch_set['number'])
             state.curr_num = str(current_patch_set['number'])
@@ -542,7 +542,7 @@ class GerritTags:
 
     def create_branches(self):
         status = Shell(['git', 'fetch', 'origin'], True)
-        status.assert_succeeded(f'Failed to fetch remote branches from {decorate('origin')}')
+        status.assert_succeeded(f'Failed to fetch remote branches from {decorate("origin")}')
         username_len = 0
         for state in self.state_list:
             if username_len < len(state.username):
@@ -647,8 +647,8 @@ class GerritTags:
             status.assert_succeeded(
                 f'Failed to fetch remote {state.ref} from {self.repository_url}')
             status = Shell(['git', 'branch', branch_name, state.revision], True)
-            status.assert_succeeded(f'Failed to create branch  {
-                decorate(branch_name)} at {state.revision}')
+            status.assert_succeeded(f'Failed to create branch  {decorate(branch_name)} '
+                                    f'at {state.revision}')
         status = Shell(['git', 'config', 'branch.'+branch_name + '.description',
                         state.subject], True)
         status.assert_succeeded(f'Failed to set branch {decorate(branch_name)} description.')
@@ -682,8 +682,8 @@ class GerritTags:
     def rebase_state_branch_safe(self, state):
         stash_name = state.branch_name + '.stash.backup'
         status = Shell(['git', 'stash', 'push', '-m', stash_name])
-        status.assert_succeeded(f'Failed to save stash {stash_name} while rebasing {
-            decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to save stash {stash_name} '
+                                f'while rebasing {decorate(state.branch_name)}')
         text = status.stdout.strip()
         debug(f'Save stash output: {text}')
         with ExitStack() as stack:
@@ -700,8 +700,8 @@ class GerritTags:
     def rebase_state_branch_restore(self, state, stash_name):
         debug(f'Restoring local changes from stash {stash_name}')
         status = Shell(['git', 'stash', 'list'])
-        status.assert_succeeded(f'Failed to list stashes while rebasing {
-            decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to list stashes while '
+                                f'rebasing {decorate(state.branch_name)}')
         pattern = r"stash@{(\d+)}.+:\s(.+)"
         matches = re.findall(pattern, status.stdout)
         stash_index_found = ''
@@ -715,11 +715,11 @@ class GerritTags:
             branch_name = decorate(state.branch_name)
             fatal(f'Failed to retrieve index for stash {stash_name} while rebasing {branch_name}')
         status = Shell(['git', 'stash', 'apply', stash_index_found])
-        status.assert_succeeded(f'Failed to apply stash {stash_name} while rebasing {
-            decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to apply stash {stash_name} while '
+                                f'rebasing {decorate(state.branch_name)}')
         status = Shell(['git', 'stash', 'drop', stash_index_found])
-        status.assert_succeeded(f'Failed to drop stash {stash_name} while rebasing {
-            decorate(state.branch_name)}')
+        status.assert_succeeded(f'Failed to drop stash {stash_name} while '
+                                f'rebasing {decorate(state.branch_name)}')
 
     def rebase_state_branch(self, state):
         debug(f'Running rebase on branch {state.branch_name}')

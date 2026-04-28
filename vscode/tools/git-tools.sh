@@ -11,6 +11,7 @@
 SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
 
 SSH_FLAGS=(
+	-o SendEnv=TERM
 	-o ProxyCommand=none
 	-o StrictHostKeyChecking=no
 	-o UserKnownHostsFile=/dev/null
@@ -133,11 +134,11 @@ function gpf() {
 }
 
 function gt() {
-	"getags2.py" "$@"
+	"$SCRIPT_DIR/getags2.py" "$@"
 }
 
 function gt0() {
-	"getags.py" "$@"
+	"$SCRIPT_DIR/getags.py" "$@"
 }
 
 function _error() {
