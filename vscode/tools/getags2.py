@@ -305,17 +305,51 @@ class GitConfig:
             fatal('Failed to detect Git repository \'master\' branch')
         debug(f'master branch is "{self.master_branch}"')
 
+class Approval:
+    def __init__(self):
+        self.min = self.max = 0
+
+    def register(self, value):
+        ordinal = value
+        if isinstance(value, str):
+            if not self.isdigit(value):
+                return
+            ordinal = int(value)
+            debug(f'{value} = {ordinal}')
+        if self.min > ordinal and ordinal < 0:
+            self.min = ordinal
+        if self.max < ordinal and ordinal > 0:
+            self.max = ordinal
+
+    def symbol(self):
+        if self.min == -1:
+            return 'E'
+        if self.min == -2:
+            return 'F'
+        if self.min < 0:
+            return '?'
+        if self.max != 0:
+            return str(self.max)
+        return ''
+
+    @staticmethod
+    def isdigit(s):
+        if s[0] in ('-', '+'):
+            return s[1:].isdigit()
+        return s.isdigit()
 
 class State:
     def __init__(self):
-        self.change_id = self.number = self.subject = self.email = \
+        self.change_id = self.number = self.topic = self.subject = self.email = \
             self.username = self.url = self.wip = self.priv = self.patch_num = \
-            self.curr_num = self.revision = self.ref = self.mode = self.verified = self.review = ''
+            self.curr_num = self.revision = self.ref = self.mode = \
+            self.verified = self.review = ''
         self.selected = False
         self.parents = []
+        self.next_states = []
         self.child_count = 0
+        self.emit = False
         self.branch_name = ''
-
 
 class GerritTags:
     def __init__(self, user_email, repository_url, master_branch, command, patchSets) -> None:
@@ -353,6 +387,7 @@ class GerritTags:
         self.gerrit_port = []
         self.gerrit_project = ''
         self.state_list = []
+        self.state_heads = []
         self.state_by_rev = {}
         self.containing_master = []
         self.repeat_refresh = False
@@ -374,7 +409,7 @@ class GerritTags:
                 self.current_patch_number = digits[0]
             if '.' in self.current_branch:
                 self.all_users = True
-            debug(f'Curent branch {decorate(self.current_branch)} at {self.current_revision}')
+            debug(f'Current branch {decorate(self.current_branch)} at {self.current_revision}')
 
     def remove_branches(self):
         status = Shell(['git', 'branch', '--format', '%(refname:short)'])
@@ -471,6 +506,8 @@ class GerritTags:
                 continue
             state.change_id = project['id']
             state.number = str(project['number'])
+            if 'topic'in project:
+                state.topic = project['topic']
             state.subject = project['subject']
             state.url = project['url']
             if 'wip' in project:
@@ -494,20 +531,22 @@ class GerritTags:
             state.ref = current_patch_set['ref']
             state.parents = current_patch_set['parents']
             state.mode = 'currentPatchSet'
+            verified = Approval()
+            review = Approval()
+            verifiedMin = verifiedMax = reviewMin = reviewMax = 0
             if 'approvals' in current_patch_set:
-                approvals = current_patch_set['approvals']
-                for approval in approvals:
-                    if 'type' in approval and 'value' in approval:
-                        type = approval['type']
-                        value = approval['value']
-                        if value == '-1':
-                            value = 'E'
-                        elif value == '-2':
-                            value = 'F'
-                        if type == 'Verified':
-                            state.verified = value
-                        if type == 'Code-Review':
-                            state.review = value
+                for approval in current_patch_set['approvals']:
+                    if not 'type' in approval or not 'value' in approval:
+                        continue
+                    type = approval['type']
+                    value = approval['value']
+                    debug(f'approval[value] = {approval["value"]}')
+                    if type == 'Verified':
+                        verified.register(value)
+                    elif type == 'Code-Review':
+                        review.register(value)
+            state.verified = verified.symbol()
+            state.review = review.symbol()
             self.state_list.append(state)
             self.state_by_rev[state.revision] = state
             debug(f'State {state.number} revision {state.revision} patches ' +
@@ -537,7 +576,7 @@ class GerritTags:
     def compare_branches(state1, state2):
         result = GerritTags.compare_strings(state1.username, state2.username)
         if result == 0:
-            result = GerritTags.compare_strings(state1.number, state2.number)
+            result = - GerritTags.compare_strings(state1.number, state2.number)
         return result
 
     @staticmethod
@@ -557,21 +596,25 @@ class GerritTags:
     def create_branches(self):
         status = Shell(['git', 'fetch', 'origin'], True)
         status.assert_succeeded(f'Failed to fetch remote branches from {decorate("origin")}')
-        username_len = 0
+        self.username_len = 0
+        self.max_level = 0
         for state in self.state_list:
-            if username_len < len(state.username):
-                username_len = len(state.username)
-            if len(state.parents) != 1:
-                debug(f'Revision {state.revision} have no parent.')
-                continue
-            parent = self.find_state_by_rev(state.parents[0])
-            if not parent:
-                continue
-            parent.child_count += 1
-            debug(f'Ref {parent.ref} child_count = {parent.child_count}')
+            if self.username_len < len(state.username):
+                self.username_len = len(state.username)
+            for parent_id in state.parents:
+                parent = self.find_state_by_rev(parent_id)
+                if not parent:
+                    continue
+                state.next_states.append(parent)
+                parent.child_count += 1
+                debug(f'Ref {parent.ref} child_count = {parent.child_count}')
         self.branch_index = 0
         for state in self.state_list:
+            if state.child_count == 0:
+                self.state_heads.append(state)
             self.create_branch(state.mode, state)
+        self.state_heads.sort(key=functools.cmp_to_key(GerritTags.compare_branches))
+        debug(f'Found state heads: {len(self.state_heads)}')
         # list branches including master
         status = Shell(['git', 'branch', '--contains', self.master_branch], True)
         status.assert_succeeded(f'Failed to get list of branches containing '
@@ -598,10 +641,11 @@ class GerritTags:
         self.select_branch('current_patch_number')
         self.select_branch('current_branch')
         self.select_branch('current_revision')
-        self.print_header(username_len)
+        self.print_header()
+        for state in self.state_heads:
+            self.print_branch(state, 0)
         for state in self.state_list:
-            self.print_branch(state, username_len)
-        self.print_header(username_len)
+            self.print_branch(state, 0)
         if self.selected_state is None and self.patch_number != '':
             warning(f'Failed to select patch number {decorate(self.patch_number)}.')
 
@@ -646,7 +690,7 @@ class GerritTags:
         if state.verified != '':
             entry_name += '.V' + state.verified
         if state.review != '':
-            entry_name += '.R' + state.review
+            entry_name += state.review
         # if state.child_count == 0:
         #    entry_name += self.branch_separator + 'TOP'
         # if self.email == '':
@@ -756,35 +800,47 @@ class GerritTags:
 
     def checkout_branch(self):
         targets = []
+        if self.selected_state is not None:
+            targets.append(self.lookup_branch(self.selected_state.branch_name))
+        if self.current_branch != '' and not self.current_branch in targets:
+            targets.append(self.lookup_branch(self.current_branch))
         if self.current_revision != '' and not self.current_revision in targets:
             targets.append(self.current_revision)
-        if self.selected_state is not None:
-            targets.append(self.selected_state.branch_name)
-        if self.current_branch != '' and not self.current_branch in targets:
-            targets.append(self.current_branch)
         if self.master_branch != '' and not self.master_branch in targets:
             targets.append(self.master_branch)
         debug(f'Checking out targets: {targets}')
         for target in targets:
+            if target == '':
+                continue
             status = Shell(['git', 'checkout', target])
             if status.succeeded():
                 return
             warning(f'Failed to checkout to target {decorate(target)}')
         fatal(f'Failed to checkout to targets {targets}')
 
-    def print_header(self, username_len):
+    def lookup_branch(self, branch_name):
+        lookup_name = branch_name
+        pos = branch_name.find('.')
+        if pos >= 0:
+            lookup_name = branch_name[:pos + 1]
+        for state in self.state_list:
+            if state.branch_name.startswith(lookup_name):
+                return state.branch_name
+        return ''
+
+    def print_header(self):
         if self.patchSets or self.all_users:
-            index = f'{Colors.gray}----'
+            index = f'{Colors.gray}-No-'
         else:
-            index = f'{Colors.gray}---'
+            index = f'{Colors.gray}-n-'
         user_name = ''
         if self.email == '':
             user_name = 'user'
-            while len(user_name) < username_len:
+            while len(user_name) < self.username_len:
                 user_name = '-' + user_name + '-'
-            user_name = Colors.nc + ' ' + user_name[:username_len]
+            user_name = Colors.nc + ' ' + user_name[:self.username_len]
         revision = Colors.green + '--sha1--'
-        branch = Colors.blue + '--id---'
+        branch = Colors.blue + '-uid-'
         subject = ''
         width = 0
         while width < self.subject_limit:
@@ -793,7 +849,25 @@ class GerritTags:
         subject = Colors.nc + subject
         print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} | ------- |')
 
-    def print_branch(self, state, username_len):
+    def print_branch(self, state, level):
+        if self.email != '' and self.email != state.email:
+            return
+        if state.emit:
+            return
+        self.emit_branch(state, level)
+        self.emit_nesting(state, level + 1)
+        self.print_header()
+
+    def emit_nesting(self, state, level):
+        for inner_state in state.next_states:
+            self.emit_branch(inner_state, level)
+            self.emit_nesting(inner_state, level)
+            level = level + 1
+            if self.max_level < level:
+                self.max_level = level
+
+    def emit_branch(self, state, level):
+        state.emit = True
         self.branch_index += 1
         index = ''
         if self.patchSets or self.all_users:
@@ -804,12 +878,10 @@ class GerritTags:
         user_name = ''
         if self.email == '':
             user_name = state.username
-            while len(user_name) < username_len:
+            while len(user_name) < self.username_len:
                 user_name = ' ' + user_name
             user_name = Colors.nc + ' ' + user_name
-        elif self.email != state.email:
-            return
-        branch = Colors.blue + self.branch_prefix + state.number + self.branch_postfix
+        branch = Colors.blue + state.number + self.branch_postfix
         subject = state.subject
         info = Colors.blue + ' * ' if state.child_count == 0 else Colors.nc + '   '
         priv_color = Colors.gray
@@ -836,6 +908,8 @@ class GerritTags:
                 info += Colors.gray + item
         info += Colors.cyan + ' R' if state.branch_name not in self.containing_master else Colors.nc + '  '
         info += Colors.nc + ' |'
+        if state.topic != '':
+            info += ' ' + Colors.green + state.topic
         while len(subject) < self.subject_limit:
             subject += ' '
         if len(subject) <= self.subject_limit:
