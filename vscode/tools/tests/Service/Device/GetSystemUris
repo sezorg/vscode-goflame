@@ -8,5 +8,5 @@ JSON=$(
 }
 DELIMITER
 )
-json_test device/GetSystemUris
+json_test devicemgmt/GetSystemUris
 

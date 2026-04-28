@@ -1,0 +1,16 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+curl --digest -u "$USER:$PASS" -w -S -v --digest http://$IP/api/v2/login/GetUsers
+
+JSON=$(
+	cat <<DELIMITER
+{
+}
+DELIMITER
+)
+json_test login/GetUsers
+
+
+

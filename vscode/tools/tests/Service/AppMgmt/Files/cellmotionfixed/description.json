@@ -1,0 +1,35 @@
+{
+    "name": "cell motion fixed",
+    "appid": "cellmotionfixed",
+    "fixed": true,
+    "version": "0.2",
+    "sdk-version": "0.1",
+    "elements" : [
+        {
+            "name": "FramecounterModule",
+            "kind": "module",
+            "max-instances": 1,
+            "fixed": false,
+            "element": "framecountermodule",
+            "input": "any",
+            "description-file": "etc/cvplugins/framecounter/framecountermodule.xml",
+            "schema-files": [],
+            "params-file": null,
+            "metadata-file": "etc/cvplugins/framecounter/framecountermodule-metadata.xml",
+            "events-file": null
+        },
+        {
+            "name": "FramecounterRule",
+            "kind": "rule",
+            "max-instances": 5,
+            "fixed": false,
+            "element": "framecounterrule",
+            "input": "metadata",
+            "description-file": "etc/cvplugins/framecounter/framecounterrule.xml",
+            "schema-files": [],
+            "params-file": null,
+            "metadata-file": null,
+            "events-file": "etc/cvplugins/framecounter/framecounterrule-events.xml"
+        }
+   ]
+  }

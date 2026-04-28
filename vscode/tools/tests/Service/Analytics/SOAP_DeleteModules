@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+PROTO="SOAP"
+TIMEOUT=10
+NAME="TestFaceDetector"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"ConfigurationToken":"vac",
+	"AnalyticsModuleName":[
+		"$NAME"
+	]
+}
+DELIMITER
+)
+json_test analytics/DeleteAnalyticsModules

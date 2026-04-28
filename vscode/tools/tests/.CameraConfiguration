@@ -37,6 +37,8 @@ function help() {
 	log "Arguments:"
 	log "   ${blue}./TestScript$nc                selected script with JSON/SOAP test template"
 	log "   ${gray}-h, --help, help$nc            print this help screen and exit"
+	log "   ${gray}-j, --json*$nc                 use JSON_RPC protocol (default)"
+	log "   ${gray}-s, --soap$nc                  use SOAP protocol"
 	log "   ${gray}-t, --timeout, timeout$nc ${green}SEC$nc  specify command timeout in seconds"
 	log "   ${gray}-u, --user, user$nc ${green}NAME$nc       user account name to login via ONVIF"
 	log "   ${gray}-p, --pass, pass$nc ${green}PASS$nc       password string for selected user accout"
@@ -57,6 +59,7 @@ function is_false() {
 
 IP=""
 ARGS=()
+PROTO="JSON_RPC"
 DEF_TIMEOUT="2"
 TIMEOUT=""
 USER="admin"
@@ -69,6 +72,14 @@ while [[ "$#" != 0 ]]; do
 		shift
 		help
 		exit 0
+		;;
+	-s | --soap)
+		shift
+		PROTO="SOAP"
+		;;
+	-j | --json*)
+		shift
+		PROTO="JSON_RPC"
 		;;
 	-t | --timeout | timeout)
 		shift
@@ -209,14 +220,16 @@ function print_json() {
 	local type="$1"
 	shift
 	local json_text="$*" decoded="" status=""
-	decoded=$(echo "$json_text" | jq 2>&1)
+	decoded=$(echo "$json_text" | grep -v "\- INFO \-" | jq 2>&1)
+	#echo "decoded=$decoded"
+	#decoded=$(echo "$decoded" | jq 2>&1)
 	status=$(echo "$decoded" | grep "parse error:")
 	if [[ "$status" != "" ]]; then
 		error "Malformed JSON $type."
 		error "Json: $decoded"
 		fatal "Text: $json_text"
 	fi
-	echo "$json_text" | jq
+	echo "$decoded" | jq
 	return 0
 }
 
@@ -244,36 +257,9 @@ function json_test() {
 	fi
 	args+=(-s "$service" -c "$method")
 	#log "Calling: python3 $BASE/ipcam_request.py ${args[@]} -l $JSON"
-	output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
-	retcode="$?"
-	elapsed=$(format_time "$start_time" "$(date +%s.%N)")
-	if [[ "$retcode" == "124" ]]; then
-		fatal "Operation is timed out in $elapsed"
-	fi
-	status=$(echo "$output" | grep "No route to host")
-	if [[ "$status" != "" ]]; then
-		fatal "IP $IP: No route to host, $elapsed."
-	fi
-	log "OUT in $elapsed:"
-	print_json "response" "$output"
-}
-
-function soap_test() {
-	parse_json_args
-	local service method output retcode status decoded start_time elapsed
-	service="$(dirname "$1")"
-	method="$(basename -- "$1")"
-	log "$blue$IP$nc: $gray$service.$method()$nc"
-	log "IN:"
-	print_json "request" "$JSON"
-	start_time="$(date +%s.%N)"
-	if [[ "$TIMEOUT" == "" ]]; then
-		TIMEOUT="$DEF_TIMEOUT"
-	fi
-	#output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" \
-	#	-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -l "$JSON" 2>&1)
-	output=$(timeout "$TIMEOUT" ecam request --auth cookies \
-		-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -l "$JSON" 2>&1)
+	# output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
+	output=$(timeout "$TIMEOUT" ecam request --protocol "$PROTO" --auth cookies \
+		-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
 	retcode="$?"
 	elapsed=$(format_time "$start_time" "$(date +%s.%N)")
 	if [[ "$retcode" == "124" ]]; then

@@ -1,0 +1,6 @@
+<AnalyticsModuleDescription xmlns="http://www.onvif.org/ver10/schema" Name="CellMotionEngine" maxInstances="1" fixed="false">
+    <Parameters>
+         <SimpleItemDescription Name="Sensitivity" Type="xs:integer"/>
+         <ElementItemDescription Name="Layout" Type="CellLayout"/>
+    </Parameters>
+</AnalyticsModuleDescription>

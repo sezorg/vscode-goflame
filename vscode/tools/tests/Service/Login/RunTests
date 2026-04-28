@@ -1,0 +1,11 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+ 
+for (( i=0; i<10; i=i+1 )) ; do
+    pytest  ecamapi/tests --log-cli-level=info --html=logs/pytest.html --self-contained-html --junit-xml=logs/junit.xml --log-file=logs/pytest.log --capture-soap --server=$IP --port=80 -k '(test_hostname and Auth.digest)'
+    if [ $? -ne 0 ]; then
+        echo "Failed"
+        break
+    fi
+done

@@ -1,0 +1,32 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+PROTO="SOAP"
+TIMEOUT=10
+NAME="TestFaceDetector"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "ConfigurationToken":"vac",
+  "AnalyticsModule": [
+    {
+      "Parameters": {
+        "SimpleItem": [
+          {
+            "Name": "FaceDbPath",
+            "Value": "/var/cv/facedb"
+          }
+        ],
+        "ElementItem": [],
+        "Extension": null
+      },
+      "Name": "$NAME",
+      "Type": "FaceDetector"
+    }
+  ]
+}
+DELIMITER
+)
+json_test analytics/CreateAnalyticsModules
