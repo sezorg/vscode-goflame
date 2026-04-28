@@ -160,8 +160,8 @@ def parse_arguments():
         default='',
     )
     parser.add_argument(
-        '-p', '--patchsets',
-        help='List all patchets from Gerrit commits',
+        '-p', '--patch-sets',
+        help='List all patch sets from Gerrit commits',
         required=False,
         action='count',
         default=0,
@@ -310,7 +310,7 @@ class State:
     def __init__(self):
         self.change_id = self.number = self.subject = self.email = \
             self.username = self.url = self.wip = self.priv = self.patch_num = \
-            self.curr_num = self.revision = self.ref = self.mode = ''
+            self.curr_num = self.revision = self.ref = self.mode = self.verified = self.review = ''
         self.selected = False
         self.parents = []
         self.child_count = 0
@@ -318,11 +318,11 @@ class State:
 
 
 class GerritTags:
-    def __init__(self, user_email, repository_url, master_branch, command, patchsets) -> None:
+    def __init__(self, user_email, repository_url, master_branch, command, patchSets) -> None:
         self.execute = True
         self.repository_url = repository_url
         self.master_branch = master_branch
-        self.patchsets = patchsets
+        self.patchSets = patchSets
         self.all_users = False
         self.email = ''
         if command is None or command == 'me' or command == '':
@@ -494,12 +494,26 @@ class GerritTags:
             state.ref = current_patch_set['ref']
             state.parents = current_patch_set['parents']
             state.mode = 'currentPatchSet'
+            if 'approvals' in current_patch_set:
+                approvals = current_patch_set['approvals']
+                for approval in approvals:
+                    if 'type' in approval and 'value' in approval:
+                        type = approval['type']
+                        value = approval['value']
+                        if value == '-1':
+                            value = 'E'
+                        elif value == '-2':
+                            value = 'F'
+                        if type == 'Verified':
+                            state.verified = value
+                        if type == 'Code-Review':
+                            state.review = value
             self.state_list.append(state)
             self.state_by_rev[state.revision] = state
             debug(f'State {state.number} revision {state.revision} patches ' +
                   f'{state.curr_num}/{state.patch_num} registered .')
 
-            if not self.patchsets:
+            if not self.patchSets:
                 continue
             patch_sets = project['patchSets']
             for patch_set in patch_sets:
@@ -620,7 +634,7 @@ class GerritTags:
         entry_name = state.number
         if self.email == '':
             entry_name = state.username + '/' + state.number
-        if self.patchsets:
+        if self.patchSets:
             if mode == 'currentPatchSet':
                 entry_name = state.number + self.branch_separator + 'CUR'
             else:
@@ -629,6 +643,10 @@ class GerritTags:
             entry_name += self.branch_separator + 'PRIV'
         elif state.wip:
             entry_name += self.branch_separator + 'WIP'
+        if state.verified != '':
+            entry_name += '.V' + state.verified
+        if state.review != '':
+            entry_name += '.R' + state.review
         # if state.child_count == 0:
         #    entry_name += self.branch_separator + 'TOP'
         # if self.email == '':
@@ -738,12 +756,12 @@ class GerritTags:
 
     def checkout_branch(self):
         targets = []
+        if self.current_revision != '' and not self.current_revision in targets:
+            targets.append(self.current_revision)
         if self.selected_state is not None:
             targets.append(self.selected_state.branch_name)
         if self.current_branch != '' and not self.current_branch in targets:
             targets.append(self.current_branch)
-        if self.current_revision != '' and not self.current_revision in targets:
-            targets.append(self.current_revision)
         if self.master_branch != '' and not self.master_branch in targets:
             targets.append(self.master_branch)
         debug(f'Checking out targets: {targets}')
@@ -755,7 +773,7 @@ class GerritTags:
         fatal(f'Failed to checkout to targets {targets}')
 
     def print_header(self, username_len):
-        if self.patchsets or self.all_users:
+        if self.patchSets or self.all_users:
             index = f'{Colors.gray}----'
         else:
             index = f'{Colors.gray}---'
@@ -773,12 +791,12 @@ class GerritTags:
             subject = f'{subject}{width % 10}'
             width += 1
         subject = Colors.nc + subject
-        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} | ----- |')
+        print(f'{index}{user_name} {revision} {branch} {subject}{Colors.nc} | ------- |')
 
     def print_branch(self, state, username_len):
         self.branch_index += 1
         index = ''
-        if self.patchsets or self.all_users:
+        if self.patchSets or self.all_users:
             index = f'{Colors.gray}{self.branch_index:04d}'
         else:
             index = f'{Colors.gray}{self.branch_index:03d}'
@@ -793,26 +811,44 @@ class GerritTags:
             return
         branch = Colors.blue + self.branch_prefix + state.number + self.branch_postfix
         subject = state.subject
-        info = ''
-        post = Colors.nc + '  '
-        info += Colors.blue + ' *' if state.child_count == 0 else post
+        info = Colors.blue + ' * ' if state.child_count == 0 else Colors.nc + '   '
         priv_color = Colors.gray
         wip_color = Colors.yellow
-        pref = post
+        skip = Colors.nc + '-'
+        error = False
         if state.priv:
-            pref = priv_color + ' P'
+            info += priv_color + 'P'
         elif state.wip:
-            pref = wip_color + ' W'
-        info += pref
-        info += Colors.cyan + ' R' if state.branch_name not in self.containing_master else post
+            info += wip_color + 'W'
+        else:
+            info += skip
+        for item in [state.verified, state.review]:
+            if item == '':
+                info += skip
+                continue
+            item = item[:1]
+            if not item.isdigit():
+                error = True
+                info += Colors.red + item
+            elif item == '2':
+                info += Colors.blue + item
+            else:
+                info += Colors.gray + item
+        info += Colors.cyan + ' R' if state.branch_name not in self.containing_master else Colors.nc + '  '
         info += Colors.nc + ' |'
         while len(subject) < self.subject_limit:
             subject += ' '
         if len(subject) <= self.subject_limit:
-            if state.priv:
+            if error:
+                subject = Colors.red + subject
+            elif state.review == '2':
+                subject = Colors.blue + subject
+            elif state.priv:
                 subject = priv_color + subject
             elif state.wip:
                 subject = wip_color + subject
+            elif state.verified == '1' or state.review == '1':
+                subject = Colors.gray + subject
             else:
                 subject = Colors.nc + subject
         else:
@@ -830,7 +866,7 @@ def main():
     debug(
         f'user_email={git_config.user_email}, ' +
         f'command={arguments.command}, ' +
-        f'patchsets={arguments.patchsets}')
+        f'patchSets={arguments.patch_sets}')
     refresh_count = 0
     while refresh_count == 0 or refresh_count == 2:
         gerrit_tags = GerritTags(
@@ -838,7 +874,7 @@ def main():
             git_config.repository_url,
             git_config.master_branch,
             arguments.command,
-            arguments.patchsets)
+            arguments.patch_sets)
         gerrit_tags.resolve_current()
         gerrit_tags.obtain_branches()
         gerrit_tags.remove_branches()
