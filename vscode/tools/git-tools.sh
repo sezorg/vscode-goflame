@@ -8,7 +8,11 @@
 #set -euo pipefail
 #set -x
 
-SCRIPT_DIR=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)
+if [[ "$(ps -p $$ | grep " zsh")" != "" ]]; then
+	SCRIPT_DIR=${0:a:h}
+else
+	SCRIPT_DIR=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+fi
 
 SSH_FLAGS=(
 	-o SendEnv=TERM
