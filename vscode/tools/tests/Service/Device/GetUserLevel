@@ -8,4 +8,9 @@ JSON=$(
 }
 DELIMITER
 )
+
+NO_AUTH=true
+json_test device/GetUserLevel
+
+NO_AUTH=false
 json_test device/GetUserLevel

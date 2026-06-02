@@ -243,6 +243,9 @@ function json_test() {
 	parse_json_args
 	local service method output retcode status decoded start_time elapsed args
 	service="$(dirname "$1")"
+	if [[ "$service" == "device" ]]; then
+		service="devicemgmt"
+	fi
 	method="$(basename -- "$1")"
 	log "$blue$IP$nc: $gray$service.$method()$nc"
 	log "IN:"
@@ -251,15 +254,18 @@ function json_test() {
 	if [[ "$TIMEOUT" == "" ]]; then
 		TIMEOUT="$DEF_TIMEOUT"
 	fi
-	args=(-a "$IP")
+	args=(--protocol "$PROTO" -a "$IP")
 	if is_false "$NO_AUTH"; then
-		args+=(-u "$USER" -p "$PASS")
+		args+=(--auth cookies -u "$USER" -p "$PASS")
+	else
+		args+=(--auth none)
 	fi
 	args+=(-s "$service" -c "$method")
 	#log "Calling: python3 $BASE/ipcam_request.py ${args[@]} -l $JSON"
-	# output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
-	output=$(timeout "$TIMEOUT" ecam request --protocol "$PROTO" --auth cookies \
-		-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
+	#output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
+	#output=$(timeout "$TIMEOUT" ecam request --protocol "$PROTO" --auth cookies \
+	#	-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
+	output=$(timeout "$TIMEOUT" ecam request "${args[@]}" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
 	retcode="$?"
 	elapsed=$(format_time "$start_time" "$(date +%s.%N)")
 	if [[ "$retcode" == "124" ]]; then

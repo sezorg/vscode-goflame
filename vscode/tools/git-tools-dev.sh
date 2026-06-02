@@ -359,9 +359,9 @@ function sf() {
 	echo $pass | sshfs "${SSH_FLAGS[@]}" "$user@$ip_address:/" "$mount_point" -o workaround=rename -o password_stdin
 	echo "Done. Mounted to: $mount_point"
 	if [[ -x "$(command -v dolphin)" ]]; then
-		dolphin "$mount_point"
+		nohup dolphin "$mount_point" > /dev/null 2>&1 &
 	elif [[ -x "$(command -v nautilus)" ]]; then
-		nautilus "$mount_point"
+		nohup nautilus "$mount_point" > /dev/null 2>&1 &
 	fi
 }
 

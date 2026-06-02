@@ -62,7 +62,7 @@ function gh() {
 	return 0
 }
 
-function master_branch_lookup() {
+function _master_branch_lookup() {
 	local branches=("ipcam" "ecam02" "ecam03" "mcom03" "master" "main")
 	for branch in "${branches[@]}"; do
 		if (git rev-parse --verify "$branch" >/dev/null 2>&1); then
@@ -99,7 +99,7 @@ function grcf() {
 }
 
 function gru() {
-	git rebase --update-refs "$(master_branch_lookup)"
+	git rebase --update-refs "$(_master_branch_lookup)"
 }
 
 function grx() {
@@ -114,6 +114,7 @@ function gs() {
 	git status
 }
 
+unalias ga 2>/dev/null
 function ga() {
 	gmk
 	gaf
@@ -124,19 +125,23 @@ function gaf() {
 	git add -u
 }
 
+unalias gp 2>/dev/null
 function gp() {
 	gmk
 	gpf
 }
 
+unalias gpf 2>/dev/null
 function gpf() {
 	local target="$1"
 	if [[ "$target" == "" ]]; then
-		target="$(master_branch_lookup)"
+		target="$(_master_branch_lookup)"
 	fi
+	echo "Pushing to HEAD:refs/for/$target"
 	git push origin "HEAD:refs/for/$target"
 }
 
+unalias gt 2>/dev/null
 function gt() {
 	"$SCRIPT_DIR/getags2.py" "$@"
 }
