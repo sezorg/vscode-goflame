@@ -1,0 +1,14 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "EnableDebug": false
+}
+DELIMITER
+)
+json_test devicemgmt/SetLogging
+
+

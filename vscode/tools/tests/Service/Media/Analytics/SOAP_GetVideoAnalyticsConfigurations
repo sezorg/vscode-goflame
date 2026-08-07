@@ -1,0 +1,14 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+PROTO="SOAP"
+DUMP=true
+
+JSON=$(
+	cat <<DELIMITER
+{
+}
+DELIMITER
+)
+json_test media/GetVideoAnalyticsConfigurations

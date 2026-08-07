@@ -1,0 +1,15 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+  "CheckPeriod": "PT10S",
+  "RebootDelay": "PT30S",
+  "RebootOnFailure": true
+}
+DELIMITER
+)
+json_test device/SetHardwareMonitor
+

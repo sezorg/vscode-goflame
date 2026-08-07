@@ -14,9 +14,29 @@ blue=$(printf "\e[34m")
 gray=$(printf "\e[90m")
 nc=$(printf "\e[0m")
 
+IP=""
+ARGS=()
+PROTO="JSON_RPC"
+DEF_TIMEOUT="2"
+TIMEOUT=""
+USER="admin"
+PASS="admin"
+NO_AUTH=false
+DEBUG=false
+DUMP=false
+
+function is_true() {
+	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
+}
+
+function is_false() {
+	[[ ! "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
+}
+
 function debug() {
-	#echo "${green}DEBUG: $*$nc" >&2
-	return
+	if is_true $DEBUG; then
+		echo "${green}DEBUG: $*$nc" >&2
+	fi
 }
 
 function log() {
@@ -49,22 +69,6 @@ function help() {
 	log "   ${blue}./GetImagingSettings$nc ${gray}VideoSourceToken=\"src\"$nc"
 }
 
-function is_true() {
-	[[ "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
-}
-
-function is_false() {
-	[[ ! "${1^^}" =~ ^(1|T|TRUE|Y|YES)$ ]]
-}
-
-IP=""
-ARGS=()
-PROTO="JSON_RPC"
-DEF_TIMEOUT="2"
-TIMEOUT=""
-USER="admin"
-PASS="admin"
-NO_AUTH=false
 while [[ "$#" != 0 ]]; do
 	debug "arg: $1"
 	case "$1" in
@@ -103,6 +107,14 @@ while [[ "$#" != 0 ]]; do
 			fatal "Expected password parameter"
 		fi
 		PASS="$1"
+		shift
+		;;
+	-d | --debug | debug)
+		DEBUG="true"
+		shift
+		;;
+	--dump | dump)
+		DEBUG="true"
 		shift
 		;;
 	*)
@@ -220,7 +232,7 @@ function print_json() {
 	local type="$1"
 	shift
 	local json_text="$*" decoded="" status=""
-	decoded=$(echo "$json_text" | grep -v "\- INFO \-" | jq 2>&1)
+	decoded=$(echo "$json_text" | grep -v -- "- INFO -" | jq 2>&1)
 	#echo "decoded=$decoded"
 	#decoded=$(echo "$decoded" | jq 2>&1)
 	status=$(echo "$decoded" | grep "parse error:")
@@ -239,6 +251,7 @@ function set_timeout() {
 	fi
 }
 
+
 function json_test() {
 	parse_json_args
 	local service method output retcode status decoded start_time elapsed args
@@ -254,18 +267,21 @@ function json_test() {
 	if [[ "$TIMEOUT" == "" ]]; then
 		TIMEOUT="$DEF_TIMEOUT"
 	fi
-	args=(--protocol "$PROTO" -a "$IP")
+	args=(timeout "$TIMEOUT" ecam request --protocol "$PROTO" --address "$IP")
+	if is_true "$DUMP" && [[ "$PROTO" == "SOAP" ]]; then
+		local goflame="/var/tmp/goflame"
+		mkdir -p "$goflame"
+		args+=(--dump-soap-request "$goflame/soap-request.txt")
+		args+=(--dump-soap-response "$goflame/soap-response.txt")
+	fi
 	if is_false "$NO_AUTH"; then
-		args+=(--auth cookies -u "$USER" -p "$PASS")
+		args+=(--auth cookies --user "$USER" --password "$PASS")
 	else
 		args+=(--auth none)
 	fi
-	args+=(-s "$service" -c "$method")
-	#log "Calling: python3 $BASE/ipcam_request.py ${args[@]} -l $JSON"
-	#output=$(timeout "$TIMEOUT" python3 "$BASE/ipcam_request.py" "${args[@]}" -l "$JSON" 2>&1)
-	#output=$(timeout "$TIMEOUT" ecam request --protocol "$PROTO" --auth cookies \
-	#	-a "$IP" -u "$USER" -p "$PASS" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
-	output=$(timeout "$TIMEOUT" ecam request "${args[@]}" -S -s "$service" -c "$method" -L "$JSON" 2>&1)
+	args+=(--service "$service" --command "$method" --load "$JSON")
+	debug "${args[@]}"
+	output=$("${args[@]}" 2>&1)
 	retcode="$?"
 	elapsed=$(format_time "$start_time" "$(date +%s.%N)")
 	if [[ "$retcode" == "124" ]]; then

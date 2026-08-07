@@ -242,7 +242,7 @@ function _set_konsole_tab_title_type() {
 		[[ -z "$KONSOLE_DBUS_SESSION" ]]; then
 		return 0
 	fi
-	qdbus >/dev/null "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" setTabTitleFormat "$type" "$title"
+	qdbus6 >/dev/null "$KONSOLE_DBUS_SERVICE" "$KONSOLE_DBUS_SESSION" setTabTitleFormat "$type" "$title"
 }
 
 function _set_konsole_title() {

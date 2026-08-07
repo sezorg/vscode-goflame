@@ -1,0 +1,29 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+  cat <<DELIMITER
+{
+  "DateTimeType": "NTP",
+  "DaylightSavings": false,
+  "TimeZone": {
+    "TZ": "MSK-3"
+  },
+  "UTCDateTime": {
+    "Time": {
+      "Hour": 4,
+      "Minute": 40,
+      "Second": 12
+    },
+    "Date": {
+      "Year": 2026,
+      "Month": 8,
+      "Day": 6
+    }
+  },
+  "TimezoneIanaID": "Europe/Moscow"
+}
+DELIMITER
+)
+json_test device/SetSystemDateAndTime
