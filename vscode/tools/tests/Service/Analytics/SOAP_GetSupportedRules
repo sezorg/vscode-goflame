@@ -1,0 +1,14 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+PROTO="SOAP"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"ConfigurationToken":"vac"
+}
+DELIMITER
+)
+json_test analytics/GetSupportedRules

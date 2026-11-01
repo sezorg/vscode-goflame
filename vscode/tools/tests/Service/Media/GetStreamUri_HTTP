@@ -1,0 +1,19 @@
+#!/bin/sh
+
+. "./.CameraConfiguration"
+
+JSON=$(
+	cat <<DELIMITER
+{
+	"StreamSetup": {
+		"Stream": "RTP-Unicast",
+		"Transport": {
+			"Protocol": "HTTP"
+		}
+	},
+	"ProfileToken": "h264"
+
+}
+DELIMITER
+)
+json_test media/GetStreamUri
